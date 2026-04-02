@@ -15,3 +15,21 @@ services:
       name: neopoly-data
       mountPath: /opt/render/project/src/data
       sizeGB: 1
+
+  - type: web
+    name: neopoly-eu
+    runtime: node
+    region: frankfurt
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+    disk:
+      name: neopoly-data-eu
+      mountPath: /opt/render/project/src/data
+      sizeGB: 1
