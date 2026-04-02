@@ -1130,6 +1130,7 @@ let P={
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
   mutedUsers:[],
   blockedUsers:[],
+  chatProfilePrivate:false,
   friends:[], // [{uid,name,emoji,avatarImg,color,addedAt}]
   chatLog:[]  // [{name,color,text,ts,mine,uid,admin,emoji,avatarImg}]
 };
@@ -1181,6 +1182,7 @@ function loadProfile(opts){
   if(!Array.isArray(P.friends))P.friends=[];
   if(!Array.isArray(P.mutedUsers))P.mutedUsers=[];
   if(!Array.isArray(P.blockedUsers))P.blockedUsers=[];
+  if(typeof P.chatProfilePrivate!=='boolean')P.chatProfilePrivate=!!P.chatProfilePrivate;
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   if(!Array.isArray(P.chatLog))P.chatLog=[];

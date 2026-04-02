@@ -766,7 +766,8 @@ function addChatMsg(name,color,text,meta){
     propertiesBought:extra.propertiesBought,
     moneyEarned:extra.moneyEarned,
     titlesCount:extra.titlesCount,
-    emojiCount:extra.emojiCount
+    emojiCount:extra.emojiCount,
+    profilePrivate:!!extra.profilePrivate
   }));
   el.appendChild(sp);
   el.appendChild(document.createTextNode(' '+(blocked?'🚫 message masqué':(muted?'🔇 message masqué':String(text||'')))));
