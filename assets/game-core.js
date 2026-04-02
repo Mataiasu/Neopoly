@@ -90,22 +90,28 @@ async function probeRenderOrigin(origin,timeoutMs=3500){
 function ensurePreferredRenderOrigin(force=false){
   const shouldProbe=!!(getRenderOriginCandidates().length);
   if(!shouldProbe)return Promise.resolve('');
-  if(!force){
-    const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
-    if(isRenderOrigin(active))return Promise.resolve(active);
-  }
   if(renderOriginProbePromise&&!force)return renderOriginProbePromise;
   renderOriginProbePromise=(async()=>{
     const candidates=getRenderOriginCandidates();
+    const fastTimeout=force?2200:1400;
     for(const candidate of candidates){
-      if(await probeRenderOrigin(candidate,2800)){
+      if(await probeRenderOrigin(candidate,fastTimeout)){
         const chosen=rememberRenderOrigin(candidate);
         pushGoogleDebug('Render origin actif: '+chosen);
         return chosen;
       }
+      if(normalizeOriginUrl(window.NEOPOLY_API_BASE||'')===normalizeOriginUrl(candidate)){
+        try{delete window.NEOPOLY_API_BASE;}catch(_){window.NEOPOLY_API_BASE='';}
+      }
+      try{
+        if(getStoredRenderOrigin()===normalizeOriginUrl(candidate))localStorage.removeItem(RENDER_PREFERRED_ORIGIN_KEY);
+      }catch(_){ }
     }
     const fallback=candidates[0]||'';
-    if(fallback)rememberRenderOrigin(fallback);
+    if(fallback){
+      pushGoogleDebug('Aucun endpoint Render sain détecté, fallback temporaire: '+fallback);
+      rememberRenderOrigin(fallback);
+    }
     return fallback;
   })().finally(()=>{renderOriginProbePromise=null;});
   return renderOriginProbePromise;
@@ -2403,6 +2409,10 @@ function openNetworkDiagModal(){
 }
 
 async function runNetworkDiagnostics(){
+  if(typeof ensurePreferredRenderOrigin==='function'){
+    await ensurePreferredRenderOrigin(true).catch(()=>{});
+    initDefaultWsUrlInputs();
+  }
   const wsUrl=(document.getElementById('social-ws-url')?.value||document.getElementById('jn-ws')?.value||document.getElementById('cr-ws')?.value||getDefaultWsUrl()||'').trim();
   setNetDiagLine('netdiag-health','Test en cours...','info');
   setNetDiagLine('netdiag-ws','Test en cours...','info');
