@@ -1526,6 +1526,56 @@ body.streamer-mode #invite-link {
 .sc-name{font-weight:700;margin-right:4px}
 .sc-time{font-size:.58rem;color:var(--muted);float:right}
 .sc-me .sc-name{color:var(--accent)}
+.chat-user-link{cursor:pointer;text-decoration:underline dotted rgba(148,163,184,.45);text-underline-offset:2px}
+.chat-user-link:hover{opacity:.92}
+.chat-user-badge{display:inline-block;font-size:.58rem;padding:1px 6px;border-radius:999px;border:1px solid var(--border);margin-left:4px;color:var(--muted)}
+.chat-user-menu{position:fixed;z-index:4000;min-width:260px;max-width:min(340px,calc(100vw - 20px));padding:12px;background:rgba(15,23,42,.98);border:1px solid rgba(148,163,184,.22);border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.35);display:none}
+.chat-user-menu.open{display:block}
+.chat-user-card{position:relative;overflow:hidden;isolation:isolate;padding:10px;border-radius:12px;border:1px solid rgba(148,163,184,.18);margin-bottom:10px;background:linear-gradient(135deg,var(--chat-user-accent-soft,rgba(34,197,94,.14)) 0%,rgba(15,23,42,.96) 62%),radial-gradient(circle at top right,var(--chat-rarity-glow,rgba(96,165,250,.16)),transparent 58%);box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 28px rgba(2,6,23,.22)}
+.chat-user-card>*{position:relative;z-index:1}
+.chat-user-card::before,.chat-user-card::after{content:'';position:absolute;inset:-20%;pointer-events:none;z-index:0}
+.chat-user-card::before{background:radial-gradient(circle at 20% 25%,var(--chat-rarity-glow,rgba(96,165,250,.16)) 0%,transparent 28%),radial-gradient(circle at 78% 20%,var(--chat-rarity-glow-2,rgba(34,197,94,.12)) 0%,transparent 24%);opacity:.9;animation:chatUserAura 6.8s ease-in-out infinite alternate}
+.chat-user-card::after{inset:0;background:linear-gradient(115deg,transparent 12%,rgba(255,255,255,.12) 48%,transparent 78%);transform:translateX(-140%);animation:chatUserShine 5.4s linear infinite;opacity:.55}
+.chat-user-card.chat-rarity-unranked{--chat-rarity-glow:rgba(148,163,184,.12);--chat-rarity-glow-2:rgba(100,116,139,.10);--chat-rarity-bar:linear-gradient(90deg,#64748b,#cbd5e1)}
+.chat-user-card.chat-rarity-bronze{--chat-rarity-glow:rgba(180,83,9,.22);--chat-rarity-glow-2:rgba(251,146,60,.16);--chat-rarity-bar:linear-gradient(90deg,#b45309,#fdba74)}
+.chat-user-card.chat-rarity-silver{--chat-rarity-glow:rgba(148,163,184,.26);--chat-rarity-glow-2:rgba(226,232,240,.18);--chat-rarity-bar:linear-gradient(90deg,#94a3b8,#e2e8f0)}
+.chat-user-card.chat-rarity-gold{--chat-rarity-glow:rgba(245,158,11,.26);--chat-rarity-glow-2:rgba(250,204,21,.18);--chat-rarity-bar:linear-gradient(90deg,#f59e0b,#fde047)}
+.chat-user-card.chat-rarity-plat{--chat-rarity-glow:rgba(34,197,94,.24);--chat-rarity-glow-2:rgba(45,212,191,.16);--chat-rarity-bar:linear-gradient(90deg,#22c55e,#2dd4bf)}
+.chat-user-card.chat-rarity-diamond{--chat-rarity-glow:rgba(59,130,246,.24);--chat-rarity-glow-2:rgba(34,211,238,.18);--chat-rarity-bar:linear-gradient(90deg,#3b82f6,#22d3ee)}
+.chat-user-card.chat-rarity-legend{--chat-rarity-glow:rgba(168,85,247,.28);--chat-rarity-glow-2:rgba(250,204,21,.18);--chat-rarity-bar:linear-gradient(90deg,#a855f7,#facc15)}
+.chat-user-profile{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.chat-user-avatar{width:46px;height:46px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;overflow:hidden;border:2px solid var(--border);flex-shrink:0;background:var(--s2)}
+.chat-user-avatar img{width:100%;height:100%;object-fit:cover}
+.chat-user-meta{min-width:0;flex:1}
+.chat-user-menu-head{font-size:.8rem;font-weight:800;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chat-user-menu-sub{font-size:.62rem;color:var(--muted);margin-bottom:6px;word-break:break-all}
+.chat-user-title{font-size:.63rem;color:#dbeafe;opacity:.95;margin-bottom:6px}
+.chat-user-rank-line{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.chat-user-rank-line .elo-rank-badge{margin-top:0}
+.chat-user-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.chat-user-tag{display:inline-block;font-size:.56rem;padding:2px 6px;border-radius:999px;border:1px solid rgba(148,163,184,.18);background:rgba(148,163,184,.08);color:var(--text)}
+.chat-user-tag.admin{color:#facc15;border-color:rgba(250,204,21,.35);background:rgba(250,204,21,.08)}
+.chat-user-tag.friend{color:#60a5fa;border-color:rgba(96,165,250,.35);background:rgba(96,165,250,.08)}
+.chat-user-tag.muted{color:#fbbf24;border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+.chat-user-tag.blocked{color:#fca5a5;border-color:rgba(252,165,165,.35);background:rgba(252,165,165,.08)}
+.chat-user-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:8px}
+.chat-user-stat{padding:6px 4px;background:rgba(15,23,42,.28);border:1px solid rgba(148,163,184,.12);border-radius:10px;text-align:center;backdrop-filter:blur(2px)}
+.chat-user-stat-val{font-size:.8rem;font-weight:800;line-height:1.1}
+.chat-user-stat-label{font-size:.54rem;color:var(--muted);margin-top:2px}
+.chat-user-progress{margin-top:8px}
+.chat-user-progress-top{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.58rem;color:var(--muted);margin-bottom:4px}
+.chat-user-progress-bar{height:6px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden}
+.chat-user-progress-fill{height:100%;border-radius:999px;background:var(--chat-rarity-bar,linear-gradient(90deg,#22c55e,#60a5fa));box-shadow:0 0 12px rgba(255,255,255,.12)}
+.chat-user-note{font-size:.58rem;color:var(--muted);margin-top:6px}
+@keyframes chatUserAura{0%{transform:translate3d(-2%,-1%,0) scale(1)}50%{transform:translate3d(2%,2%,0) scale(1.04)}100%{transform:translate3d(-1%,3%,0) scale(1.08)}}
+@keyframes chatUserShine{0%{transform:translateX(-140%) skewX(-18deg)}100%{transform:translateX(140%) skewX(-18deg)}}
+.chat-user-menu-copy{display:flex;align-items:center;gap:8px;padding:7px 8px;margin-bottom:10px;background:rgba(148,163,184,.06);border:1px solid rgba(148,163,184,.12);border-radius:10px}
+.chat-user-menu-copy code{flex:1;min-width:0;font-size:.62rem;color:var(--accent);word-break:break-all}
+.chat-user-menu-actions{display:flex;flex-wrap:wrap;gap:6px}
+.chat-user-menu .btn{flex:1 1 calc(50% - 6px)}
+.chat-user-menu .btn.btn-wide{flex:1 1 100%}
+.chat-user-menu-sep{height:1px;background:rgba(148,163,184,.12);margin:8px 0}
+@media(max-width:480px){.chat-user-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* ── SCROLLBAR ── */
 ::-webkit-scrollbar{width:4px}
@@ -3742,8 +3792,10 @@ let P={
   emojiUnlocks:{},
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+  mutedUsers:[],
+  blockedUsers:[],
   friends:[], // [{uid,name,emoji,avatarImg,color,addedAt}]
-  chatLog:[]  // [{name,color,text,ts,mine,uid,admin}]
+  chatLog:[]  // [{name,color,text,ts,mine,uid,admin,emoji,avatarImg}]
 };
 
 const ADMIN_EMAIL_FALLBACK='matthprizee55@gmail.com';
@@ -3790,6 +3842,11 @@ function loadProfile(opts){
   P.moderation.banned=!!P.moderation.banned;
   P.moderation.reason=String(P.moderation.reason||'');
   P.moderation.updatedAt=parseInt(P.moderation.updatedAt,10)||0;
+  if(!Array.isArray(P.friends))P.friends=[];
+  if(!Array.isArray(P.mutedUsers))P.mutedUsers=[];
+  if(!Array.isArray(P.blockedUsers))P.blockedUsers=[];
+  P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
+  P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   if(!Array.isArray(P.chatLog))P.chatLog=[];
   if(isKnownAdminEmail(P.googleEmail))P.isAdmin=true;
   if(!P.uid){P.uid='np_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);changed=true;}
@@ -5459,6 +5516,420 @@ function copyFriendCode(){
   navigator.clipboard?.writeText(P.uid).then(()=>toast('📋 Code copié !','i')).catch(()=>{});
 }
 
+function normalizeProfileUid(uid){
+  return String(uid||'').trim();
+}
+
+function hasFriendUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.friends)&&P.friends.some(f=>normalizeProfileUid(f.uid)===key));
+}
+
+function isLocallyMutedUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.mutedUsers)&&P.mutedUsers.includes(key));
+}
+
+function isLocallyBlockedUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.blockedUsers)&&P.blockedUsers.includes(key));
+}
+
+function setLocalUidMembership(listKey,uid,enabled){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return false;
+  if(!Array.isArray(P[listKey]))P[listKey]=[];
+  if(enabled){
+    if(!P[listKey].includes(key))P[listKey].push(key);
+  }else{
+    P[listKey]=P[listKey].filter(v=>v!==key);
+  }
+  return true;
+}
+
+function addFriendFromProfile(profile,opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  const msg=document.getElementById('add-friend-msg');
+  const uid=normalizeProfileUid(profile&&profile.uid);
+  const name=String(profile&&profile.name||'Ami').trim()||'Ami';
+  if(!uid){
+    if(msg&&!options.silent){msg.style.color='var(--red)';msg.textContent='UID ami introuvable.';}
+    return false;
+  }
+  if(uid===P.uid){
+    if(msg&&!options.silent){msg.style.color='var(--red)';msg.textContent="Tu ne peux pas t'ajouter toi-même.";}
+    return false;
+  }
+  if(isLocallyBlockedUid(uid)){
+    if(msg&&!options.silent){msg.style.color='var(--yellow)';msg.textContent="Débloque ce joueur avant de l'ajouter.";}
+    toast("🚫 Débloque ce joueur avant de l'ajouter en ami",'w');
+    return false;
+  }
+  const safeColor=safeCssColor(profile&&profile.color,'#6b7280');
+  const existing=P.friends.find(f=>normalizeProfileUid(f.uid)===uid);
+  const payload={
+    uid,
+    name,
+    emoji:String(profile&&profile.emoji||existing&&existing.emoji||'👤'),
+    avatarImg:(profile&&profile.avatarImg)||(existing&&existing.avatarImg)||null,
+    color:safeColor,
+    addedAt:(existing&&existing.addedAt)||Date.now()
+  };
+  if(existing){
+    Object.assign(existing,payload);
+    saveProfileData();renderFriendsList();
+    if(msg&&!options.silent){msg.style.color='var(--yellow)';msg.textContent='Cet ami est déjà dans ta liste.';}
+    return false;
+  }
+  P.friends.push(payload);
+  saveProfileData();renderFriendsList();
+  if(msg&&!options.silent){msg.style.color='var(--accent)';msg.textContent='✅ Ami ajouté !';}
+  toast('👫 Ami ajouté !','a');
+  return true;
+}
+
+function getActiveProfileTitleLabel(profile){
+  const source=profile&&typeof profile==='object'?profile:P;
+  if(source&&source.titleLabel)return String(source.titleLabel||'');
+  if(Array.isArray(source?.titles)&&source.titles.includes('winner_looser'))return '🏅 Winner Looser';
+  const key=source&&source.selectedTitle;
+  if(key&&typeof TITLE_DEFS!=='undefined'&&TITLE_DEFS[key])return String(TITLE_DEFS[key].label||'');
+  return '';
+}
+
+function getSharedChatProfilePayload(sourceProfile){
+  const source=sourceProfile&&typeof sourceProfile==='object'?sourceProfile:P;
+  const stats=source&&typeof source.stats==='object'&&source.stats?source.stats:{};
+  const elo=Math.max(0,parseInt(source&&source.elo,10)||0);
+  const rank=(typeof getEloRankInfo==='function')?getEloRankInfo(elo):{label:'— Non Rankée',cls:'er-unranked'};
+  return {
+    uid:normalizeProfileUid(source&&source.uid||P.uid),
+    name:String(source&&source.name||P.name||'Joueur').trim()||'Joueur',
+    color:safeCssColor(source&&source.color||P.color,'#22c55e'),
+    emoji:String(source&&source.emoji||P.emoji||'👤'),
+    avatarImg:(source&&source.avatarImg)||null,
+    admin:!!(source&&source.admin)||!!(source&&source.isAdmin),
+    elo,
+    rankLabel:String(rank.label||'— Non Rankée'),
+    rankClass:String(rank.cls||'er-unranked'),
+    titleLabel:getActiveProfileTitleLabel(source),
+    gamesWon:Math.max(0,parseInt(stats.gamesWon,10)||0),
+    gamesPlayed:Math.max(0,parseInt(stats.gamesPlayed,10)||0),
+  };
+}
+
+function getChatUserRarityClass(rankInfo){
+  const cls=String(rankInfo&&rankInfo.cls||'er-unranked').toLowerCase();
+  if(cls.includes('legend'))return 'chat-rarity-legend';
+  if(cls.includes('diamond'))return 'chat-rarity-diamond';
+  if(cls.includes('plat'))return 'chat-rarity-plat';
+  if(cls.includes('gold'))return 'chat-rarity-gold';
+  if(cls.includes('silver'))return 'chat-rarity-silver';
+  if(cls.includes('bronze'))return 'chat-rarity-bronze';
+  return 'chat-rarity-unranked';
+}
+
+function toggleLocalMuteUser(uid,name){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return;
+  const next=!isLocallyMutedUid(key);
+  setLocalUidMembership('mutedUsers',key,next);
+  saveProfileData();
+  renderSocialChat();
+  closeChatUserMenu();
+  toast((next?'🔇 ':'🔊 ')+(name||'Utilisateur')+(next?' est maintenant en sourdine':' n est plus en sourdine'),'i');
+}
+
+function toggleBlockedUser(uid,name){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return;
+  const next=!isLocallyBlockedUid(key);
+  setLocalUidMembership('blockedUsers',key,next);
+  if(next){
+    P.friends=P.friends.filter(f=>normalizeProfileUid(f.uid)!==key);
+  }
+  saveProfileData();
+  renderFriendsList();
+  renderSocialChat();
+  closeChatUserMenu();
+  toast((next?'🚫 ':'✅ ')+(name||'Utilisateur')+(next?' a été bloqué':' a été débloqué'),'i');
+}
+
+function makeChatUserMenuButton(label,className,onClick){
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='btn btn-xs '+(className||'btn-secondary');
+  btn.textContent=label;
+  btn.addEventListener('click',ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(typeof onClick==='function')onClick();
+  });
+  return btn;
+}
+
+function makeChatUserTag(label,className){
+  const tag=document.createElement('span');
+  tag.className='chat-user-tag'+(className?(' '+className):'');
+  tag.textContent=label;
+  return tag;
+}
+
+function copyChatUserUid(uid){
+  const value=normalizeProfileUid(uid);
+  if(!value)return;
+  navigator.clipboard?.writeText(value)
+    .then(()=>toast('📋 Code ami copié !','i'))
+    .catch(()=>toast('Copie impossible','w'));
+}
+
+function closeChatUserMenu(){
+  const menu=document.getElementById('chat-user-menu');
+  if(!menu)return;
+  menu.classList.remove('open');
+  menu.innerHTML='';
+}
+
+function openChatUserMenu(event,user){
+  const incoming=user&&typeof user==='object'?user:{};
+  const fallbackFriend=Array.isArray(P.friends)?P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(incoming.uid))||{}:{};
+  const profile=Object.assign({},fallbackFriend,incoming);
+  const uid=normalizeProfileUid(profile.uid);
+  if(!uid||uid===P.uid)return;
+  if(event){
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  let menu=document.getElementById('chat-user-menu');
+  if(!menu){
+    menu=document.createElement('div');
+    menu.id='chat-user-menu';
+    menu.className='chat-user-menu';
+    document.body.appendChild(menu);
+  }
+
+  const name=String(profile.name||'Joueur').trim()||'Joueur';
+  const color=safeCssColor(profile.color,'#22c55e');
+  const friend=hasFriendUid(uid);
+  const muted=isLocallyMutedUid(uid);
+  const blocked=isLocallyBlockedUid(uid);
+  const hasSharedStats=(profile.elo!==undefined||profile.rankLabel||profile.gamesWon!==undefined||profile.gamesPlayed!==undefined);
+  const elo=hasSharedStats?Math.max(0,parseInt(profile.elo,10)||0):0;
+  const rank=hasSharedStats?getEloRankInfo(elo):{label:String(profile.rankLabel||'— Stats privées'),cls:'er-unranked',tier:'Inconnu'};
+  const wins=hasSharedStats?Math.max(0,parseInt(profile.gamesWon,10)||0):0;
+  const games=hasSharedStats?Math.max(0,parseInt(profile.gamesPlayed,10)||0):0;
+  const winRate=hasSharedStats&&games>0?Math.round((wins/games)*100):0;
+  const titleText=String(profile.titleLabel||getActiveProfileTitleLabel(profile)||'').trim();
+
+  const rarityClass=getChatUserRarityClass(rank);
+
+  const card=document.createElement('div');
+  card.className='chat-user-card '+rarityClass;
+  card.style.setProperty('--chat-user-accent-soft',color+'22');
+  card.style.borderColor=color+'55';
+  if(rarityClass==='chat-rarity-legend')card.style.boxShadow='0 0 0 1px rgba(250,204,21,.14), 0 14px 34px rgba(168,85,247,.20)';
+
+  const profileRow=document.createElement('div');
+  profileRow.className='chat-user-profile';
+
+  const avatar=document.createElement('div');
+  avatar.className='chat-user-avatar';
+  avatar.style.borderColor=color;
+  if(profile.avatarImg){
+    const img=document.createElement('img');
+    img.src=profile.avatarImg;
+    img.alt='avatar';
+    avatar.appendChild(img);
+  }else{
+    avatar.style.background=color+'22';
+    avatar.textContent=profile.emoji||'👤';
+  }
+
+  const meta=document.createElement('div');
+  meta.className='chat-user-meta';
+
+  const head=document.createElement('div');
+  head.className='chat-user-menu-head';
+  head.style.color=color;
+  head.textContent=(profile.admin?'👑 ':'')+name;
+
+  const sub=document.createElement('div');
+  sub.className='chat-user-menu-sub';
+  sub.textContent='Carte joueur du chat';
+
+  const tags=document.createElement('div');
+  tags.className='chat-user-tags';
+  if(profile.admin)tags.appendChild(makeChatUserTag('Admin','admin'));
+  if(friend)tags.appendChild(makeChatUserTag('Ami','friend'));
+  if(muted)tags.appendChild(makeChatUserTag('Muet local','muted'));
+  if(blocked)tags.appendChild(makeChatUserTag('Bloqué','blocked'));
+  if(!tags.children.length)tags.appendChild(makeChatUserTag('Joueur'));
+
+  meta.append(head,sub,tags);
+  profileRow.append(avatar,meta);
+  card.appendChild(profileRow);
+
+  const titleEl=document.createElement('div');
+  titleEl.className='chat-user-title';
+  titleEl.textContent=titleText||(hasSharedStats?'Aucun titre équipé':'Stats non partagées');
+  card.appendChild(titleEl);
+
+  const rankLine=document.createElement('div');
+  rankLine.className='chat-user-rank-line';
+  const rankBadge=document.createElement('span');
+  rankBadge.className='elo-rank-badge '+String(rank.cls||'er-unranked');
+  rankBadge.textContent=String(rank.label||'— Stats privées');
+  const rankValue=document.createElement('strong');
+  rankValue.style.color='#e2e8f0';
+  rankValue.style.fontSize='.78rem';
+  rankValue.textContent=hasSharedStats?('ELO '+elo):'ELO —';
+  rankLine.append(rankBadge,rankValue);
+  card.appendChild(rankLine);
+
+  const stats=document.createElement('div');
+  stats.className='chat-user-stats';
+  [
+    {val:hasSharedStats?elo:'—',label:'📊 ELO'},
+    {val:hasSharedStats?wins:'—',label:'🏆 Wins'},
+    {val:hasSharedStats?games:'—',label:'🎮 Parties'},
+    {val:hasSharedStats?(games>0?(winRate+'%'):'—'):'—',label:'⚡ Winrate'}
+  ].forEach(item=>{
+    const box=document.createElement('div');
+    box.className='chat-user-stat';
+    const val=document.createElement('div');
+    val.className='chat-user-stat-val';
+    val.textContent=String(item.val);
+    const label=document.createElement('div');
+    label.className='chat-user-stat-label';
+    label.textContent=item.label;
+    box.append(val,label);
+    stats.appendChild(box);
+  });
+  card.appendChild(stats);
+
+  const progress=document.createElement('div');
+  progress.className='chat-user-progress';
+  const progressTop=document.createElement('div');
+  progressTop.className='chat-user-progress-top';
+  const progressLabel=document.createElement('span');
+  const progressHint=document.createElement('span');
+  const progressBar=document.createElement('div');
+  progressBar.className='chat-user-progress-bar';
+  const progressFill=document.createElement('div');
+  progressFill.className='chat-user-progress-fill';
+
+  if(hasSharedStats){
+    const tiersAsc=[...ELO_TIERS].reverse();
+    const currentTier=tiersAsc.filter(t=>elo>=t.min).slice(-1)[0]||tiersAsc[0];
+    const nextTier=tiersAsc.find(t=>elo<t.min)||null;
+    let pct=100;
+    if(nextTier){
+      const span=Math.max(1,nextTier.min-currentTier.min);
+      pct=Math.max(0,Math.min(100,Math.round(((elo-currentTier.min)/span)*100)));
+      progressLabel.textContent='Progression vers '+nextTier.icon+' '+nextTier.name;
+      progressHint.textContent=(nextTier.min-elo)+' pts';
+    }else{
+      progressLabel.textContent='Rang maximum atteint';
+      progressHint.textContent='MAX';
+    }
+    progressFill.style.width=pct+'%';
+  }else{
+    progressLabel.textContent='Aucune statistique partagée';
+    progressHint.textContent='—';
+    progressFill.style.width='0%';
+  }
+
+  progressBar.appendChild(progressFill);
+  progressTop.append(progressLabel,progressHint);
+  progress.append(progressTop,progressBar);
+  card.appendChild(progress);
+
+  const note=document.createElement('div');
+  note.className='chat-user-note';
+  note.textContent=hasSharedStats?'Profil mis à jour via le chat.':'Le joueur n a pas encore partagé ses stats.';
+  card.appendChild(note);
+
+  const copyRow=document.createElement('div');
+  copyRow.className='chat-user-menu-copy';
+  const code=document.createElement('code');
+  code.textContent=uid;
+  const copyBtn=makeChatUserMenuButton('📋 Copier','btn-secondary',()=>copyChatUserUid(uid));
+  copyBtn.classList.add('btn-wide');
+  copyRow.append(code,copyBtn);
+
+  const actions=document.createElement('div');
+  actions.className='chat-user-menu-actions';
+  actions.appendChild(makeChatUserMenuButton(friend?'❌ Retirer ami':'👫 Ajouter en ami',friend?'btn-secondary':'btn-blue',()=>{
+    if(friend){
+      removeFriend(uid);
+      closeChatUserMenu();
+      toast('👫 Ami retiré','i');
+    }else{
+      addFriendFromProfile(profile,{silent:false});
+      closeChatUserMenu();
+    }
+  }));
+  actions.appendChild(makeChatUserMenuButton(muted?'🔊 Unmute local':'🔇 Mute local','btn-secondary',()=>toggleLocalMuteUser(uid,name)));
+  actions.appendChild(makeChatUserMenuButton(blocked?'✅ Débloquer':'🚫 Bloquer',blocked?'btn-blue':'btn-danger',()=>toggleBlockedUser(uid,name)));
+
+  menu.innerHTML='';
+  menu.appendChild(card);
+  menu.appendChild(copyRow);
+  menu.appendChild(actions);
+
+  if(P.isAdmin){
+    const sep=document.createElement('div');
+    sep.className='chat-user-menu-sep';
+    menu.appendChild(sep);
+
+    const adminActions=document.createElement('div');
+    adminActions.className='chat-user-menu-actions';
+    adminActions.appendChild(makeChatUserMenuButton('🎯 Cibler','btn-secondary',()=>{
+      prepareModerationTarget(uid,name);
+      closeChatUserMenu();
+    }));
+    adminActions.appendChild(makeChatUserMenuButton('Mute','btn-secondary',()=>moderateTarget('mute',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Unmute','btn-secondary',()=>moderateTarget('unmute',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Ban','btn-danger',()=>moderateTarget('ban',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Unban','btn-blue',()=>moderateTarget('unban',uid,name)));
+    menu.appendChild(adminActions);
+  }
+
+  menu.classList.add('open');
+  menu.style.left='10px';
+  menu.style.top='10px';
+
+  const rect=(event&&event.currentTarget&&typeof event.currentTarget.getBoundingClientRect==='function')
+    ?event.currentTarget.getBoundingClientRect()
+    :(event&&event.target&&typeof event.target.getBoundingClientRect==='function'
+      ?event.target.getBoundingClientRect()
+      :null);
+
+  requestAnimationFrame(()=>{
+    const margin=10;
+    const width=menu.offsetWidth||280;
+    const height=menu.offsetHeight||260;
+    let left=rect?rect.left:margin;
+    let top=rect?(rect.bottom+6):margin;
+    const maxLeft=window.innerWidth-width-margin;
+    const maxTop=window.innerHeight-height-margin;
+    if(left>maxLeft)left=Math.max(margin,maxLeft);
+    if(top>maxTop)top=Math.max(margin,(rect?rect.top-height-6:margin));
+    menu.style.left=left+'px';
+    menu.style.top=top+'px';
+  });
+}
+
+document.addEventListener('click',ev=>{
+  const menu=document.getElementById('chat-user-menu');
+  if(menu&&menu.classList.contains('open')&&!menu.contains(ev.target))closeChatUserMenu();
+});
+window.addEventListener('resize',()=>closeChatUserMenu());
+window.addEventListener('scroll',()=>closeChatUserMenu(),true);
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape')closeChatUserMenu();
+});
+
 // ── FRIENDS ──
 function renderFriendsList(){
   const area=document.getElementById('friends-list-area');if(!area)return;
@@ -5507,20 +5978,14 @@ function renderFriendsList(){
 function addFriend(){
   const inp=document.getElementById('add-friend-input');
   const msg=document.getElementById('add-friend-msg');
-  const code=(inp?.value||'').trim();
+  const code=normalizeProfileUid(inp?.value||'');
   if(!code){if(msg)msg.style.color='var(--red)';if(msg)msg.textContent='Saisis un code ami.';return;}
-  if(code===P.uid){if(msg)msg.style.color='var(--red)';if(msg)msg.textContent='Tu ne peux pas t\'ajouter toi-même.';return;}
-  if(P.friends.find(f=>f.uid===code)){if(msg)msg.style.color='var(--yellow)';if(msg)msg.textContent='Cet ami est déjà dans ta liste.';return;}
-  // Add with basic info (will be enriched if they share profile via WS)
-  P.friends.push({uid:code,name:'Ami ('+code.slice(-4)+')',emoji:'👤',avatarImg:null,color:'#6b7280',addedAt:Date.now()});
-  saveProfileData();renderFriendsList();
-  if(inp)inp.value='';
-  if(msg){msg.style.color='var(--accent)';msg.textContent='✅ Ami ajouté ! Il verra ton invitation quand vous serez connectés.';}
-  toast('👫 Ami ajouté !','a');
+  const ok=addFriendFromProfile({uid:code,name:'Ami ('+code.slice(-4)+')',emoji:'👤',avatarImg:null,color:'#6b7280'},{silent:false});
+  if(ok&&inp)inp.value='';
 }
 
 function removeFriend(uid){
-  P.friends=P.friends.filter(f=>f.uid!==uid);
+  P.friends=P.friends.filter(f=>normalizeProfileUid(f.uid)!==normalizeProfileUid(uid));
   saveProfileData();renderFriendsList();
 }
 
@@ -5532,48 +5997,59 @@ function renderSocialChat(){
   const log=document.getElementById('social-chat-log');if(!log)return;
   log.innerHTML='';
   P.chatLog.slice(-60).forEach(m=>{
+    const uid=normalizeProfileUid(m.uid);
+    const isMuted=isLocallyMutedUid(uid);
+    const isBlocked=isLocallyBlockedUid(uid);
+    const isFriend=hasFriendUid(uid);
     const d=document.createElement('div');
     d.className='sc-msg'+(m.mine?' sc-me':'');
+
     const nm=document.createElement('span');
-    nm.className='sc-name';
+    nm.className='sc-name'+((uid&&uid!==P.uid)?' chat-user-link':'');
     nm.style.color=safeCssColor(m.color,'#22c55e');
     nm.textContent=(m.admin?'👑 ':'')+(m.name||'Joueur');
+    if(uid&&uid!==P.uid){
+      nm.title='Cliquer pour ouvrir les actions';
+      nm.addEventListener('click',ev=>openChatUserMenu(ev,{
+        uid,
+        name:m.name||'Joueur',
+        color:m.color,
+        admin:!!m.admin,
+        emoji:m.emoji||'',
+        avatarImg:m.avatarImg||null,
+        elo:m.elo,
+        rankLabel:m.rankLabel||'',
+        rankClass:m.rankClass||'',
+        titleLabel:m.titleLabel||'',
+        gamesWon:m.gamesWon,
+        gamesPlayed:m.gamesPlayed
+      }));
+    }
+
     const tm=document.createElement('span');
     tm.className='sc-time';
     tm.textContent=new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+
     d.appendChild(nm);
-    d.appendChild(tm);
-    d.appendChild(document.createElement('br'));
-    d.appendChild(document.createTextNode(String(m.text||'')));
-    if(P.isAdmin&&m.uid&&m.uid!==P.uid){
-      const mod=document.createElement('div');
-      mod.style.display='flex';
-      mod.style.gap='4px';
-      mod.style.marginTop='4px';
-      const target=document.createElement('button');
-      target.className='btn btn-xs btn-secondary';
-      target.textContent='🎯';
-      target.title='Cibler ce joueur';
-      target.onclick=()=>prepareModerationTarget(m.uid,m.name||'Joueur');
-      const mute=document.createElement('button');
-      mute.className='btn btn-xs btn-secondary';
-      mute.textContent='Mute';
-      mute.onclick=()=>moderateTarget('mute',m.uid,m.name||'Joueur');
-      const unmute=document.createElement('button');
-      unmute.className='btn btn-xs btn-secondary';
-      unmute.textContent='Unmute';
-      unmute.onclick=()=>moderateTarget('unmute',m.uid,m.name||'Joueur');
-      const ban=document.createElement('button');
-      ban.className='btn btn-xs btn-danger';
-      ban.textContent='Ban';
-      ban.onclick=()=>moderateTarget('ban',m.uid,m.name||'Joueur');
-      const unban=document.createElement('button');
-      unban.className='btn btn-xs btn-blue';
-      unban.textContent='Unban';
-      unban.onclick=()=>moderateTarget('unban',m.uid,m.name||'Joueur');
-      mod.append(target,mute,unmute,ban,unban);
-      d.appendChild(mod);
+    if(isFriend||isMuted||isBlocked){
+      const badge=document.createElement('span');
+      badge.className='chat-user-badge';
+      badge.textContent=isBlocked?'bloqué':(isMuted?'muet local':'ami');
+      d.appendChild(badge);
     }
+    d.appendChild(tm);
+
+    const line=document.createElement('div');
+    if(isBlocked){
+      line.style.color='var(--muted)';
+      line.textContent='🚫 Utilisateur bloqué — message masqué';
+    }else if(isMuted){
+      line.style.color='var(--muted)';
+      line.textContent='🔇 Utilisateur en sourdine — message masqué';
+    }else{
+      line.textContent=String(m.text||'');
+    }
+    d.appendChild(line);
     log.appendChild(d);
   });
   log.scrollTop=log.scrollHeight;
@@ -5582,7 +6058,23 @@ function renderSocialChat(){
 
 function addSocialMsg(name,color,text,mine,meta){
   const extra=meta&&typeof meta==='object'?meta:{};
-  P.chatLog.push({name,color,text,ts:Date.now(),mine:!!mine,uid:extra.uid||null,admin:!!extra.admin});
+  P.chatLog.push({
+    name,
+    color,
+    text,
+    ts:Date.now(),
+    mine:!!mine,
+    uid:extra.uid||null,
+    admin:!!extra.admin,
+    emoji:extra.emoji||'',
+    avatarImg:extra.avatarImg||null,
+    elo:extra.elo,
+    rankLabel:extra.rankLabel||'',
+    rankClass:extra.rankClass||'',
+    titleLabel:extra.titleLabel||'',
+    gamesWon:extra.gamesWon,
+    gamesPlayed:extra.gamesPlayed
+  });
   if(P.chatLog.length>200)P.chatLog.shift();
   saveProfileData();renderSocialChat();
 }
@@ -5679,9 +6171,10 @@ function sendSocialChat(){
   const inp=document.getElementById('social-chat-input');
   const text=(inp?.value||'').trim();if(!text)return;
   inp.value='';
-  addSocialMsg(P.name,P.color,text,true,{uid:P.uid,admin:!!P.isAdmin});
+  const chatProfile=getSharedChatProfilePayload();
+  addSocialMsg(P.name,P.color,text,true,chatProfile);
   if(socialWs&&socialWsOk){
-    try{socialWs.send(JSON.stringify({type:'social_chat',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,text,admin:!!P.isAdmin}));}
+    try{socialWs.send(JSON.stringify(Object.assign({type:'social_chat',room:SOCIAL_ROOM_ID,text},chatProfile)));}
     catch(e){}
   }
 }
@@ -5705,7 +6198,7 @@ function connectSocialWs(auto=false){
       if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
       updateSocialWsStatus('✅ Connecté à '+url);
       document.getElementById('social-ws-btn').textContent='⛔';
-      socialWs.send(JSON.stringify({type:'social_join',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,emoji:P.emoji,admin:!!P.isAdmin}));
+      socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID},getSharedChatProfilePayload())));
     };
     socialWs.onmessage=e=>{
       try{
@@ -5718,11 +6211,22 @@ function connectSocialWs(auto=false){
           return;
         }
         if(m.type==='social_chat'&&m.uid!==P.uid){
-          addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin});
+          addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed});
         }
         if(m.type==='social_join'&&m.uid!==P.uid){
-          const f=P.friends.find(f=>f.uid===m.uid);
-          if(f){f.name=m.name;f.color=m.color;f.emoji=m.emoji;saveProfileData();renderFriendsList();}
+          const f=P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(m.uid));
+          if(f){
+            f.name=m.name;
+            f.color=m.color;
+            f.emoji=m.emoji;
+            f.avatarImg=m.avatarImg||f.avatarImg||null;
+            f.elo=m.elo;
+            f.rankLabel=m.rankLabel||'';
+            f.titleLabel=m.titleLabel||'';
+            f.gamesWon=m.gamesWon;
+            f.gamesPlayed=m.gamesPlayed;
+            saveProfileData();renderFriendsList();
+          }
         }
       }catch(err){}
     };
@@ -9545,7 +10049,7 @@ function connectWs(url,room,onOpen){
           }
         }
         if(msg.type==='chat'&&msg.sender!==G.myId){
-          addChatMsg(msg.name,msg.color,msg.text);
+          addChatMsg(msg.name,msg.color,msg.text,{uid:msg.uid||null,admin:!!msg.admin,emoji:msg.emoji||'',avatarImg:msg.avatarImg||null,elo:msg.elo,rankLabel:msg.rankLabel||'',rankClass:msg.rankClass||'',titleLabel:msg.titleLabel||'',gamesWon:msg.gamesWon,gamesPlayed:msg.gamesPlayed});
         }
       }catch(err){wsLog('Erreur parse: '+err);}
     };
@@ -9697,26 +10201,62 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
 // ═══════════════════════════════════════
 function sendChat(){
   const input=document.getElementById('chat-input');
-  const text=input.value.trim();if(!text)return;
+  const text=(input?.value||'').trim();if(!text)return;
   const p=G.players.find(p=>p.id===G.myId)||G.players[G.cur];
   if(!p)return;
   input.value='';
-  addChatMsg(p.name,p.color,text);
+  const chatProfile=getSharedChatProfilePayload({
+    uid:P.uid,
+    name:p.name,
+    color:p.color,
+    emoji:P.emoji,
+    avatarImg:P.avatarImg,
+    isAdmin:P.isAdmin,
+    elo:P.elo,
+    stats:P.stats,
+    selectedTitle:P.selectedTitle,
+    titles:P.titles,
+    titleLabel:getActiveProfileTitleLabel(P)
+  });
+  addChatMsg(p.name,p.color,text,chatProfile);
   if(G.ws&&G.wsOk){
-    try{G.ws.send(JSON.stringify({type:'chat',room:G.room,sender:G.myId,name:p.name,color:p.color,text}));}
+    try{G.ws.send(JSON.stringify(Object.assign({type:'chat',room:G.room,sender:G.myId,text},chatProfile)));}
     catch(e){}
   }
 }
 
-function addChatMsg(name,color,text){
+function addChatMsg(name,color,text,meta){
   const log=document.getElementById('chat-log');
+  if(!log)return;
+  const extra=meta&&typeof meta==='object'?meta:{};
+  const uid=normalizeProfileUid(extra.uid);
+  const muted=isLocallyMutedUid(uid);
+  const blocked=isLocallyBlockedUid(uid);
   const el=document.createElement('div');
   el.style.cssText='font-size:.7rem;padding:2px 0;border-bottom:1px solid rgba(148,163,184,.06)';
   const sp=document.createElement('span');
   sp.style.cssText='color:'+safeCssColor(color,'#22c55e')+';font-weight:700';
-  sp.textContent=String(name||'Joueur')+':';
+  sp.textContent=(extra.admin?'👑 ':'')+String(name||'Joueur')+':';
+  if(uid&&uid!==P.uid){
+    sp.classList.add('chat-user-link');
+    sp.title='Cliquer pour ouvrir les actions';
+    sp.addEventListener('click',ev=>openChatUserMenu(ev,{
+      uid,
+      name:name||'Joueur',
+      color,
+      admin:!!extra.admin,
+      emoji:extra.emoji||'',
+      avatarImg:extra.avatarImg||null,
+      elo:extra.elo,
+      rankLabel:extra.rankLabel||'',
+      rankClass:extra.rankClass||'',
+      titleLabel:extra.titleLabel||'',
+      gamesWon:extra.gamesWon,
+      gamesPlayed:extra.gamesPlayed
+    }));
+  }
   el.appendChild(sp);
-  el.appendChild(document.createTextNode(' '+String(text||'')));
+  el.appendChild(document.createTextNode(' '+(blocked?'🚫 message masqué':(muted?'🔇 message masqué':String(text||'')))));
   log.appendChild(el);
   log.scrollTop=log.scrollHeight;
 }
