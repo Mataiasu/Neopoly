@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon — Événements Aléatoires</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:720px;margin:auto}
+  h1{color:#a855f7;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#a855f722;border:1px solid #a855f755;color:#a855f7;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #a855f7;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#a855f7}
+  .event-list{display:flex;flex-direction:column;gap:6px;margin:12px 0}
+  .ev{background:#1a2235;border:1px solid rgba(148,163,184,.1);border-radius:8px;padding:8px 14px;font-size:.8rem;display:flex;gap:10px;align-items:center}
+  .ev-icon{font-size:1.3rem;flex-shrink:0}
+  .ev-neg{border-left:3px solid #ef4444}
+  .ev-pos{border-left:3px solid #22c55e}
+  .ev-neu{border-left:3px solid #a855f7}
+</style>
+</head>
+<body>
+<h1>🌀 Addon — Événements Aléatoires</h1>
+<div class="badge">NOUVELLES CARTES / MÉCANIQUES</div>
+
+<p>
+  Chaque début de tour, il y a une <b>chance (20% par défaut)</b> qu'un événement global frappe tous les joueurs.
+  Ces événements peuvent être positifs, négatifs ou stratégiques.
+</p>
+
+<div class="event-list">
+  <div class="ev ev-neg"><span class="ev-icon">🌪️</span> <b>Crise éco :</b> tous les joueurs perdent 10% de leur argent</div>
+  <div class="ev ev-pos"><span class="ev-icon">💹</span> <b>Boom immobilier :</b> tous les loyers ×2 pendant 3 tours</div>
+  <div class="ev ev-neg"><span class="ev-icon">🔥</span> <b>Incendie :</b> un propriétaire aléatoire perd une maison</div>
+  <div class="ev ev-pos"><span class="ev-icon">🎁</span> <b>Jackpot fiscal :</b> tous reçoivent 150$</div>
+  <div class="ev ev-neg"><span class="ev-icon">🚧</span> <b>Travaux :</b> une case aléatoire est bloquée (pas de loyer) 2 tours</div>
+  <div class="ev ev-neu"><span class="ev-icon">🔀</span> <b>Redistribution :</b> tous les joueurs échangent 100$ avec leur voisin gauche</div>
+  <div class="ev ev-neg"><span class="ev-icon">💸</span> <b>Taxe spéciale :</b> chaque joueur paie 50$ par propriété possédée</div>
+  <div class="ev ev-pos"><span class="ev-icon">🌟</span> <b>Bonus départ :</b> bonus départ doublé pendant 5 tours</div>
+</div>
+
+<div class="step"><b>Étape 1 :</b> Ajoute la CSS dans le bloc <code>&lt;style&gt;</code> de test1.html.</div>
+<pre>
+/* ── ÉVÉNEMENTS ALÉATOIRES ── */
+#event-popup{
+  display:none;position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(.9);
+  background:#0d1525;border:2px solid #a855f7;border-radius:16px;
+  padding:28px 24px;z-index:350;text-align:center;
+  box-shadow:0 0 60px rgba(168,85,247,.35);
+  max-width:min(90vw,380px);
+  transition:transform .25s cubic-bezier(.34,1.56,.64,1),opacity .2s;
+  opacity:0;pointer-events:none;
+}
+#event-popup.open{display:block;transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+#event-popup-icon{font-size:3rem;margin-bottom:8px}
+#event-popup-title{font-size:1.15rem;font-weight:900;color:#a855f7;margin-bottom:6px}
+#event-popup-desc{font-size:.85rem;color:#e5e7eb;line-height:1.5;margin-bottom:16px}
+#event-popup-effect{font-size:.72rem;color:#9ca3af;padding:6px 10px;background:rgba(168,85,247,.08);border:1px solid rgba(168,85,247,.2);border-radius:8px;margin-bottom:14px}
+</pre>
+
+<div class="step"><b>Étape 2 :</b> Ajoute ce HTML avant <code>&lt;/body&gt;</code> de test1.html.</div>
+<pre>
+&lt;div id="event-popup"&gt;
+  &lt;div id="event-popup-icon"&gt;🌀&lt;/div&gt;
+  &lt;div id="event-popup-title"&gt;Événement !&lt;/div&gt;
+  &lt;div id="event-popup-desc"&gt;&lt;/div&gt;
+  &lt;div id="event-popup-effect"&gt;&lt;/div&gt;
+  &lt;button class="btn btn-primary btn-sm" onclick="closeEventPopup()"&gt;OK&lt;/button&gt;
+&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Étape 3 :</b> Ajoute ce bloc JS à la fin du <code>&lt;script&gt;</code> principal de test1.html.</div>
+<pre>
+// ═══════════════════════════════════════
+//  ADDON — ÉVÉNEMENTS ALÉATOIRES
+//  Intégration : appeler checkRandomEvent() au début de chaque tour,
+//  dans doNextTurn() ou doRoll() selon la préférence.
+//  Patch automatique (doNextTurn) ci-dessous.
+// ═══════════════════════════════════════
+const RANDOM_EVENTS = [
+  {
+    id:'crisis', icon:'🌪️', title:'Crise Économique',
+    desc:'La bourse s\'effondre. Chacun perd 10% de sa fortune.',
+    effect:'−10% pour tous les joueurs',
+    fn(players){
+      players.forEach(p=>{
+        const loss=Math.ceil(p.money*.1);
+        p.money-=loss;
+        recordTxn(p,-loss,'Crise éco');
+        checkBust(p);
+      });
+    }
+  },
+  {
+    id:'boom', icon:'💹', title:'Boom Immobilier',
+    desc:'Les loyers explosent ! ×2 pendant 3 tours.',
+    effect:'+100% sur tous les loyers (3 tours)',
+    fn(players){
+      EVENTS_STATE.rentMultiplierTurns=3;
+      EVENTS_STATE.rentMultiplier=2;
+    }
+  },
+  {
+    id:'fire', icon:'🔥', title:'Incendie !',
+    desc:'Un immeuble prend feu. Un propriétaire perd une maison.',
+    effect:'Destruction d\'une maison aléatoire',
+    fn(players){
+      const withHouse=[];
+      G.board.forEach(c=>{if(c.houses>0)withHouse.push(c);});
+      if(!withHouse.length)return;
+      const cell=withHouse[Math.floor(Math.random()*withHouse.length)];
+      cell.houses--;
+      log('🔥 Incendie ! '+cell.n+' perd une maison.','d');
+    }
+  },
+  {
+    id:'jackpot', icon:'🎁', title:'Jackpot Fiscal',
+    desc:'L\'État redistribue de l\'argent. Chacun reçoit 150$.',
+    effect:'+150$ pour tous les joueurs',
+    fn(players){
+      players.forEach(p=>{p.money+=150;recordTxn(p,150,'Jackpot fiscal');});
+    }
+  },
+  {
+    id:'works', icon:'🚧', title:'Travaux',
+    desc:'Des travaux bloquent une rue. Pas de loyer dessus pendant 2 tours.',
+    effect:'Case aléatoire sans loyer (2 tours)',
+    fn(players){
+      const props=G.board.filter(c=>c.t==='property'&&c.owner!=null);
+      if(!props.length)return;
+      const cell=props[Math.floor(Math.random()*props.length)];
+      EVENTS_STATE.blockedCells[cell.i]=(EVENTS_STATE.blockedCells[cell.i]||0)+2;
+      log('🚧 Travaux sur '+cell.n+' — loyer suspendu 2 tours.','w');
+    }
+  },
+  {
+    id:'redistrib', icon:'🔀', title:'Redistribution',
+    desc:'La conjoncture mélange les fortunes. Chacun donne 100$ à son voisin.',
+    effect:'Rotation de 100$ entre joueurs',
+    fn(players){
+      const alive=players.filter(p=>!p.bust);
+      const saved=alive.map(p=>Math.min(100,p.money));
+      alive.forEach((p,i)=>{
+        p.money-=saved[i];
+        const next=alive[(i+1)%alive.length];
+        next.money+=saved[i];
+        recordTxn(p,-saved[i],'Redistribution');
+        recordTxn(next,saved[i],'Redistribution reçue');
+      });
+    }
+  },
+  {
+    id:'special_tax', icon:'💸', title:'Taxe Spéciale',
+    desc:'Le gouvernement impose chaque propriété. 50$ par bien possédé.',
+    effect:'−50$ × nb propriétés par joueur',
+    fn(players){
+      players.forEach(p=>{
+        const count=G.board.filter(c=>c.owner===p.id).length;
+        if(!count)return;
+        const tax=count*50;
+        p.money-=tax;
+        recordTxn(p,-tax,'Taxe spéciale');
+        checkBust(p);
+      });
+    }
+  },
+  {
+    id:'double_go', icon:'🌟', title:'Bonus Départ Doublé',
+    desc:'Les caisses débordent ! Le bonus départ est doublé pendant 5 tours.',
+    effect:'Bonus Départ ×2 (5 tours)',
+    fn(players){
+      EVENTS_STATE.goMultiplierTurns=5;
+      EVENTS_STATE.goMultiplier=2;
+    }
+  },
+];
+
+const EVENTS_STATE={
+  chance:0.20,          // probabilité d'événement par tour
+  rentMultiplier:1,
+  rentMultiplierTurns:0,
+  goMultiplier:1,
+  goMultiplierTurns:0,
+  blockedCells:{},      // {cellIndex: turnsLeft}
+};
+
+function checkRandomEvent(){
+  if(!G.started)return;
+  if(Math.random()>EVENTS_STATE.chance)return;
+  const ev=RANDOM_EVENTS[Math.floor(Math.random()*RANDOM_EVENTS.length)];
+  const alive=G.players.filter(p=>!p.bust);
+  ev.fn(alive);
+  showEventPopup(ev);
+  updateUI();
+}
+
+function showEventPopup(ev){
+  document.getElementById('event-popup-icon').textContent=ev.icon;
+  document.getElementById('event-popup-title').textContent=ev.title;
+  document.getElementById('event-popup-desc').textContent=ev.desc;
+  document.getElementById('event-popup-effect').textContent=ev.effect;
+  document.getElementById('event-popup').classList.add('open');
+}
+
+function closeEventPopup(){
+  document.getElementById('event-popup').classList.remove('open');
+}
+
+// Décrémenter les effets temporaires chaque tour
+function tickEventStates(){
+  if(EVENTS_STATE.rentMultiplierTurns>0){
+    EVENTS_STATE.rentMultiplierTurns--;
+    if(EVENTS_STATE.rentMultiplierTurns<=0)EVENTS_STATE.rentMultiplier=1;
+  }
+  if(EVENTS_STATE.goMultiplierTurns>0){
+    EVENTS_STATE.goMultiplierTurns--;
+    if(EVENTS_STATE.goMultiplierTurns<=0)EVENTS_STATE.goMultiplier=1;
+  }
+  Object.keys(EVENTS_STATE.blockedCells).forEach(ci=>{
+    EVENTS_STATE.blockedCells[ci]--;
+    if(EVENTS_STATE.blockedCells[ci]<=0)delete EVENTS_STATE.blockedCells[ci];
+  });
+}
+
+// Patch doNextTurn : déclenche l'événement en début de nouveau tour
+(function patchDoNextTurnEvents(){
+  const orig=window.doNextTurn;
+  if(typeof orig!=='function')return;
+  window.doNextTurn=function(){
+    tickEventStates();
+    checkRandomEvent();
+    orig();
+  };
+})();
+
+// Patch calcRent : applique le multiplicateur d'événement et les blocages
+(function patchCalcRentEvents(){
+  const orig=window.calcRent;
+  if(typeof orig!=='function')return;
+  window.calcRent=function(cell,player){
+    if(EVENTS_STATE.blockedCells[cell.i]>0)return 0; // case bloquée par travaux
+    const base=orig(cell,player);
+    return Math.ceil(base*EVENTS_STATE.rentMultiplier);
+  };
+})();
+
+// Patch collectPassGo : applique le bonus départ doublé
+(function patchPassGoEvents(){
+  const orig=window.collectPassGo;
+  if(typeof orig!=='function')return;
+  window.collectPassGo=function(player){
+    if(EVENTS_STATE.goMultiplierTurns>0&&EVENTS_STATE.goMultiplier>1){
+      player.money+=G.passGoBonus*(EVENTS_STATE.goMultiplier-1);
+      recordTxn(player,G.passGoBonus*(EVENTS_STATE.goMultiplier-1),'Bonus Départ ×'+EVENTS_STATE.goMultiplier);
+    }
+    orig(player);
+  };
+})();
+</pre>
+</body>
+</html>

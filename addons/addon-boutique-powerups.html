@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon — Boutique de Power-ups</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:720px;margin:auto}
+  h1{color:#3b82f6;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#3b82f622;border:1px solid #3b82f655;color:#3b82f6;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #3b82f6;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#3b82f6}
+  .shop-card{background:#1a2235;border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:10px 14px;margin:6px 0;display:flex;gap:12px;align-items:center;font-size:.82rem}
+  .shop-icon{font-size:1.6rem;flex-shrink:0}
+  .shop-price{color:#facc15;font-weight:800;margin-left:auto;white-space:nowrap}
+</style>
+</head>
+<body>
+<h1>🛒 Addon — Boutique de Power-ups</h1>
+<div class="badge">NOUVELLE MÉCANIQUE</div>
+
+<p>
+  Les joueurs peuvent dépenser leur argent dans une boutique accessible <b>pendant leur tour</b>
+  pour acheter des power-ups à usage unique ou persistants.
+</p>
+
+<div class="shop-card"><span class="shop-icon">⚡</span><div><b>Booster de dé</b><br/>Relance les dés et garde le meilleur résultat. Usage unique ce tour.</div><span class="shop-price">150$</span></div>
+<div class="shop-card"><span class="shop-icon">🛡️</span><div><b>Anti-prison</b><br/>Sortie de prison automatique au prochain emprisonnement.</div><span class="shop-price">200$</span></div>
+<div class="shop-card"><span class="shop-icon">👻</span><div><b>Fantôme</b><br/>Ne paie aucun loyer lors du prochain atterrissage.</div><span class="shop-price">250$</span></div>
+<div class="shop-card"><span class="shop-icon">🏗️</span><div><b>Construction rapide</b><br/>Construis une maison supplémentaire gratuitement maintenant.</div><span class="shop-price">300$</span></div>
+<div class="shop-card"><span class="shop-icon">💣</span><div><b>Sabotage</b><br/>Détruit une maison sur n'importe quelle propriété adverse.</div><span class="shop-price">350$</span></div>
+<div class="shop-card"><span class="shop-icon">💰</span><div><b>Collecte d'impôts</b><br/>Récupère 20$ sur chaque joueur adverse (une seule fois).</div><span class="shop-price">100$</span></div>
+
+<div class="step"><b>Étape 1 :</b> Ajoute la CSS dans le bloc <code>&lt;style&gt;</code> de test1.html.</div>
+<pre>
+/* ── BOUTIQUE ── */
+#shop-modal-bg{display:none;position:fixed;inset:0;background:rgba(8,12,24,.88);z-index:160;align-items:center;justify-content:center}
+#shop-modal-bg.open{display:flex}
+#shop-box{background:#0d1525;border:1px solid rgba(59,130,246,.3);border-radius:16px;padding:24px;width:min(94vw,440px);max-height:90vh;overflow-y:auto}
+#shop-title{font-size:1.1rem;font-weight:900;color:#3b82f6;margin-bottom:4px}
+#shop-balance{font-size:.8rem;color:#9ca3af;margin-bottom:16px}
+.shop-item{display:flex;align-items:center;gap:12px;background:#111827;border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:10px;margin-bottom:8px}
+.shop-item-icon{font-size:1.5rem;flex-shrink:0}
+.shop-item-info{flex:1;min-width:0}
+.shop-item-name{font-size:.82rem;font-weight:700}
+.shop-item-desc{font-size:.68rem;color:#9ca3af;margin-top:2px}
+.shop-item-price{color:#facc15;font-weight:900;font-size:.82rem;flex-shrink:0}
+.shop-item-btn{flex-shrink:0}
+.shop-item.cant-afford{opacity:.45}
+</pre>
+
+<div class="step"><b>Étape 2 :</b> Ajoute ce HTML avant <code>&lt;/body&gt;</code> de test1.html.</div>
+<pre>
+&lt;div id="shop-modal-bg"&gt;
+  &lt;div id="shop-box"&gt;
+    &lt;div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px"&gt;
+      &lt;div&gt;
+        &lt;div id="shop-title"&gt;🛒 Boutique&lt;/div&gt;
+        &lt;div id="shop-balance"&gt;&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;button class="btn btn-secondary btn-sm" onclick="closeShop()"&gt;✕&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div id="shop-items-list"&gt;&lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Étape 3 :</b> Dans la tab <code>#game-tab</code>, dans le <code>.ctrl-row</code> des boutons, ajoute :</div>
+<pre>
+&lt;button class="btn btn-blue btn-sm" id="shop-btn" onclick="openShop()"&gt;🛒 Shop&lt;/button&gt;
+</pre>
+
+<div class="step"><b>Étape 4 :</b> Ajoute ce bloc JS à la fin du <code>&lt;script&gt;</code> principal de test1.html.</div>
+<pre>
+// ═══════════════════════════════════════
+//  ADDON — BOUTIQUE DE POWER-UPS
+//  Accessible via openShop() pendant le tour du joueur courant.
+// ═══════════════════════════════════════
+const SHOP_ITEMS = [
+  {
+    id:'dice_boost', icon:'⚡', name:'Booster de Dé', price:150,
+    desc:'Relance les dés une fois ce tour et garde le meilleur.',
+    fn(player) {
+      SHOP_STATE.diceBoostActive = true;
+      toast('⚡ Booster actif ! Ton prochain lancer sera optimisé.', 'a');
+    }
+  },
+  {
+    id:'anti_jail', icon:'🛡️', name:'Anti-Prison', price:200,
+    desc:'Sortie de prison automatique au prochain emprisonnement.',
+    fn(player) {
+      player.antiJailItem = (player.antiJailItem || 0) + 1;
+      toast('🛡️ Anti-prison activé pour '+player.name, 'a');
+    }
+  },
+  {
+    id:'ghost', icon:'👻', name:'Fantôme', price:250,
+    desc:'Aucun loyer lors du prochain atterrissage.',
+    fn(player) {
+      player.ghostTurn = true;
+      toast('👻 Mode Fantôme activé ! Aucun loyer au prochain atterrissage.', 'a');
+    }
+  },
+  {
+    id:'quick_build', icon:'🏗️', name:'Construction Rapide', price:300,
+    desc:'Construis une maison gratuitement maintenant.',
+    fn(player) {
+      const myProps = G.board.filter(c => c.owner === player.id && c.t === 'property' && (c.houses || 0) < 5);
+      if (!myProps.length) { toast('Aucune propriété constructible.', 'w'); return false; }
+      const prop = myProps[0]; // Première propriété disponible
+      prop.houses = (prop.houses || 0) + 1;
+      toast('🏗️ Maison construite sur ' + prop.n + ' !', 'a');
+      renderBoard();
+    }
+  },
+  {
+    id:'sabotage', icon:'💣', name:'Sabotage', price:350,
+    desc:'Détruit une maison sur une propriété adverse.',
+    fn(player) {
+      const targets = G.board.filter(c => c.owner && c.owner !== player.id && c.houses > 0);
+      if (!targets.length) { toast('Aucune propriété adverse avec maison.', 'w'); return false; }
+      const opts = targets.map((c,i)=>`${i}: ${c.n} (${c.houses} 🏠)`).join('\n');
+      const idx = parseInt(prompt('Quelle propriété saboter ?\n' + opts), 10);
+      if (isNaN(idx) || !targets[idx]) { toast('Sabotage annulé.', 'i'); player.money += 350; recordTxn(player, 350, 'Remboursement sabotage'); return false; }
+      targets[idx].houses--;
+      log('💣 ' + player.name + ' sabote ' + targets[idx].n, 'd');
+      toast('💣 Sabotage réussi sur ' + targets[idx].n + '!', 'd');
+      renderBoard();
+    }
+  },
+  {
+    id:'tax_collect', icon:'💰', name:'Collecte d\'Impôts', price:100,
+    desc:'Récupère 20$ sur chaque autre joueur actif.',
+    fn(player) {
+      const others = G.players.filter(p => !p.bust && p.id !== player.id);
+      let total = 0;
+      others.forEach(p => {
+        const take = Math.min(20, p.money);
+        p.money -= take;
+        player.money += take;
+        total += take;
+        recordTxn(p, -take, 'Impôt de '+player.name);
+        checkBust(p);
+      });
+      recordTxn(player, total, 'Collecte d\'impôts');
+      toast('💰 ' + player.name + ' collecte ' + total + '$ d\'impôts!', 'a');
+    }
+  },
+];
+
+const SHOP_STATE = {
+  diceBoostActive: false,
+};
+
+function openShop() {
+  if (!G.started) { toast('Lance une partie d\'abord.', 'w'); return; }
+  renderShopItems();
+  document.getElementById('shop-modal-bg').classList.add('open');
+}
+
+function closeShop() {
+  document.getElementById('shop-modal-bg').classList.remove('open');
+}
+
+function renderShopItems() {
+  const player = G.players[G.cur];
+  if (!player) return;
+  document.getElementById('shop-balance').textContent = 'Budget : ' + player.money + '$';
+  const list = document.getElementById('shop-items-list');
+  list.innerHTML = SHOP_ITEMS.map(item => {
+    const canAfford = player.money >= item.price;
+    return `&lt;div class="shop-item${canAfford ? '' : ' cant-afford'}"&gt;
+      &lt;span class="shop-item-icon"&gt;${item.icon}&lt;/span&gt;
+      &lt;div class="shop-item-info"&gt;
+        &lt;div class="shop-item-name"&gt;${escapeHtml(item.name)}&lt;/div&gt;
+        &lt;div class="shop-item-desc"&gt;${escapeHtml(item.desc)}&lt;/div&gt;
+      &lt;/div&gt;
+      &lt;span class="shop-item-price"&gt;${item.price}$&lt;/span&gt;
+      &lt;button class="btn btn-blue btn-xs shop-item-btn" ${canAfford ? '' : 'disabled'} onclick="buyShopItem('${item.id}')"&gt;Acheter&lt;/button&gt;
+    &lt;/div&gt;`;
+  }).join('');
+}
+
+function buyShopItem(itemId) {
+  const item = SHOP_ITEMS.find(i => i.id === itemId);
+  const player = G.players[G.cur];
+  if (!item || !player) return;
+  if (player.money < item.price) { toast('Pas assez d\'argent !', 'd'); return; }
+  player.money -= item.price;
+  recordTxn(player, -item.price, 'Shop: ' + item.name);
+  const result = item.fn(player);
+  if (result !== false) updateUI();
+  renderShopItems(); // Refresh stock
+}
+
+// Patch calcRent : mode fantôme
+(function patchCalcRentGhost() {
+  const orig = window.calcRent;
+  if (typeof orig !== 'function') return;
+  window.calcRent = function(cell, player) {
+    if (player.ghostTurn) {
+      player.ghostTurn = false;
+      toast('👻 Mode Fantôme ! Pas de loyer.', 'a');
+      return 0;
+    }
+    return orig(cell, player);
+  };
+})();
+
+// Patch doRoll : dice boost
+(function patchDoRollShop() {
+  const orig = window.doRoll;
+  if (typeof orig !== 'function') return;
+  window.doRoll = function() {
+    if (!SHOP_STATE.diceBoostActive) { orig(); return; }
+    // Simule deux lancers côté client et garde le meilleur total
+    const r1a = Math.ceil(Math.random() * 6);
+    const r1b = Math.ceil(Math.random() * 6);
+    const r2a = Math.ceil(Math.random() * 6);
+    const r2b = Math.ceil(Math.random() * 6);
+    const sum1 = r1a + r1b;
+    const sum2 = r2a + r2b;
+    const best = sum1 >= sum2 ? [r1a, r1b] : [r2a, r2b];
+    SHOP_STATE.diceBoostActive = false;
+    // Override le résultat de dés dans G si supporté
+    if (typeof G._forceRoll !== 'undefined') {
+      G._forceRoll = best;
+    }
+    orig();
+    toast('⚡ Booster : tu avais le choix entre ' + sum1 + ' et ' + sum2 + '!', 'a');
+  };
+})();
+</pre>
+</body>
+</html>

@@ -1,0 +1,830 @@
+const fs = require('fs');
+const http = require('http');
+const https = require('https');
+const path = require('path');
+const { URL } = require('url');
+const WebSocket = require('ws');
+
+const PORT = Number(process.env.PORT || process.env.HTTP_PORT || process.env.WS_PORT || 3000);
+const ROOT_DIR = __dirname;
+const GOOGLE_CONFIG_PATH = path.join(ROOT_DIR, 'assets', 'google-config.js');
+
+// ── Profile persistent storage ────────────────────────────────────────────────
+const DATA_DIR = path.join(ROOT_DIR, 'data');
+const PROFILES_DB_PATH = path.join(DATA_DIR, 'profiles.json');
+
+function loadProfilesDb() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(PROFILES_DB_PATH)) return {};
+    return JSON.parse(fs.readFileSync(PROFILES_DB_PATH, 'utf8')) || {};
+  } catch (_) { return {}; }
+}
+
+function saveProfilesDb(db) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = PROFILES_DB_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
+    fs.renameSync(tmp, PROFILES_DB_PATH);
+  } catch (_) {}
+}
+
+function sanitizeStr(v, maxLen) {
+  return typeof v === 'string' ? v.slice(0, maxLen) : '';
+}
+
+function sanitizeProfilePayload(raw) {
+  if (!raw || typeof raw !== 'object') return {};
+  return {
+    uid:        sanitizeStr(raw.uid, 128),
+    googleSub:  sanitizeStr(raw.googleSub, 128),
+    name:       sanitizeStr(raw.name, 64),
+    avatar:     sanitizeStr(raw.avatar, 4096),
+    title:      sanitizeStr(raw.title, 64),
+    bio:        sanitizeStr(raw.bio, 300),
+    wins:       Math.max(0, Math.min(999999, parseInt(raw.wins, 10) || 0)),
+    losses:     Math.max(0, Math.min(999999, parseInt(raw.losses, 10) || 0)),
+    gamesPlayed:Math.max(0, Math.min(999999, parseInt(raw.gamesPlayed, 10) || 0)),
+    totalMoney: Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Number(raw.totalMoney) || 0)),
+    friends:    Array.isArray(raw.friends) ? raw.friends.slice(0, 200).map(f => sanitizeStr(f, 128)) : [],
+    badges:     Array.isArray(raw.badges)  ? raw.badges.slice(0, 100).map(b => sanitizeStr(b, 64))   : [],
+    unlockedTitles: Array.isArray(raw.unlockedTitles) ? raw.unlockedTitles.slice(0, 100).map(t => sanitizeStr(t, 64)) : [],
+  };
+}
+
+function getProfileStorageKey(uid, googleSub) {
+  if (googleSub && typeof googleSub === 'string' && googleSub.trim()) {
+    return 'gsub:' + googleSub.trim().slice(0, 128);
+  }
+  return 'uid:' + String(uid || '').trim().slice(0, 128);
+}
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const GOOGLE_RECENT_AUTH_ATTEMPTS = [];
+const GOOGLE_MAX_AUTH_ATTEMPTS = 20;
+
+function loadGoogleClientIdFromFile() {
+  try {
+    const raw = fs.readFileSync(GOOGLE_CONFIG_PATH, 'utf8');
+    const match = raw.match(/NEOPOLY_GOOGLE_CLIENT_ID\s*=\s*['"]([^'"]*)['"]/);
+    return match ? String(match[1]).trim() : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || loadGoogleClientIdFromFile() || '').trim();
+
+const rooms = {};
+const roomAddons = {};
+const roomMeta = {};
+const MAX_ROOM_PLAYERS = 6;
+
+const CFG_BOUNDS = {
+  eventChance:    [0, 100],
+  blitzTimer:     [10, 300],
+  blitzMaxTurns:  [5, 200],
+  blitzRentMult:  [100, 400],
+  loanAmount:     [50, 5000],
+  loanInterest:   [0, 200],
+  loanRepayTurns: [1, 30],
+};
+
+const MIME_TYPES = {
+  '.css': 'text/css; charset=utf-8',
+  '.gif': 'image/gif',
+  '.html': 'text/html; charset=utf-8',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav',
+  '.webp': 'image/webp',
+};
+
+function isHostId(id) {
+  return typeof id === 'string' && id.startsWith('h-');
+}
+
+function clampCfg(key, value, fallback) {
+  const bounds = CFG_BOUNDS[key];
+  const num = Number(value);
+  if (!bounds) return fallback;
+  if (!Number.isFinite(num)) return fallback;
+  return Math.max(bounds[0], Math.min(bounds[1], num));
+}
+
+function createDefaultAddonState() {
+  return {
+    seasons: false,
+    loans: false,
+    perf: false,
+    auctions: false,
+    events: false,
+    powerups: false,
+    blitz: false,
+    cfg: {
+      eventChance: 20,
+      blitzTimer: 30,
+      blitzMaxTurns: 30,
+      blitzRentMult: 150,
+      loanAmount: 400,
+      loanInterest: 25,
+      loanRepayTurns: 6,
+    },
+    meta: {
+      version: 0,
+      updatedAt: 0,
+      updatedBy: 'server',
+      source: 'server',
+    },
+  };
+}
+
+function sanitizeAddonPatch(rawPatch, previousState) {
+  const prev = previousState || createDefaultAddonState();
+  const patch = rawPatch && typeof rawPatch === 'object' ? rawPatch : {};
+  return {
+    seasons: patch.seasons === undefined ? prev.seasons : !!patch.seasons,
+    loans: patch.loans === undefined ? prev.loans : !!patch.loans,
+    perf: patch.perf === undefined ? prev.perf : !!patch.perf,
+    auctions: patch.auctions === undefined ? prev.auctions : !!patch.auctions,
+    events: patch.events === undefined ? prev.events : !!patch.events,
+    powerups: patch.powerups === undefined ? prev.powerups : !!patch.powerups,
+    blitz: patch.blitz === undefined ? prev.blitz : !!patch.blitz,
+    cfg: {
+      eventChance:    clampCfg('eventChance',    patch.cfg && patch.cfg.eventChance,    prev.cfg.eventChance),
+      blitzTimer:     clampCfg('blitzTimer',     patch.cfg && patch.cfg.blitzTimer,     prev.cfg.blitzTimer),
+      blitzMaxTurns:  clampCfg('blitzMaxTurns',  patch.cfg && patch.cfg.blitzMaxTurns,  prev.cfg.blitzMaxTurns),
+      blitzRentMult:  clampCfg('blitzRentMult',  patch.cfg && patch.cfg.blitzRentMult,  prev.cfg.blitzRentMult),
+      loanAmount:     clampCfg('loanAmount',     patch.cfg && patch.cfg.loanAmount,     prev.cfg.loanAmount),
+      loanInterest:   clampCfg('loanInterest',   patch.cfg && patch.cfg.loanInterest,   prev.cfg.loanInterest),
+      loanRepayTurns: clampCfg('loanRepayTurns', patch.cfg && patch.cfg.loanRepayTurns, prev.cfg.loanRepayTurns),
+    },
+  };
+}
+
+function sendJson(ws, payload) {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(payload));
+  }
+}
+
+function ensureRoomMeta(room) {
+  if (!roomMeta[room]) {
+    roomMeta[room] = {
+      hostSender: null,
+      hostName: '',
+      hostEmoji: '👤',
+      playerCount: 0,
+      started: false,
+      isPrivate: false,
+      roomPassword: '',
+      updatedAt: 0,
+    };
+  }
+  return roomMeta[room];
+}
+
+function updateRoomMetaFromState(room, state) {
+  const meta = ensureRoomMeta(room);
+  const players = Array.isArray(state && state.players) ? state.players : [];
+
+  if (players.length) {
+    meta.playerCount = players.length;
+    const host = players.find((player) => isHostId(player && player.id));
+    if (host) {
+      meta.hostSender = host.id || meta.hostSender;
+      meta.hostName = host.name || meta.hostName;
+      meta.hostEmoji = host.emoji || meta.hostEmoji;
+    }
+  }
+
+  if (state && typeof state.started !== 'undefined') {
+    meta.started = !!state.started;
+  }
+
+  meta.updatedAt = Date.now();
+  return meta;
+}
+
+function getActiveAddonList(room) {
+  const state = roomAddons[room] || createDefaultAddonState();
+  const mapping = [
+    ['seasons', 'Saisons'],
+    ['loans', 'Prets'],
+    ['perf', 'Perf'],
+    ['auctions', 'Encheres'],
+    ['events', 'Evenements'],
+    ['powerups', 'Power-ups'],
+    ['blitz', 'Blitz'],
+  ];
+  return mapping.filter(([key]) => !!state[key]).map(([, label]) => label);
+}
+
+function getRoomPassword(input) {
+  return String(input || '').trim().slice(0, 64);
+}
+
+function getRoomSummary(room) {
+  const meta = ensureRoomMeta(room);
+  const activeConnections = rooms[room] ? rooms[room].size : 0;
+  const playerCount = meta.playerCount > 0 ? meta.playerCount : activeConnections;
+  const activeAddons = getActiveAddonList(room);
+  const availableSlots = Math.max(0, MAX_ROOM_PLAYERS - playerCount);
+  const hasPassword = !!meta.roomPassword;
+
+  return {
+    room,
+    hostName: meta.hostName || 'Hote',
+    hostEmoji: meta.hostEmoji || '👤',
+    playerCount,
+    maxPlayers: MAX_ROOM_PLAYERS,
+    availableSlots,
+    started: !!meta.started,
+    status: meta.started ? 'in_progress' : 'waiting',
+    boardName: 'Classique',
+    activeAddons,
+    isPrivate: !!meta.isPrivate || hasPassword,
+    access: (!!meta.isPrivate || hasPassword) ? 'private' : 'public',
+    hasPassword,
+    updatedAt: meta.updatedAt || Date.now(),
+  };
+}
+
+function listPublicRooms() {
+  return Object.keys(rooms)
+    .map((room) => getRoomSummary(room))
+    .sort((a, b) => {
+      if (a.started !== b.started) return Number(a.started) - Number(b.started);
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
+}
+
+function broadcastToRoom(room, payload) {
+  if (!rooms[room]) return;
+  const encoded = JSON.stringify(payload);
+  rooms[room].forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(encoded);
+    }
+  });
+}
+
+function getCorsOrigin(req) {
+  const origin = req.headers.origin;
+  return origin && origin !== 'null' ? origin : '*';
+}
+
+function writeCorsHeaders(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', getCorsOrigin(req));
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+function sendApiJson(req, res, statusCode, payload) {
+  writeCorsHeaders(req, res);
+  res.writeHead(statusCode, {
+    'Cache-Control': 'no-store',
+    'Content-Type': 'application/json; charset=utf-8',
+  });
+  res.end(JSON.stringify(payload));
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      if (raw.length > 1024 * 1024) {
+        reject(new Error('body_too_large'));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (_) {
+        reject(new Error('invalid_json'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function recordGoogleAuthAttempt(kind, ok, detail) {
+  GOOGLE_RECENT_AUTH_ATTEMPTS.push({
+    at: Date.now(),
+    kind: String(kind || 'unknown'),
+    ok: !!ok,
+    detail: String(detail || ''),
+  });
+  if (GOOGLE_RECENT_AUTH_ATTEMPTS.length > GOOGLE_MAX_AUTH_ATTEMPTS) {
+    GOOGLE_RECENT_AUTH_ATTEMPTS.splice(0, GOOGLE_RECENT_AUTH_ATTEMPTS.length - GOOGLE_MAX_AUTH_ATTEMPTS);
+  }
+}
+
+function httpsJson(urlString, options) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlString);
+    const requestOptions = options || {};
+    const requestBody = Object.prototype.hasOwnProperty.call(requestOptions, 'body')
+      ? requestOptions.body
+      : null;
+    const cleanOptions = { ...requestOptions };
+    delete cleanOptions.body;
+
+    const req = https.request(url, cleanOptions, (res) => {
+      let raw = '';
+      res.on('data', (chunk) => { raw += chunk; });
+      res.on('end', () => {
+        let parsed = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch (_) {
+          reject(new Error('invalid_google_json'));
+          return;
+        }
+        if (res.statusCode >= 400) {
+          const message = parsed && (parsed.error_description || parsed.error || parsed.message) || 'google_error';
+          reject(new Error(message));
+          return;
+        }
+        resolve(parsed);
+      });
+    });
+    req.on('error', reject);
+    if (requestBody !== null && requestBody !== undefined) {
+      req.write(requestBody);
+    }
+    req.end();
+  });
+}
+
+async function verifyGoogleAccessToken(accessToken) {
+  const token = String(accessToken || '').trim();
+  if (!token) throw new Error('missing_access_token');
+
+  const tokenInfo = await httpsJson(
+    'https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(token)
+  );
+
+  if (!tokenInfo || !tokenInfo.scope || String(tokenInfo.scope).indexOf('email') === -1) {
+    throw new Error('missing_email_scope');
+  }
+  if (GOOGLE_CLIENT_ID && tokenInfo.aud && tokenInfo.aud !== GOOGLE_CLIENT_ID) {
+    throw new Error('audience_mismatch');
+  }
+
+  const me = await httpsJson('https://www.googleapis.com/oauth2/v3/userinfo', {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+
+  if (!me || !me.email || !me.sub) throw new Error('invalid_google_profile');
+  const emailVerified = me.email_verified === true || me.email_verified === 'true';
+  if (!emailVerified) throw new Error('email_not_verified');
+
+  return {
+    sub: String(me.sub),
+    email: String(me.email),
+    name: String(me.name || me.given_name || me.email.split('@')[0] || 'Joueur'),
+    picture: typeof me.picture === 'string' ? me.picture : '',
+    emailVerified: true,
+  };
+}
+
+async function verifyGoogleIdToken(idToken) {
+  const token = String(idToken || '').trim();
+  if (!token) throw new Error('missing_id_token');
+
+  const info = await httpsJson(
+    'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token)
+  );
+
+  if (!info || !info.email || !info.sub) throw new Error('invalid_google_idtoken');
+  if (GOOGLE_CLIENT_ID && info.aud && info.aud !== GOOGLE_CLIENT_ID) {
+    throw new Error('audience_mismatch');
+  }
+  if (!(info.email_verified === 'true' || info.email_verified === true)) {
+    throw new Error('email_not_verified');
+  }
+
+  return {
+    sub: String(info.sub),
+    email: String(info.email),
+    name: String(info.name || info.given_name || info.email.split('@')[0] || 'Joueur'),
+    picture: typeof info.picture === 'string' ? info.picture : '',
+    emailVerified: true,
+  };
+}
+
+async function exchangeGoogleCode(code, redirectUri) {
+  const authCode = String(code || '').trim();
+  const safeRedirectUri = String(redirectUri || '').trim();
+  if (!authCode) throw new Error('missing_code');
+  if (!safeRedirectUri) throw new Error('missing_redirect_uri');
+  if (!GOOGLE_CLIENT_ID) throw new Error('missing_google_client_id');
+  if (!GOOGLE_CLIENT_SECRET) throw new Error('google_exchange_not_configured');
+
+  const body = new URLSearchParams({
+    code: authCode,
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    redirect_uri: safeRedirectUri,
+    grant_type: 'authorization_code',
+  });
+
+  const tokenData = await httpsJson('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: body.toString(),
+  });
+
+  if (tokenData && tokenData.id_token) {
+    return verifyGoogleIdToken(tokenData.id_token);
+  }
+  if (tokenData && tokenData.access_token) {
+    return verifyGoogleAccessToken(tokenData.access_token);
+  }
+  throw new Error('invalid_google_exchange_payload');
+}
+
+function serveStatic(req, res, pathname) {
+  const relativePath = pathname === '/' ? '/test1.html' : pathname;
+  const decoded = decodeURIComponent(relativePath);
+  const safePath = path.normalize(path.join(ROOT_DIR, decoded));
+  if (!safePath.startsWith(ROOT_DIR)) {
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Forbidden');
+    return;
+  }
+
+  fs.stat(safePath, (statErr, stats) => {
+    if (statErr || !stats.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('Not Found');
+      return;
+    }
+
+    const ext = path.extname(safePath).toLowerCase();
+    const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
+    res.writeHead(200, {
+      'Content-Type': mimeType,
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=300',
+    });
+    fs.createReadStream(safePath).pipe(res);
+  });
+}
+
+async function handleApi(req, res, pathname) {
+  if (req.method === 'OPTIONS') {
+    writeCorsHeaders(req, res);
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+
+  if (pathname === '/api/google/verify' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const profile = await verifyGoogleAccessToken(body && body.accessToken);
+      recordGoogleAuthAttempt('verify_access_token', true, 'ok');
+      sendApiJson(req, res, 200, { ok: true, profile });
+    } catch (err) {
+      const errorMessage = err && err.message ? err.message : 'google_verify_failed';
+      recordGoogleAuthAttempt('verify_access_token', false, errorMessage);
+      sendApiJson(req, res, 400, {
+        ok: false,
+        error: errorMessage,
+      });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/google/verify-idtoken' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const profile = await verifyGoogleIdToken(body && body.idToken);
+      recordGoogleAuthAttempt('verify_id_token', true, 'ok');
+      sendApiJson(req, res, 200, { ok: true, profile });
+    } catch (err) {
+      const errorMessage = err && err.message ? err.message : 'google_verify_id_failed';
+      recordGoogleAuthAttempt('verify_id_token', false, errorMessage);
+      sendApiJson(req, res, 400, {
+        ok: false,
+        error: errorMessage,
+      });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/google/exchange-code' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const profile = await exchangeGoogleCode(body && body.code, body && body.redirectUri);
+      recordGoogleAuthAttempt('exchange_code', true, 'ok');
+      sendApiJson(req, res, 200, { ok: true, profile });
+    } catch (err) {
+      const errorMessage = err && err.message ? err.message : 'google_exchange_failed';
+      recordGoogleAuthAttempt('exchange_code', false, errorMessage);
+      sendApiJson(req, res, 400, {
+        ok: false,
+        error: errorMessage,
+      });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/google/mode' && req.method === 'GET') {
+    sendApiJson(req, res, 200, {
+      ok: true,
+      popupEnabled: true,
+      oneTapEnabled: true,
+      redirectEnabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
+      hasGoogleClientId: !!GOOGLE_CLIENT_ID,
+      hasGoogleClientSecret: !!GOOGLE_CLIENT_SECRET,
+      exchangeCodeEndpoint: '/api/google/exchange-code',
+      recommendation: GOOGLE_CLIENT_SECRET
+        ? 'popup_or_redirect'
+        : 'popup_or_idtoken_only',
+    });
+    return true;
+  }
+
+  if (pathname === '/api/google/status' && req.method === 'GET') {
+    const host = String(req.headers.host || 'localhost:' + PORT);
+    const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+    const origin = proto + '://' + host;
+    sendApiJson(req, res, 200, {
+      ok: true,
+      server: 'neopoly',
+      hasGoogleClientId: !!GOOGLE_CLIENT_ID,
+      hasGoogleClientSecret: !!GOOGLE_CLIENT_SECRET,
+      expectedClientId: GOOGLE_CLIENT_ID || null,
+      recommendedOrigins: [
+        origin,
+        'http://localhost:' + PORT,
+        'http://127.0.0.1:' + PORT,
+      ],
+      verifyEndpoint: origin + '/api/google/verify',
+      modeEndpoint: origin + '/api/google/mode',
+      exchangeCodeEndpoint: origin + '/api/google/exchange-code',
+      recentAuthAttempts: GOOGLE_RECENT_AUTH_ATTEMPTS,
+    });
+    return true;
+  }
+
+  if (pathname === '/api/health' && req.method === 'GET') {
+    sendApiJson(req, res, 200, { ok: true, service: 'neopoly-server' });
+    return true;
+  }
+
+  if (pathname === '/api/profile/get' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const uid = sanitizeStr(body && body.uid, 128);
+      const googleSub = sanitizeStr(body && body.googleSub, 128);
+      if (!uid && !googleSub) { sendApiJson(req, res, 400, { ok: false, error: 'missing_uid' }); return true; }
+      const db = loadProfilesDb();
+      const key = getProfileStorageKey(uid, googleSub);
+      const entry = db[key];
+      if (!entry) { sendApiJson(req, res, 200, { ok: true, profile: null, updatedAt: 0 }); return true; }
+      sendApiJson(req, res, 200, { ok: true, profile: entry.profile, updatedAt: entry.updatedAt || 0 });
+    } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }
+    return true;
+  }
+
+  if (pathname === '/api/profile/upsert' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const uid = sanitizeStr(body && body.uid, 128);
+      const googleSub = sanitizeStr(body && body.googleSub, 128);
+      if (!uid && !googleSub) { sendApiJson(req, res, 400, { ok: false, error: 'missing_uid' }); return true; }
+      const sanitized = sanitizeProfilePayload(body && body.profile);
+      const db = loadProfilesDb();
+      const key = getProfileStorageKey(uid, googleSub);
+      const existing = db[key];
+      const clientUpdatedAt = parseInt(body && body.clientUpdatedAt, 10) || 0;
+      const serverUpdatedAt = (existing && existing.updatedAt) || 0;
+      // If server is strictly newer and client did not prefer server, keep server copy
+      let merged;
+      if (existing && serverUpdatedAt > clientUpdatedAt && !body.preferServer) {
+        merged = existing.profile;
+      } else {
+        merged = sanitized;
+      }
+      const now = Date.now();
+      db[key] = { profile: merged, updatedAt: now };
+      saveProfilesDb(db);
+      sendApiJson(req, res, 200, { ok: true, updatedAt: now, profile: merged });
+    } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }
+    return true;
+  }
+
+  return false;
+}
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const parsed = new URL(req.url, 'http://localhost');
+    if (parsed.pathname.startsWith('/api/')) {
+      const handled = await handleApi(req, res, parsed.pathname);
+      if (!handled) sendApiJson(req, res, 404, { ok: false, error: 'not_found' });
+      return;
+    }
+    serveStatic(req, res, parsed.pathname);
+  } catch (_) {
+    res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Server Error');
+  }
+});
+
+const wss = new WebSocket.Server({ noServer: true });
+
+server.on('upgrade', (req, socket, head) => {
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit('connection', ws, req);
+  });
+});
+
+wss.on('connection', (ws) => {
+  let myRoom = null;
+  let mySender = null;
+  let roomRegistered = false;
+
+  ws.on('message', (raw) => {
+    try {
+      const msg = JSON.parse(raw);
+      if (msg.sender) mySender = msg.sender;
+
+      if (msg.type === 'room_list_request') {
+        sendJson(ws, { type: 'room_list', rooms: listPublicRooms() });
+        return;
+      }
+
+      if (msg.type === 'join_probe') {
+        const roomId = typeof msg.room === 'string' ? msg.room.trim() : '';
+        const exists = !!(roomId && rooms[roomId]);
+        const roomInfo = exists ? getRoomSummary(roomId) : null;
+        const meta = exists ? ensureRoomMeta(roomId) : null;
+        const providedPassword = getRoomPassword(msg.password);
+        const missingPassword = !!(meta && meta.roomPassword && providedPassword !== meta.roomPassword);
+        const roomFull = !!(roomInfo && roomInfo.availableSlots <= 0);
+        const ok = exists && !missingPassword && !roomFull;
+        sendJson(ws, {
+          type: 'join_probe_result',
+          room: roomId,
+          ok,
+          error: !exists ? 'ROOM_NOT_FOUND' : (roomFull ? 'ROOM_FULL' : (missingPassword ? 'ROOM_BAD_PASSWORD' : null)),
+          roomInfo,
+        });
+        return;
+      }
+
+      const room = msg.room || myRoom;
+      if (!room) return;
+      myRoom = room;
+
+      if (msg.type === 'create_room') {
+        if (!rooms[room]) rooms[room] = new Set();
+        const meta = ensureRoomMeta(room);
+        rooms[room].add(ws);
+        roomRegistered = true;
+
+        const candidateHost = msg.sender || msg.playerId;
+        if (isHostId(candidateHost)) meta.hostSender = candidateHost;
+        meta.hostName = msg.hostName || msg.name || meta.hostName || 'Hote';
+        meta.hostEmoji = msg.hostEmoji || msg.emoji || meta.hostEmoji || '👤';
+        const roomPassword = getRoomPassword(msg.roomPassword);
+        meta.roomPassword = roomPassword;
+        meta.isPrivate = !!msg.isPrivate || !!roomPassword;
+        meta.playerCount = Math.max(1, Number(msg.playerCount) || 1);
+        meta.started = !!msg.started;
+        meta.updatedAt = Date.now();
+
+        sendJson(ws, { type: 'create_room_ack', room, roomInfo: getRoomSummary(room) });
+        return;
+      }
+
+      if (!rooms[room]) {
+        sendJson(ws, { type: 'error', code: 'ROOM_NOT_FOUND', room });
+        return;
+      }
+
+      const meta = ensureRoomMeta(room);
+
+      if (!roomRegistered && msg.type === 'ready') {
+        const roomInfo = getRoomSummary(room);
+        if (roomInfo.availableSlots <= 0) {
+          sendJson(ws, { type: 'error', code: 'ROOM_FULL', room, roomInfo });
+          return;
+        }
+        const providedPassword = getRoomPassword(msg.roomPassword);
+        if (meta.roomPassword && providedPassword !== meta.roomPassword) {
+          sendJson(ws, { type: 'error', code: 'ROOM_BAD_PASSWORD', room, roomInfo });
+          return;
+        }
+      }
+
+      rooms[room].add(ws);
+      roomRegistered = true;
+
+      if (msg.type === 'ready' && !meta.hostSender) {
+        const candidateHost = msg.sender || msg.playerId;
+        if (isHostId(candidateHost)) meta.hostSender = candidateHost;
+      }
+
+      if (msg.type === 'ready') {
+        if (isHostId(msg.sender || msg.playerId)) {
+          meta.hostName = msg.name || meta.hostName || 'Hote';
+          meta.hostEmoji = msg.emoji || meta.hostEmoji || '👤';
+        }
+        meta.playerCount = Math.max(meta.playerCount || 0, rooms[room].size);
+        meta.started = false;
+        meta.updatedAt = Date.now();
+      }
+
+      if (msg.type === 'state') {
+        updateRoomMetaFromState(room, msg.state || {});
+      }
+
+      if (msg.type === 'addon_sync') {
+        const sender = msg.sender;
+        if (!meta.hostSender && isHostId(sender)) meta.hostSender = sender;
+        if (sender !== meta.hostSender) return;
+
+        const current = roomAddons[room] || createDefaultAddonState();
+        const merged = sanitizeAddonPatch(msg.addonPatch || msg.addonState, current);
+        merged.meta = {
+          version: Number(current.meta && current.meta.version || 0) + 1,
+          updatedAt: Date.now(),
+          updatedBy: sender || 'server',
+          source: 'server',
+        };
+        roomAddons[room] = merged;
+        broadcastToRoom(room, {
+          type: 'addon_sync',
+          room,
+          sender: 'server',
+          addonState: merged,
+        });
+        return;
+      }
+
+      if (msg.type === 'addon_sync_request') {
+        if (roomAddons[room] && ws.readyState === WebSocket.OPEN) {
+          sendJson(ws, {
+            type: 'addon_sync',
+            room,
+            sender: 'server',
+            addonState: roomAddons[room],
+          });
+        }
+        return;
+      }
+
+      broadcastToRoom(room, msg);
+
+      if (msg.type === 'ready' && roomAddons[room]) {
+        sendJson(ws, {
+          type: 'addon_sync',
+          room,
+          sender: 'server',
+          addonState: roomAddons[room],
+        });
+      }
+    } catch (e) {
+      console.error('Invalid message', e);
+    }
+  });
+
+  ws.on('close', () => {
+    if (myRoom && rooms[myRoom]) {
+      rooms[myRoom].delete(ws);
+      if (roomMeta[myRoom] && roomMeta[myRoom].hostSender === mySender) {
+        roomMeta[myRoom].hostSender = null;
+      }
+      if (rooms[myRoom].size === 0) {
+        delete rooms[myRoom];
+        delete roomAddons[myRoom];
+        delete roomMeta[myRoom];
+      } else if (roomMeta[myRoom]) {
+        roomMeta[myRoom].updatedAt = Date.now();
+        roomMeta[myRoom].playerCount = Math.max(1, rooms[myRoom].size);
+      }
+    }
+  });
+});
+
+server.listen(PORT, () => {
+  console.log('NeoPoly server on http://localhost:' + PORT);
+  console.log('WebSocket endpoint on ws://localhost:' + PORT);
+});

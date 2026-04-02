@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon — Mode Blitz</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:720px;margin:auto}
+  h1{color:#ef4444;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#ef444422;border:1px solid #ef444455;color:#ef4444;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #ef4444;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#ef4444}
+  .rule{background:#1a2235;border:1px solid rgba(148,163,184,.1);border-radius:8px;padding:10px 14px;margin:6px 0;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>⚡ Addon — Mode Blitz</h1>
+<div class="badge">NOUVEAU MODE DE JEU</div>
+
+<p>Le <b>Mode Blitz</b> applique automatiquement un ensemble de règles accélérées dès le démarrage d'une partie.</p>
+
+<div class="rule">🕐 <b>Timer de 30s par tour</b> — le joueur perd son tour si le chrono expire</div>
+<div class="rule">💰 <b>Argent de départ réduit à 1000$</b> — parties plus courtes et tendues</div>
+<div class="rule">🏃 <b>Max 30 tours</b> — le joueur le plus riche gagne à la fin</div>
+<div class="rule">⚡ <b>Loyers × 1.5</b> — chaque loyer payé est majoré de 50%</div>
+<div class="rule">🎲 <b>Doubles = rejouer immédiatement</b> (pas de limite de doubles avant prison)</div>
+<div class="rule">🔔 <b>Toast de compte à rebours</b> visible toutes les 10s</div>
+
+<div class="step"><b>Étape 1 :</b> Ajoute la CSS dans le bloc <code>&lt;style&gt;</code> de test1.html.</div>
+<pre>
+/* ── MODE BLITZ ── */
+body.blitz-mode #center-info,
+body.blitz-mode .board-center-info{
+  background:rgba(239,68,68,.15);
+  border-color:rgba(239,68,68,.4);
+  color:#ef4444;
+}
+body.blitz-mode .board-center-logo{
+  background:linear-gradient(135deg,#ef4444,#facc15);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+}
+#blitz-banner{
+  display:none;position:fixed;top:0;left:0;right:0;z-index:400;
+  background:linear-gradient(90deg,#ef444499,#f9731699);
+  color:#fff;font-size:.78rem;font-weight:800;text-align:center;
+  padding:5px;letter-spacing:.06em;backdrop-filter:blur(4px);
+}
+body.blitz-mode #blitz-banner{display:block}
+</pre>
+
+<div class="step"><b>Étape 2 :</b> Ajoute ce HTML juste après la balise ouvrante <code>&lt;body&gt;</code> de test1.html.</div>
+<pre>
+&lt;div id="blitz-banner"&gt;⚡ MODE BLITZ ACTIF — 30s / TOUR — 30 TOURS MAX&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Étape 3 :</b> Ajoute ce bloc JS à la fin du <code>&lt;script&gt;</code> principal de test1.html.</div>
+<pre>
+// ═══════════════════════════════════════
+//  ADDON — MODE BLITZ
+//  Applique des règles speed-run au démarrage d'une partie.
+//  Activation : appeler activateBlitzMode() avant doStart().
+//  Ou ajouter un bouton "Mode Blitz" dans la modal de partie locale.
+// ═══════════════════════════════════════
+const BLITZ = {
+  active: false,
+  rentMultiplier: 1.5,
+  startMoney: 1000,
+  maxTurns: 30,
+  timerSec: 30,
+  unlimitedDoubles: true,
+  _warnAt: [20, 10],
+};
+
+function activateBlitzMode() {
+  BLITZ.active = true;
+  document.body.classList.add('blitz-mode');
+}
+
+function deactivateBlitzMode() {
+  BLITZ.active = false;
+  document.body.classList.remove('blitz-mode');
+}
+
+// Patch appliqué au démarrage de la partie pour injecter les règles Blitz
+(function patchDoStartBlitz() {
+  const origDoStart = window.doStart;
+  if (typeof origDoStart !== 'function') return;
+  window.doStart = function() {
+    if (BLITZ.active) {
+      G.startingMoney   = BLITZ.startMoney;
+      G.timerEnabled    = true;
+      G.timerDuration   = BLITZ.timerSec;
+      G.maxTurns        = BLITZ.maxTurns;
+      G.autoEnd         = true;
+      toast('⚡ Mode Blitz actif ! 30s/tour, 30 tours max.', 'w');
+    }
+    origDoStart();
+  };
+})();
+
+// Patch du calcul de loyer pour appliquer le multiplicateur Blitz
+(function patchRentCalcBlitz() {
+  const origCalcRent = window.calcRent;
+  if (typeof origCalcRent !== 'function') return;
+  window.calcRent = function(cell, player) {
+    const base = origCalcRent(cell, player);
+    if (BLITZ.active) return Math.ceil(base * BLITZ.rentMultiplier);
+    return base;
+  };
+})();
+
+// Patch doubles : en Blitz, pas de limite de doubles avant emprisonnement
+(function patchDoublesBlitz() {
+  const origDoRoll = window.doRoll;
+  if (typeof origDoRoll !== 'function') return;
+  window.doRoll = function() {
+    const prevDouble = G.doublesCount;
+    origDoRoll();
+    if (BLITZ.active && BLITZ.unlimitedDoubles) {
+      // Reset le compteur de doubles pour éviter l'envoi en prison automatique
+      if (G.doublesCount >= 3) G.doublesCount = 0;
+    }
+  };
+})();
+
+// Avertissement 10s restantes pendant le timer de tour
+(function patchTimerWarningBlitz() {
+  const origTickTimer = window.tickTimer;
+  if (typeof origTickTimer !== 'function') return;
+  window.tickTimer = function() {
+    origTickTimer();
+    if (!BLITZ.active) return;
+    const rem = parseInt(document.getElementById('timer-num')?.textContent, 10) || 0;
+    if (BLITZ._warnAt.includes(rem)) {
+      if (!BLITZ['_warned_' + rem]) {
+        BLITZ['_warned_' + rem] = true;
+        toast('⏰ Blitz : ' + rem + 's restantes !', 'w');
+      }
+    } else {
+      BLITZ._warnAt.forEach(t => { if (rem > t) delete BLITZ['_warned_' + t]; });
+    }
+  };
+})();
+
+// Bouton toggle facilement intégrable dans l'UI
+function toggleBlitzMode() {
+  BLITZ.active ? deactivateBlitzMode() : activateBlitzMode();
+  toast(BLITZ.active ? '⚡ Mode Blitz activé' : 'Mode Blitz désactivé', BLITZ.active ? 'w' : 'i');
+}
+
+// ── RACCOURCI D'INTÉGRATION ──
+// Dans la modal "Partie locale" (modal-local), ajoute ce bouton :
+//   &lt;button class="btn btn-danger btn-sm" onclick="toggleBlitzMode()"&gt;⚡ Mode Blitz&lt;/button&gt;
+// Dans la roue d'options (modal-party-wheel), tu peux aussi l'ajouter aux presets.
+</pre>
+</body>
+</html>

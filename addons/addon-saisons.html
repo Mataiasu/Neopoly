@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon - Saisons Dynamiques</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:760px;margin:auto}
+  h1{color:#2dd4bf;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#2dd4bf22;border:1px solid #2dd4bf55;color:#2dd4bf;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #2dd4bf;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#2dd4bf}
+  .rule{background:#1a2235;border:1px solid rgba(148,163,184,.1);border-radius:8px;padding:10px 14px;margin:8px 0;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>Addon - Saisons Dynamiques</h1>
+<div class="badge">NOUVELLE MECANIQUE</div>
+
+<p>
+  Le jeu change de <b>saison</b> tous les 8 tours. Chaque saison modifie les regles economiques:
+  loyers, bonus depart et cout des maisons.
+</p>
+
+<div class="rule">Printemps: bonus depart +25%</div>
+<div class="rule">Ete: loyers +20%</div>
+<div class="rule">Automne: maisons -20%</div>
+<div class="rule">Hiver: loyers -15% et impots +15%</div>
+
+<div class="step"><b>Etape 1 :</b> Ajoute la CSS dans le bloc style de test1.html.</div>
+<pre>
+/* - SAISONS DYNAMIQUES - */
+#season-chip{
+  position:fixed;right:12px;top:12px;z-index:260;
+  font-size:.75rem;font-weight:800;letter-spacing:.04em;
+  background:#0d1525;border:1px solid rgba(45,212,191,.45);
+  color:#2dd4bf;padding:6px 10px;border-radius:999px;
+  box-shadow:0 0 24px rgba(45,212,191,.2);
+}
+#season-chip.summer{border-color:rgba(250,204,21,.55);color:#facc15}
+#season-chip.autumn{border-color:rgba(249,115,22,.55);color:#fb923c}
+#season-chip.winter{border-color:rgba(147,197,253,.55);color:#93c5fd}
+</pre>
+
+<div class="step"><b>Etape 2 :</b> Ajoute ce HTML juste avant la fermeture body de test1.html.</div>
+<pre>
+&lt;div id="season-chip"&gt;Saison: Printemps&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Etape 3 :</b> Ajoute ce bloc JS a la fin du script principal de test1.html.</div>
+<pre>
+// ======================================
+//  ADDON - SAISONS DYNAMIQUES
+//  Integration: change les multiplicateurs selon le tour.
+// ======================================
+const SEASONS=[
+  {id:'spring',label:'Printemps',rent:1,go:1.25,house:1,tax:1,chip:'spring'},
+  {id:'summer',label:'Ete',rent:1.2,go:1,house:1,tax:1,chip:'summer'},
+  {id:'autumn',label:'Automne',rent:1,go:1,house:.8,tax:1,chip:'autumn'},
+  {id:'winter',label:'Hiver',rent:.85,go:1,house:1,tax:1.15,chip:'winter'},
+];
+
+const SEASON_STATE={every:8,index:0};
+
+function getSeason(){ return SEASONS[SEASON_STATE.index]; }
+
+function renderSeasonChip(){
+  const el=document.getElementById('season-chip');
+  if(!el) return;
+  const s=getSeason();
+  el.textContent='Saison: '+s.label;
+  el.classList.remove('summer','autumn','winter');
+  if(s.chip!=='spring') el.classList.add(s.chip);
+}
+
+function updateSeasonByTurn(){
+  const turn=Math.max(1, G.turn || 1);
+  const idx=Math.floor((turn-1)/SEASON_STATE.every)%SEASONS.length;
+  if(idx!==SEASON_STATE.index){
+    SEASON_STATE.index=idx;
+    const s=getSeason();
+    toast('Saison active: '+s.label, 'i');
+    log('Meteo economique -> '+s.label, 'i');
+  }
+  renderSeasonChip();
+}
+
+(function patchDoNextTurnSeason(){
+  const orig=window.doNextTurn;
+  if(typeof orig!=='function') return;
+  window.doNextTurn=function(){
+    orig();
+    updateSeasonByTurn();
+  };
+})();
+
+(function patchCalcRentSeason(){
+  const orig=window.calcRent;
+  if(typeof orig!=='function') return;
+  window.calcRent=function(cell,player){
+    const base=orig(cell,player);
+    return Math.ceil(base*getSeason().rent);
+  };
+})();
+
+(function patchCollectPassGoSeason(){
+  const orig=window.collectPassGo;
+  if(typeof orig!=='function') return;
+  window.collectPassGo=function(player){
+    const before=player.money;
+    orig(player);
+    const bonus=player.money-before;
+    const extra=Math.round(bonus*(getSeason().go-1));
+    if(extra>0){
+      player.money+=extra;
+      recordTxn(player,extra,'Bonus saison '+getSeason().label);
+    }
+  };
+})();
+
+(function patchGetHouseCostSeason(){
+  const orig=window.getHouseCost;
+  if(typeof orig!=='function') return;
+  window.getHouseCost=function(cell){
+    return Math.ceil(orig(cell)*getSeason().house);
+  };
+})();
+</pre>
+</body>
+</html>

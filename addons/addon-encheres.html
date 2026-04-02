@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon — Système d'Enchères</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:720px;margin:auto}
+  h1{color:#22c55e;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#22c55e22;border:1px solid #22c55e55;color:#22c55e;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #3b82f6;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#3b82f6}
+</style>
+</head>
+<body>
+<h1>🔨 Addon — Système d'Enchères</h1>
+<div class="badge">NOUVELLE RÈGLE</div>
+
+<p>
+  Quand un joueur <b>refuse d'acheter</b> une propriété, elle est mise aux enchères entre tous les joueurs actifs.
+  Le plus offrant remporte la propriété. Si personne n'enchérit, la propriété reste à la banque.
+</p>
+
+<div class="step"><b>Étape 1 :</b> Ajoute la CSS dans le bloc <code>&lt;style&gt;</code> de test1.html.</div>
+<pre>
+/* ── ENCHÈRES ── */
+#auction-modal-bg{display:none;position:fixed;inset:0;background:rgba(8,12,24,.88);z-index:150;align-items:center;justify-content:center}
+#auction-modal-bg.open{display:flex}
+#auction-box{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:14px;padding:24px;width:min(94vw,420px);max-height:90vh;overflow-y:auto}
+#auction-title{font-size:1.1rem;font-weight:900;color:#facc15;margin-bottom:4px}
+#auction-sub{font-size:.78rem;color:#9ca3af;margin-bottom:16px}
+#auction-bids-list{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.auction-bid-row{display:flex;align-items:center;justify-content:space-between;background:#111827;border:1px solid rgba(148,163,184,.12);border-radius:8px;padding:8px 12px;font-size:.8rem}
+.auction-bid-row.winner{border-color:#22c55e;background:rgba(34,197,94,.07)}
+.auction-bid-name{font-weight:700}
+.auction-bid-amount{color:#22c55e;font-weight:800}
+.auction-bid-form{display:flex;gap:8px;margin-bottom:12px}
+.auction-bid-form input{flex:1;background:#111827;border:1px solid rgba(148,163,184,.2);border-radius:8px;color:#e5e7eb;padding:7px 10px;font-size:.82rem}
+</pre>
+
+<div class="step"><b>Étape 2 :</b> Ajoute ce HTML juste avant la balise <code>&lt;/body&gt;</code> de test1.html.</div>
+<pre>
+&lt;div id="auction-modal-bg"&gt;
+  &lt;div id="auction-box"&gt;
+    &lt;div id="auction-title"&gt;🔨 Enchères&lt;/div&gt;
+    &lt;div id="auction-sub"&gt;&lt;/div&gt;
+    &lt;div id="auction-bids-list"&gt;&lt;/div&gt;
+    &lt;div class="auction-bid-form"&gt;
+      &lt;input id="auction-bid-input" type="number" min="1" placeholder="Ton offre ($)"/&gt;
+      &lt;button class="btn btn-yellow btn-sm" onclick="submitAuctionBid()"&gt;Enchérir&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class="btn-row"&gt;
+      &lt;button class="btn btn-secondary btn-sm" onclick="passAuctionBid()"&gt;Passer&lt;/button&gt;
+      &lt;button class="btn btn-primary btn-sm" id="auction-confirm-btn" onclick="finalizeAuction()" style="display:none"&gt;✅ Confirmer&lt;/button&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Étape 3 :</b> Ajoute ce bloc JS à la fin du <code>&lt;script&gt;</code> principal de test1.html.</div>
+<pre>
+// ═══════════════════════════════════════
+//  ADDON — SYSTÈME D'ENCHÈRES
+//  Déclenché après declineBuy() quand un joueur refuse d'acheter.
+//  Intégration : dans declineBuy(), remplace closeBuyBar() par startAuction().
+// ═══════════════════════════════════════
+const AUCTION = {
+  cell: null,
+  bids: {},   // { playerId: amount }
+  passed: new Set(),
+  order: [],  // IDs des joueurs dans l'ordre d'enchère
+  curIdx: 0,
+};
+
+function startAuction() {
+  if (!G.pendingBuy) return;
+  const cell = G.board[G.pendingBuy];
+  if (!cell || cell.t !== 'property' || cell.owner != null) {
+    closeBuyBar();
+    return;
+  }
+  AUCTION.cell   = cell;
+  AUCTION.bids   = {};
+  AUCTION.passed = new Set();
+  // Ordre : joueur actuel en premier, puis les autres
+  AUCTION.order  = G.players.filter(p => !p.bust).map(p => p.id);
+  const ci = AUCTION.order.indexOf(G.players[G.cur].id);
+  if (ci > 0) AUCTION.order = [...AUCTION.order.slice(ci), ...AUCTION.order.slice(0, ci)];
+  AUCTION.curIdx = 0;
+  G.pendingBuy   = null;
+  closeBuyBar();
+  renderAuctionModal();
+  document.getElementById('auction-modal-bg').classList.add('open');
+  log('🔨 Enchères ouvertes pour ' + cell.n, 'w');
+}
+
+function renderAuctionModal() {
+  const cell = AUCTION.cell;
+  document.getElementById('auction-sub').textContent =
+    cell.n + ' — Mise de départ : ' + cell.p + '$';
+
+  const list = document.getElementById('auction-bids-list');
+  const maxBid = Math.max(0, ...Object.values(AUCTION.bids));
+  list.innerHTML = AUCTION.order.map(pid => {
+    const p = G.players.find(x => x.id === pid);
+    if (!p) return '';
+    const bid = AUCTION.bids[pid];
+    const hasPassed = AUCTION.passed.has(pid);
+    const isWinner = bid === maxBid && bid > 0;
+    const cur = AUCTION.order[AUCTION.curIdx];
+    const isActive = cur === pid && !hasPassed;
+    return `&lt;div class="auction-bid-row${isWinner ? ' winner' : ''}"&gt;
+      &lt;span class="auction-bid-name"&gt;${p.emoji} ${escapeHtml(p.name)}${isActive ? ' ◀' : ''}&lt;/span&gt;
+      &lt;span class="auction-bid-amount"&gt;${hasPassed ? '—' : (bid ? bid + '$' : '?')}&lt;/span&gt;
+    &lt;/div&gt;`;
+  }).join('');
+
+  // Affiche le formulaire seulement pour le joueur actif (en local = tous voient)
+  const confirmBtn = document.getElementById('auction-confirm-btn');
+  const allDone = AUCTION.order.every(pid => AUCTION.bids[pid] != null || AUCTION.passed.has(pid));
+  if (confirmBtn) confirmBtn.style.display = allDone ? '' : 'none';
+
+  const inp = document.getElementById('auction-bid-input');
+  if (inp) {
+    inp.min = maxBid + 1;
+    inp.placeholder = 'Mise min. ' + (maxBid + 1) + '$';
+    inp.value = '';
+  }
+  const cur = G.players.find(x => x.id === AUCTION.order[AUCTION.curIdx]);
+  document.getElementById('auction-title').textContent =
+    '🔨 Enchères — ' + (cur ? cur.emoji + ' ' + cur.name + ', à toi !' : 'Terminé');
+}
+
+function submitAuctionBid() {
+  const curId = AUCTION.order[AUCTION.curIdx];
+  const p = G.players.find(x => x.id === curId);
+  if (!p) return;
+  const inp = document.getElementById('auction-bid-input');
+  const amount = parseInt(inp.value, 10);
+  const maxBid = Math.max(0, ...Object.values(AUCTION.bids));
+  if (!amount || amount <= maxBid) {
+    toast('Mise trop faible ! Minimum ' + (maxBid + 1) + '$', 'w');
+    return;
+  }
+  if (amount > p.money) {
+    toast(p.name + " n'a pas assez d'argent !", 'd');
+    return;
+  }
+  AUCTION.bids[curId] = amount;
+  advanceAuction();
+}
+
+function passAuctionBid() {
+  const curId = AUCTION.order[AUCTION.curIdx];
+  AUCTION.passed.add(curId);
+  advanceAuction();
+}
+
+function advanceAuction() {
+  // Trouver le prochain joueur non passé
+  let next = (AUCTION.curIdx + 1) % AUCTION.order.length;
+  let tries = 0;
+  while (AUCTION.passed.has(AUCTION.order[next]) && tries < AUCTION.order.length) {
+    next = (next + 1) % AUCTION.order.length;
+    tries++;
+  }
+  const allDone = AUCTION.order.every(pid => AUCTION.bids[pid] != null || AUCTION.passed.has(pid));
+  if (allDone || tries >= AUCTION.order.length) {
+    AUCTION.curIdx = AUCTION.order.length; // EOF
+  } else {
+    AUCTION.curIdx = next;
+  }
+  renderAuctionModal();
+}
+
+function finalizeAuction() {
+  const bids = AUCTION.bids;
+  const maxBid = Math.max(0, ...Object.values(bids));
+  if (maxBid <= 0) {
+    toast("Aucune offre. La propriété reste à la banque.", 'i');
+    closeAuctionModal();
+    return;
+  }
+  const winnerId = Object.keys(bids).find(id => bids[id] === maxBid);
+  const winner = G.players.find(p => p.id === winnerId);
+  const cell = AUCTION.cell;
+  winner.money -= maxBid;
+  cell.owner = winner.id;
+  recordTxn(winner, -maxBid, 'Enchère: ' + cell.n);
+  toast('🏆 ' + winner.name + ' remporte ' + cell.n + ' pour ' + maxBid + '$!', 'a');
+  log('🔨 ' + winner.name + ' achète ' + cell.n + ' aux enchères pour ' + maxBid + '$', 'a');
+  renderBoard();
+  updateUI();
+  closeAuctionModal();
+}
+
+function closeAuctionModal() {
+  document.getElementById('auction-modal-bg').classList.remove('open');
+}
+
+// ── PATCH : remplacer declineBuy pour lancer les enchères ──
+// Dans test1.html, trouvez la fonction declineBuy() et remplacez son contenu par :
+//   G.pendingBuy = null; startAuction();
+// OU ajoutez ce patch automatique :
+(function patchDeclineBuy() {
+  const origDecline = window.declineBuy;
+  if (typeof origDecline === 'function') {
+    window.declineBuy = function() {
+      if (G.pendingBuy != null) {
+        const cell = G.board[G.pendingBuy];
+        if (cell && cell.t === 'property' && cell.owner == null) {
+          startAuction();
+          return;
+        }
+      }
+      origDecline();
+    };
+  }
+})();
+</pre>
+</body>
+</html>

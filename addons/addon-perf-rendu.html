@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon - Optimisation Rendu</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:760px;margin:auto}
+  h1{color:#22c55e;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#22c55e22;border:1px solid #22c55e55;color:#22c55e;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #22c55e;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#22c55e}
+</style>
+</head>
+<body>
+<h1>Addon - Optimisation Rendu Plateau</h1>
+<div class="badge">PATCH PERFORMANCE</div>
+
+<p>
+  Ce patch limite les re-rendus trop frequents via requestAnimationFrame et evite
+  plusieurs mises a jour UI dans le meme tick. Le gameplay ne change pas.
+</p>
+
+<div class="step"><b>Etape 1 :</b> Ajoute ce bloc JS en fin de script principal de test1.html.</div>
+<pre>
+// ======================================
+//  ADDON - OPTIMISATION RENDU
+//  Integration: remplace les appels directs a renderBoard/updateUI
+//  par scheduleRender()/scheduleUI() quand possible.
+// ======================================
+const PERF_RENDER={
+  boardQueued:false,
+  uiQueued:false,
+  boardCount:0,
+  uiCount:0,
+};
+
+function scheduleRender(){
+  if(PERF_RENDER.boardQueued) return;
+  PERF_RENDER.boardQueued=true;
+  requestAnimationFrame(()=>{
+    PERF_RENDER.boardQueued=false;
+    PERF_RENDER.boardCount++;
+    if(typeof window.renderBoard==='function') window.renderBoard();
+  });
+}
+
+function scheduleUI(){
+  if(PERF_RENDER.uiQueued) return;
+  PERF_RENDER.uiQueued=true;
+  requestAnimationFrame(()=>{
+    PERF_RENDER.uiQueued=false;
+    PERF_RENDER.uiCount++;
+    if(typeof window.updateUI==='function') window.updateUI();
+  });
+}
+
+(function patchBurstCalls(){
+  // Intercepte les appels repetitifs provenant de loops rapides.
+  const map=[
+    ['renderBoard','scheduleRender'],
+    ['updateUI','scheduleUI'],
+  ];
+
+  map.forEach(([name,scheduler])=>{
+    const orig=window[name];
+    if(typeof orig!=='function') return;
+    window['__orig_'+name]=orig;
+    window[name]=function(){
+      // Si appel force: renderBoard(true) -> immediate
+      if(arguments[0]===true) return orig.apply(this,arguments);
+      return window[scheduler]();
+    };
+  });
+})();
+
+(function exposePerfDebug(){
+  window.perfRenderStats=function(){
+    return {
+      boardFrames:PERF_RENDER.boardCount,
+      uiFrames:PERF_RENDER.uiCount,
+      boardQueued:PERF_RENDER.boardQueued,
+      uiQueued:PERF_RENDER.uiQueued,
+    };
+  };
+})();
+</pre>
+
+<div class="step"><b>Etape 2 :</b> Optionnel: ajoute un raccourci debug pour afficher les stats.</div>
+<pre>
+// Exemple debug manuel:
+// console.table(perfRenderStats());
+</pre>
+</body>
+</html>

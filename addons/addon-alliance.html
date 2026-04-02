@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon — Alliances entre Joueurs</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:720px;margin:auto}
+  h1{color:#facc15;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#facc1522;border:1px solid #facc1555;color:#facc15;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #facc15;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#facc15}
+  .rule{background:#1a2235;border:1px solid rgba(148,163,184,.1);border-radius:8px;padding:8px 14px;margin:6px 0;font-size:.8rem}
+</style>
+</head>
+<body>
+<h1>🤝 Addon — Alliances entre Joueurs</h1>
+<div class="badge">NOUVELLE MÉCANIQUE SOCIALE</div>
+
+<p>
+  Les joueurs peuvent former des <b>alliances temporaires</b> pour s'entraider.
+  Une alliance offre des avantages mutuels, mais peut être trahie à tout moment.
+</p>
+
+<div class="rule">🤝 <b>Former une alliance :</b> propose à un autre joueur. Il doit accepter.</div>
+<div class="rule">💰 <b>Loyer réduit de 50% :</b> les alliés ne se paient que la moitié du loyer entre eux.</div>
+<div class="rule">🗡️ <b>Trahison :</b> briser une alliance inflige une pénalité de 200$ au traître.</div>
+<div class="rule">⏳ <b>Durée :</b> une alliance dure jusqu'à trahison ou fin de partie.</div>
+<div class="rule">👑 <b>Limite :</b> un joueur ne peut avoir qu'une seule alliance active à la fois.</div>
+
+<div class="step"><b>Étape 1 :</b> Ajoute la CSS dans le bloc <code>&lt;style&gt;</code> de test1.html.</div>
+<pre>
+/* ── ALLIANCES ── */
+.alliance-badge{
+  display:inline-block;background:rgba(250,204,21,.12);
+  border:1px solid rgba(250,204,21,.35);color:#facc15;
+  font-size:.6rem;padding:1px 7px;border-radius:20px;
+  font-weight:700;margin-left:4px;vertical-align:middle;
+}
+.player-row.allied{box-shadow:0 0 0 1px rgba(250,204,21,.35) inset}
+#alliance-panel{background:#1a2235;border:1px solid rgba(250,204,21,.2);border-radius:10px;padding:10px;margin-top:8px}
+#alliance-panel .card-title{color:#facc15}
+</pre>
+
+<div class="step"><b>Étape 2 :</b> Ajoute ce HTML dans la tab <code>#game-tab</code> de test1.html, après le <code>#players-list</code>.</div>
+<pre>
+&lt;div id="alliance-panel" style="display:none"&gt;
+  &lt;div class="card-title"&gt;🤝 Alliances&lt;/div&gt;
+  &lt;div id="alliance-status" style="font-size:.75rem;margin-bottom:8px"&gt;&lt;/div&gt;
+  &lt;div class="btn-row" id="alliance-actions"&gt;&lt;/div&gt;
+&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Étape 3 :</b> Ajoute ce bloc JS à la fin du <code>&lt;script&gt;</code> principal de test1.html.</div>
+<pre>
+// ═══════════════════════════════════════
+//  ADDON — ALLIANCES
+//  Nécessite que G.players[i].alliance soit initialisé à null.
+//  Intégration : appeler initAllianceSystem() après doStart(),
+//  et renderAlliancePanel() dans updateUI().
+// ═══════════════════════════════════════
+const ALLIANCE_BREACH_PENALTY = 200;
+const ALLIANCE_RENT_FACTOR    = 0.5; // alliés paient 50% du loyer
+
+function getAllyOf(playerId) {
+  const p = G.players.find(x => x.id === playerId);
+  if (!p || !p.alliance) return null;
+  return G.players.find(x => x.id === p.alliance) || null;
+}
+
+function proposeAlliance(fromId, toId) {
+  const from = G.players.find(p => p.id === fromId);
+  const to   = G.players.find(p => p.id === toId);
+  if (!from || !to || from.bust || to.bust) return;
+  if (from.alliance) { toast(from.name + ' a déjà une alliance.', 'w'); return; }
+  if (to.alliance)   { toast(to.name + ' a déjà une alliance.',   'w'); return; }
+
+  const accept = confirm(to.name + ', acceptes-tu une alliance avec ' + from.name + ' ?');
+  if (!accept) { toast(to.name + ' refuse l\'alliance.', 'i'); return; }
+
+  from.alliance = toId;
+  to.alliance   = fromId;
+  toast('🤝 Alliance formée : ' + from.name + ' & ' + to.name, 'a');
+  log('🤝 Alliance : ' + from.name + ' ↔ ' + to.name, 'a');
+  renderAlliancePanel();
+  renderPlayers();
+}
+
+function breakAlliance(fromId) {
+  const from = G.players.find(p => p.id === fromId);
+  if (!from || !from.alliance) return;
+  const to = G.players.find(p => p.id === from.alliance);
+
+  from.money = Math.max(0, from.money - ALLIANCE_BREACH_PENALTY);
+  recordTxn(from, -ALLIANCE_BREACH_PENALTY, 'Pénalité trahison');
+  toast('🗡️ ' + from.name + ' trahit ' + (to?.name || '?') + ' (−' + ALLIANCE_BREACH_PENALTY + '$)', 'd');
+  log('🗡️ Trahison de ' + from.name + ' — pénalité ' + ALLIANCE_BREACH_PENALTY + '$', 'd');
+
+  if (to) to.alliance = null;
+  from.alliance = null;
+  checkBust(from);
+  renderAlliancePanel();
+  renderPlayers();
+  updateUI();
+}
+
+function renderAlliancePanel() {
+  const panel = document.getElementById('alliance-panel');
+  const status = document.getElementById('alliance-status');
+  const actions = document.getElementById('alliance-actions');
+  if (!panel || !status || !actions) return;
+
+  if (!G.started || G.players.length < 2) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  const curP = G.players[G.cur];
+  if (!curP) return;
+
+  const ally = getAllyOf(curP.id);
+  if (ally) {
+    status.innerHTML = 'Alliance avec &lt;b&gt;' + escapeHtml(ally.emoji + ' ' + ally.name) + '&lt;/b&gt; (loyers -50% mutuels)';
+    actions.innerHTML =
+      '&lt;button class="btn btn-danger btn-sm" onclick="breakAlliance(\'' + curP.id + '\')"&gt;🗡️ Trahir (-' + ALLIANCE_BREACH_PENALTY + '$)&lt;/button&gt;';
+  } else {
+    const targets = G.players.filter(p => !p.bust && p.id !== curP.id && !p.alliance);
+    if (!targets.length) {
+      status.textContent = 'Aucun joueur disponible pour une alliance.';
+      actions.innerHTML = '';
+      return;
+    }
+    status.textContent = 'Propose une alliance à :';
+    actions.innerHTML = targets.map(p =>
+      '&lt;button class="btn btn-yellow btn-sm" onclick="proposeAlliance(\'' + curP.id + '\',\'' + p.id + '\')"&gt;' +
+      escapeHtml(p.emoji + ' ' + p.name) + '&lt;/button&gt;'
+    ).join('');
+  }
+
+  // Badges sur les player-rows
+  document.querySelectorAll('.player-row').forEach(row => {
+    const pid = row.dataset.pid;
+    if (!pid) return;
+    const p = G.players.find(x => x.id === pid);
+    row.classList.toggle('allied', !!(p && p.alliance));
+    let badge = row.querySelector('.alliance-badge');
+    if (p && p.alliance) {
+      const allyP = getAllyOf(p.id);
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'alliance-badge';
+        row.querySelector('.player-name')?.appendChild(badge);
+      }
+      if (badge) badge.textContent = '🤝 ' + (allyP?.name || '?');
+    } else {
+      badge?.remove();
+    }
+  });
+}
+
+// Patch calcRent : loyer réduit entre alliés
+(function patchCalcRentAlliance() {
+  const orig = window.calcRent;
+  if (typeof orig !== 'function') return;
+  window.calcRent = function(cell, player) {
+    const base = orig(cell, player);
+    if (!cell.owner || cell.owner === player.id) return base;
+    const owner = G.players.find(p => p.id === cell.owner);
+    if (!owner) return base;
+    if (owner.alliance === player.id) {
+      return Math.ceil(base * ALLIANCE_RENT_FACTOR);
+    }
+    return base;
+  };
+})();
+
+// Patch doStart : initialise alliance à null pour chaque joueur
+(function patchDoStartAlliance() {
+  const orig = window.doStart;
+  if (typeof orig !== 'function') return;
+  window.doStart = function() {
+    orig();
+    G.players.forEach(p => { p.alliance = null; });
+    renderAlliancePanel();
+  };
+})();
+
+// Patch updateUI : rafraîchit le panel
+(function patchUpdateUIAlliance() {
+  const orig = window.updateUI;
+  if (typeof orig !== 'function') return;
+  window.updateUI = function() {
+    orig();
+    renderAlliancePanel();
+  };
+})();
+</pre>
+</body>
+</html>

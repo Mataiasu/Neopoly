@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon - Prets Bancaires</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:760px;margin:auto}
+  h1{color:#60a5fa;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#60a5fa22;border:1px solid #60a5fa55;color:#60a5fa;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .step{background:#111827;border-left:3px solid #60a5fa;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#60a5fa}
+</style>
+</head>
+<body>
+<h1>Addon - Prets Bancaires</h1>
+<div class="badge">NOUVELLE REGLE ECONOMIQUE</div>
+
+<p>
+  Les joueurs peuvent demander un pret instantane pour eviter la faillite.
+  Le pret doit etre rembourse en 6 tours, avec interet total de 25%.
+</p>
+
+<div class="step"><b>Etape 1 :</b> Ajoute ce HTML avant body de test1.html.</div>
+<pre>
+&lt;div id="loan-panel" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:360;background:#0d1525;border:1px solid rgba(96,165,250,.45);border-radius:12px;padding:18px;min-width:280px"&gt;
+  &lt;div style="font-weight:900;color:#60a5fa;margin-bottom:8px"&gt;Pret bancaire&lt;/div&gt;
+  &lt;div id="loan-sub" style="font-size:.8rem;color:#9ca3af;margin-bottom:12px"&gt;&lt;/div&gt;
+  &lt;div style="display:flex;gap:8px"&gt;
+    &lt;button class="btn btn-primary btn-sm" onclick="acceptLoan()"&gt;Accepter&lt;/button&gt;
+    &lt;button class="btn btn-secondary btn-sm" onclick="denyLoan()"&gt;Refuser&lt;/button&gt;
+  &lt;/div&gt;
+&lt;/div&gt;
+</pre>
+
+<div class="step"><b>Etape 2 :</b> Ajoute ce JS a la fin du script principal.</div>
+<pre>
+// ======================================
+//  ADDON - PRETS BANCAIRES
+//  Integration: propose un pret quand un joueur descend sous 0.
+// ======================================
+const LOAN={
+  activeByPlayer:{},
+  amount:400,
+  interest:1.25,
+  repayTurns:6,
+};
+
+function getLoanState(playerId){
+  return LOAN.activeByPlayer[playerId]||null;
+}
+
+function openLoanPanel(player){
+  const panel=document.getElementById('loan-panel');
+  const sub=document.getElementById('loan-sub');
+  if(!panel||!sub) return;
+  sub.textContent=player.name+' peut emprunter '+LOAN.amount+'$ (a rembourser: '+Math.ceil(LOAN.amount*LOAN.interest)+'$ sur '+LOAN.repayTurns+' tours).';
+  panel.dataset.playerId=player.id;
+  panel.classList.add('open');
+  panel.style.display='block';
+}
+
+function closeLoanPanel(){
+  const panel=document.getElementById('loan-panel');
+  if(!panel) return;
+  panel.style.display='none';
+  panel.classList.remove('open');
+  panel.dataset.playerId='';
+}
+
+function acceptLoan(){
+  const panel=document.getElementById('loan-panel');
+  if(!panel) return;
+  const id=panel.dataset.playerId;
+  const p=G.players.find(x=>x.id===id);
+  if(!p){ closeLoanPanel(); return; }
+  const total=Math.ceil(LOAN.amount*LOAN.interest);
+  LOAN.activeByPlayer[p.id]={remaining:total,turnsLeft:LOAN.repayTurns};
+  p.money+=LOAN.amount;
+  recordTxn(p,LOAN.amount,'Pret bancaire');
+  toast('Pret accepte par '+p.name, 'i');
+  closeLoanPanel();
+  updateUI();
+}
+
+function denyLoan(){
+  closeLoanPanel();
+}
+
+function tickLoans(){
+  G.players.forEach(p=>{
+    const st=getLoanState(p.id);
+    if(!st) return;
+    if(st.turnsLeft<=0){
+      // Penalite si retard
+      const fee=Math.ceil(st.remaining*.12);
+      st.remaining+=fee;
+      st.turnsLeft=2;
+      toast('Retard de pret: +'+fee+'$ pour '+p.name, 'd');
+    }
+    const due=Math.ceil(st.remaining/Math.max(1,st.turnsLeft));
+    const pay=Math.min(due,p.money);
+    p.money-=pay;
+    st.remaining-=pay;
+    st.turnsLeft--;
+    if(pay>0) recordTxn(p,-pay,'Remboursement pret');
+    if(st.remaining<=0){
+      delete LOAN.activeByPlayer[p.id];
+      toast(p.name+' a fini de rembourser son pret', 'a');
+    }
+    checkBust(p);
+  });
+}
+
+(function patchCheckBustLoan(){
+  const orig=window.checkBust;
+  if(typeof orig!=='function') return;
+  window.checkBust=function(player){
+    if(player.money<0 && !getLoanState(player.id)){
+      openLoanPanel(player);
+    }
+    return orig(player);
+  };
+})();
+
+(function patchDoNextTurnLoan(){
+  const orig=window.doNextTurn;
+  if(typeof orig!=='function') return;
+  window.doNextTurn=function(){
+    tickLoans();
+    orig();
+  };
+})();
+</pre>
+</body>
+</html>

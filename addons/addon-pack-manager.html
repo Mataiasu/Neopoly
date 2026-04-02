@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<title>Addon - Pack Manager</title>
+<style>
+  body{font-family:system-ui,sans-serif;background:#080c18;color:#e5e7eb;padding:24px;max-width:760px;margin:auto}
+  h1{color:#22c55e;font-size:1.4rem;margin-bottom:4px}
+  .badge{display:inline-block;background:#22c55e22;border:1px solid #22c55e55;color:#22c55e;font-size:.7rem;padding:2px 8px;border-radius:20px;margin-bottom:16px}
+  .step{background:#111827;border-left:3px solid #22c55e;padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:.82rem}
+  .step b{color:#22c55e}
+  pre{background:#0d1525;border:1px solid rgba(148,163,184,.18);border-radius:10px;padding:16px;font-size:.78rem;overflow-x:auto;line-height:1.6;white-space:pre-wrap}
+  .note{font-size:.82rem;color:#9ca3af;line-height:1.55;margin:8px 0}
+</style>
+</head>
+<body>
+<h1>Addon - Pack Manager</h1>
+<div class="badge">GESTIONNAIRE D'ADDONS UI</div>
+
+<p>
+  Ce pack manager active/desactive des addons directement depuis une fenetre dans le jeu,
+  sans modifier manuellement le script principal.
+</p>
+
+<div class="step"><b>Etape 1 :</b> Ajoute une seule ligne dans test1.html (juste avant body).</div>
+<pre>
+&lt;script src="assets/addon-pack-manager.js"&gt;&lt;/script&gt;
+</pre>
+
+<div class="step"><b>Etape 2 :</b> Lance la partie puis clique sur le bouton <b>Addons</b> en bas a droite.</div>
+
+<p class="note">
+  Addons geres actuellement par le manager:
+  Saisons Dynamiques, Prets Bancaires, Optimisation Rendu, Encheres,
+  Evenements Aleatoires et Mode Blitz.
+  Les choix sont sauvegardes automatiquement dans le navigateur (localStorage).
+</p>
+
+<div class="step"><b>Compatibilite :</b> Le manager applique des patches conditionnels; desactiver un addon stoppe son effet sans casser la partie en cours.</div>
+</body>
+</html>
