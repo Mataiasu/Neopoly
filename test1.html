@@ -1629,7 +1629,7 @@ body.streamer-mode #invite-link {
       <div class="lobby-card-desc">Jusqu'à 6 joueurs en local sur le même écran, sans serveur</div>
     </div>
   </div>
-  <div class="lobby-version">NeoPoly v5.0 — 2026</div>
+  <div class="lobby-version">NeoPoly v5.0 — 2026<br><span style="font-size:.7rem"><a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent)">Politique de confidentialité</a> • <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent)">Conditions d'utilisation</a></span></div>
 </div>
 
 <div id="game" class="screen">
@@ -1948,7 +1948,7 @@ body.streamer-mode #invite-link {
         <div class="card-title">⚙️ Options</div>
         <div class="fgroup options-fgroup">
           <div class="opt-row">
-            <input type="checkbox" id="auto-end-chk" onchange="setAutoEnd(this.checked)"/>
+            <input type="checkbox" id="auto-end-chk" onchange="setAutoEnd(this.checked)" checked/>
             <label for="auto-end-chk">Fin de tour auto</label>
           </div>
           <div class="opt-row">
@@ -2575,7 +2575,7 @@ body.streamer-mode #invite-link {
       <div class="card" style="padding:10px">
         <div class="card-title">🎮 Gameplay / UI</div>
         <div class="fgroup options-fgroup" style="margin-bottom:0;gap:8px">
-          <div class="opt-row"><input type="checkbox" id="lb-auto-end-chk" onchange="setAutoEnd(this.checked)"/><label for="lb-auto-end-chk">Fin de tour auto</label></div>
+          <div class="opt-row"><input type="checkbox" id="lb-auto-end-chk" onchange="setAutoEnd(this.checked)" checked/><label for="lb-auto-end-chk">Fin de tour auto</label></div>
           <div class="opt-row"><input type="checkbox" id="lb-center-actions-chk" onchange="setCenterActionsEnabled(this.checked)"/><label for="lb-center-actions-chk">Actions popup (centre)</label></div>
           <div class="opt-field"><label>Taille popup actions (%)</label><div style="display:flex;align-items:center;gap:8px"><input id="lb-center-actions-size" type="range" value="100" min="70" max="170" step="5" oninput="setCenterActionsScale(this.value)" style="flex:1"/><span id="lb-center-actions-size-val" style="min-width:46px;text-align:right;font-size:.72rem;color:var(--accent);font-weight:800">100%</span></div></div>
           <div class="opt-field"><label>Durée des notifications (s)</label><input id="lb-notif-dur" type="number" value="4" min="1" max="20" onchange="setToastDuration(this.value)"/></div>
@@ -3707,7 +3707,7 @@ const G={
   visualFxEnabled:true,
   timerTick:null,timerEnabled:false,timerDuration:60,
   toastMs:4000,
-  autoEnd:false,
+  autoEnd:true,
   centerActions:false,
   centerActionsPos:null,
   centerActionsScale:100,
