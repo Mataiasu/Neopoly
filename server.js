@@ -169,6 +169,7 @@ const roomAddons = {};
 const roomMeta = {};
 const MAX_ROOM_PLAYERS = 6;
 const SOCIAL_ROOM_ID = 'social-lobby';
+const SOCIAL_CHAT_AUTO_CLEAR_MS = 5 * 60 * 1000;
 
 const CFG_BOUNDS = {
   eventChance:    [0, 100],
@@ -370,6 +371,34 @@ function broadcastToRoom(room, payload) {
     }
   });
 }
+
+function ensureSocialRoom() {
+  if (!rooms[SOCIAL_ROOM_ID]) rooms[SOCIAL_ROOM_ID] = new Set();
+  const socialMeta = ensureRoomMeta(SOCIAL_ROOM_ID);
+  socialMeta.hidden = true;
+  socialMeta.hostName = 'Chat social';
+  socialMeta.started = false;
+  socialMeta.isPrivate = false;
+  socialMeta.updatedAt = Date.now();
+  return socialMeta;
+}
+
+function broadcastSocialClear(payload) {
+  ensureSocialRoom();
+  broadcastToRoom(SOCIAL_ROOM_ID, Object.assign({
+    type: 'social_clear',
+    room: SOCIAL_ROOM_ID,
+    clearedAt: Date.now(),
+    auto: false,
+    by: 'admin',
+  }, payload || {}));
+}
+
+ensureSocialRoom();
+const socialChatAutoClearTimer = setInterval(() => {
+  broadcastSocialClear({ auto: true, by: 'serveur', reason: 'interval' });
+}, SOCIAL_CHAT_AUTO_CLEAR_MS);
+if (typeof socialChatAutoClearTimer.unref === 'function') socialChatAutoClearTimer.unref();
 
 function getCorsOrigin(req) {
   const origin = req.headers.origin;
@@ -904,7 +933,7 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      const isSocialMessage = msg.type === 'social_join' || msg.type === 'social_chat';
+      const isSocialMessage = msg.type === 'social_join' || msg.type === 'social_chat' || msg.type === 'social_clear_request';
       if (!rooms[room]) {
         if (isSocialMessage && room === SOCIAL_ROOM_ID) {
           rooms[room] = new Set();
@@ -993,6 +1022,20 @@ wss.on('connection', (ws) => {
             addonState: roomAddons[room],
           });
         }
+        return;
+      }
+
+      if (msg.type === 'social_clear_request') {
+        if (room !== SOCIAL_ROOM_ID) return;
+        if (!senderMod.isAdmin) {
+          sendJson(ws, { type: 'error', code: 'ADMIN_REQUIRED', room });
+          return;
+        }
+        broadcastSocialClear({
+          auto: false,
+          by: sanitizeStr(msg.name, 64) || 'Admin',
+          reason: 'manual',
+        });
         return;
       }
 

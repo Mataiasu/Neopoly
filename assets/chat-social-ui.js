@@ -698,8 +698,34 @@ function removeFriend(uid){
 
 let socialWs=null,socialWsOk=false,socialWsManualClose=false,socialWsReconnectTimer=null;
 const SOCIAL_ROOM_ID='social-lobby';
+const SOCIAL_CHAT_AUTO_CLEAR_MS=5*60*1000;
+const SOCIAL_CHAT_PRUNE_INTERVAL_MS=30*1000;
 let socialChatRenderQueued=false;
 let socialChatPersistTimer=null;
+
+function pruneSocialChatLog(options){
+  const opts=options&&typeof options==='object'?options:{};
+  if(!Array.isArray(P.chatLog))P.chatLog=[];
+  const before=P.chatLog.length;
+  const now=Date.now();
+  if(opts.forceAll){
+    P.chatLog=[];
+  }else{
+    P.chatLog=P.chatLog.filter(m=>{
+      const ts=Number(m&&m.ts||0);
+      return ts>0&&(now-ts)<SOCIAL_CHAT_AUTO_CLEAR_MS;
+    });
+  }
+  const changed=P.chatLog.length!==before;
+  if(changed){
+    queueSocialChatPersist();
+    if(!opts.skipRender)queueSocialChatUiRefresh();
+  }
+  if(!opts.silent&&opts.reason&&(changed||opts.forceAll))toast(opts.reason,opts.tone||'i');
+  return changed;
+}
+
+setInterval(()=>pruneSocialChatLog({silent:true}),SOCIAL_CHAT_PRUNE_INTERVAL_MS);
 
 function queueSocialChatUiRefresh(){
   if(socialChatRenderQueued)return;
@@ -719,6 +745,7 @@ function queueSocialChatPersist(){
 }
 
 function renderSocialChat(){
+  pruneSocialChatLog({silent:true,skipRender:true});
   const log=document.getElementById('social-chat-log');if(!log)return;
   log.innerHTML='';
   P.chatLog.slice(-60).forEach(m=>{
@@ -787,6 +814,7 @@ function renderSocialChat(){
 
 function addSocialMsg(name,color,text,mine,meta){
   const extra=meta&&typeof meta==='object'?meta:{};
+  pruneSocialChatLog({silent:true,skipRender:true});
   P.chatLog.push({
     name,
     color,
@@ -915,6 +943,24 @@ function sendSocialChat(){
   }
 }
 
+function requestSocialChatClear(){
+  if(!P.isAdmin){toast('Action reservee a l admin','d');return;}
+  if(socialWs&&socialWsOk){
+    try{
+      socialWs.send(JSON.stringify({
+        type:'social_clear_request',
+        room:SOCIAL_ROOM_ID,
+        uid:P.uid,
+        googleSub:P.googleSub||'',
+        email:P.googleEmail||'',
+        name:P.name||'Admin'
+      }));
+      return;
+    }catch(_){ }
+  }
+  pruneSocialChatLog({forceAll:true,silent:false,reason:'🧹 Chat effacé localement (hors ligne)'});
+}
+
 function scheduleSocialWsReconnect(){
   if(socialWsManualClose)return;
   if(socialWsReconnectTimer)clearTimeout(socialWsReconnectTimer);
@@ -965,6 +1011,18 @@ function connectSocialWs(auto=false){
       socialWs.onmessage=e=>{
         try{
           const m=JSON.parse(e.data);
+          if(m.type==='error'&&m.code==='ADMIN_REQUIRED'){
+            toast('Action reservee a l admin','d');
+            return;
+          }
+          if(m.type==='social_clear'){
+            pruneSocialChatLog({
+              forceAll:true,
+              silent:!!m.auto,
+              reason:m.auto?'':'🧹 Chat effacé par '+String(m.by||'un admin')
+            });
+            return;
+          }
           if(m.type==='mod_status'){
             P.moderation=Object.assign(getDefaultModerationState(),{muted:!!m.muted,banned:!!m.banned,reason:String(m.reason||''),updatedAt:Date.now()});
             syncSocialAdminUi();
