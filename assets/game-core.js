@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════
 const GOOGLE_CLIENT_ID='';
 const GOOGLE_CLIENT_ID_KEY='NP_GOOGLE_CLIENT_ID';
-const CANONICAL_RENDER_ORIGIN='https://neopoly.onrender.com';
+const CANONICAL_RENDER_ORIGIN='https://neopoly-eu.onrender.com';
 
 function getGoogleClientId(){
   const runtime=(window.NEOPOLY_GOOGLE_CLIENT_ID||'').trim();
@@ -16,7 +16,7 @@ function getCanonicalRenderOrigin(){
   const configured=(window.NEOPOLY_CANONICAL_ORIGIN||'').trim();
   if(configured)return configured.replace(/\/$/,'');
   const host=String(window.location.hostname||'').toLowerCase();
-  if(host.endsWith('.onrender.com'))return CANONICAL_RENDER_ORIGIN;
+  if(host==='neopoly.onrender.com'||host==='neopoly-eu.onrender.com')return CANONICAL_RENDER_ORIGIN;
   return '';
 }
 
