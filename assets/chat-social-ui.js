@@ -569,15 +569,9 @@ function openChatUserMenu(event,user){
   const toggleDetailsBtn=makeChatUserMenuButton('👁️ Voir profil complet','btn-blue',()=>{
     const expanded=details.classList.toggle('open');
     toggleDetailsBtn.textContent=expanded?'🗕 Réduire':'👁️ Voir profil complet';
-    requestAnimationFrame(()=>{
-      const margin=10;
-      const width=menu.offsetWidth||320;
-      const height=menu.offsetHeight||260;
-      const left=Math.max(margin,Math.min(parseFloat(menu.style.left)||margin,window.innerWidth-width-margin));
-      const top=Math.max(margin,Math.min(parseFloat(menu.style.top)||margin,window.innerHeight-height-margin));
-      menu.style.left=left+'px';
-      menu.style.top=top+'px';
-    });
+    if(expanded){
+      requestAnimationFrame(()=>details.scrollIntoView({block:'nearest',behavior:'smooth'}));
+    }
   });
   toggleDetailsBtn.classList.add('btn-wide');
   actions.appendChild(toggleDetailsBtn);
@@ -640,7 +634,6 @@ document.addEventListener('click',ev=>{
   if(menu&&menu.classList.contains('open')&&ev.target===menu)closeChatUserMenu();
 });
 window.addEventListener('resize',()=>closeChatUserMenu());
-window.addEventListener('scroll',()=>closeChatUserMenu(),true);
 document.addEventListener('keydown',ev=>{
   if(ev.key==='Escape')closeChatUserMenu();
 });

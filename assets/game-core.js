@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════
 const GOOGLE_CLIENT_ID='';
 const GOOGLE_CLIENT_ID_KEY='NP_GOOGLE_CLIENT_ID';
+const CANONICAL_RENDER_ORIGIN='https://neopoly.onrender.com';
 
 function getGoogleClientId(){
   const runtime=(window.NEOPOLY_GOOGLE_CLIENT_ID||'').trim();
@@ -11,9 +12,19 @@ function getGoogleClientId(){
   return runtime||stored||inline;
 }
 
+function getCanonicalRenderOrigin(){
+  const configured=(window.NEOPOLY_CANONICAL_ORIGIN||'').trim();
+  if(configured)return configured.replace(/\/$/,'');
+  const host=String(window.location.hostname||'').toLowerCase();
+  if(host.endsWith('.onrender.com'))return CANONICAL_RENDER_ORIGIN;
+  return '';
+}
+
 function getGoogleApiBase(){
   const configured=(window.NEOPOLY_API_BASE||'').trim();
-  if(configured)return configured.replace(/\/$/,'');
+  if(configured)return configured.replace(/\/$/, '');
+  const renderOrigin=getCanonicalRenderOrigin();
+  if(renderOrigin)return renderOrigin;
   const p=String(window.location.port||'');
   if((p==='5500'||p==='5173')&&window.location.protocol==='http:'){
     return ('http://'+window.location.hostname+':3000').replace(/\/$/,'');
@@ -1398,6 +1409,10 @@ let JOIN_ROOM_REFRESH_IN_FLIGHT=false;
 
 // ── LOBBY TABS ──
 function getDefaultWsUrl(){
+  const renderOrigin=getCanonicalRenderOrigin();
+  if(renderOrigin){
+    return renderOrigin.replace(/^http/i,'ws');
+  }
   const isSecure=window.location.protocol==='https:';
   const host=window.location.host||'localhost';
   if(isSecure){
@@ -1426,7 +1441,9 @@ function initDefaultWsUrlInputs(){
       const u=new URL(current);
       const sameHost=u.hostname===window.location.hostname;
       const forced3000=u.port==='3000';
-      if(window.location.protocol==='https:'&&sameHost&&forced3000){
+      const onRender=String(window.location.hostname||'').toLowerCase().endsWith('.onrender.com');
+      const currentRenderHost=String(u.hostname||'').toLowerCase().endsWith('.onrender.com');
+      if((window.location.protocol==='https:'&&sameHost&&forced3000)||(onRender&&currentRenderHost&&current!==defaultUrl)){
         input.value=defaultUrl;
       }
     }catch(_){ }
