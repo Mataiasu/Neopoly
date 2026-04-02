@@ -923,62 +923,106 @@ function scheduleSocialWsReconnect(){
 
 function connectSocialWs(auto=false){
   if(socialWs||socialWsOk)return;
-  const url=(document.getElementById('social-ws-url')?.value||'').trim();
-  if(!url){if(!auto)toast('Entre une URL WebSocket','w');return;}
+  const input=document.getElementById('social-ws-url');
+  const requestedUrl=(input?.value||'').trim()||getDefaultWsUrl();
+  if(!requestedUrl){if(!auto)toast('Entre une URL WebSocket','w');return;}
   socialWsManualClose=false;
   updateSocialWsStatus(auto?'Connexion auto...':'Connexion…');
-  try{
-    socialWs=new WebSocket(url);
-    socialWs.onopen=()=>{
-      socialWsOk=true;
-      if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
-      updateSocialWsStatus('✅ Connecté à '+url);
-      document.getElementById('social-ws-btn').textContent='⛔';
-      socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID},getSharedChatProfilePayload())));
-    };
-    socialWs.onmessage=e=>{
+
+  const startConnection=()=>{
+    const urls=getWsFallbackUrls((input?.value||'').trim()||requestedUrl||getDefaultWsUrl());
+    const tryConnect=(index)=>{
+      const url=urls[index];
+      if(!url){
+        updateSocialWsStatus('❌ URL WebSocket indisponible');
+        if(!socialWsManualClose)scheduleSocialWsReconnect();
+        return;
+      }
+      let opened=false;
       try{
-        const m=JSON.parse(e.data);
-        if(m.type==='mod_status'){
-          P.moderation=Object.assign(getDefaultModerationState(),{muted:!!m.muted,banned:!!m.banned,reason:String(m.reason||''),updatedAt:Date.now()});
-          syncSocialAdminUi();
-          if(P.moderation.banned)toast('⛔ Compte banni du chat','d');
-          else if(P.moderation.muted)toast('🔇 Compte mute du chat','w');
+        socialWs=new WebSocket(url);
+      }catch(_){
+        socialWs=null;
+        if(index+1<urls.length){
+          updateSocialWsStatus('↻ Bascule vers '+urls[index+1]);
+          tryConnect(index+1);
           return;
         }
-        if(m.type==='social_chat'&&m.uid!==P.uid){
-          addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed,gamesLost:m.gamesLost,propertiesBought:m.propertiesBought,moneyEarned:m.moneyEarned,titlesCount:m.titlesCount,emojiCount:m.emojiCount});
-        }
-        if(m.type==='social_join'&&m.uid!==P.uid){
-          const f=P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(m.uid));
-          if(f){
-            f.name=m.name;
-            f.color=m.color;
-            f.emoji=m.emoji;
-            f.avatarImg=m.avatarImg||f.avatarImg||null;
-            f.elo=m.elo;
-            f.rankLabel=m.rankLabel||'';
-            f.titleLabel=m.titleLabel||'';
-            f.gamesWon=m.gamesWon;
-            f.gamesPlayed=m.gamesPlayed;
-            saveProfileData();renderFriendsList();
+        updateSocialWsStatus('❌ URL invalide');
+        if(!socialWsManualClose)scheduleSocialWsReconnect();
+        return;
+      }
+      socialWs.onopen=()=>{
+        opened=true;
+        socialWsOk=true;
+        if(input)input.value=url;
+        if(typeof rememberRenderOrigin==='function')rememberRenderOrigin(wsUrlToHttpBase(url));
+        if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
+        updateSocialWsStatus('✅ Connecté à '+url);
+        document.getElementById('social-ws-btn').textContent='⛔';
+        socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID},getSharedChatProfilePayload())));
+      };
+      socialWs.onmessage=e=>{
+        try{
+          const m=JSON.parse(e.data);
+          if(m.type==='mod_status'){
+            P.moderation=Object.assign(getDefaultModerationState(),{muted:!!m.muted,banned:!!m.banned,reason:String(m.reason||''),updatedAt:Date.now()});
+            syncSocialAdminUi();
+            if(P.moderation.banned)toast('⛔ Compte banni du chat','d');
+            else if(P.moderation.muted)toast('🔇 Compte mute du chat','w');
+            return;
           }
+          if(m.type==='social_chat'&&m.uid!==P.uid){
+            addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed,gamesLost:m.gamesLost,propertiesBought:m.propertiesBought,moneyEarned:m.moneyEarned,titlesCount:m.titlesCount,emojiCount:m.emojiCount});
+          }
+          if(m.type==='social_join'&&m.uid!==P.uid){
+            const f=P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(m.uid));
+            if(f){
+              f.name=m.name;
+              f.color=m.color;
+              f.emoji=m.emoji;
+              f.avatarImg=m.avatarImg||f.avatarImg||null;
+              f.elo=m.elo;
+              f.rankLabel=m.rankLabel||'';
+              f.titleLabel=m.titleLabel||'';
+              f.gamesWon=m.gamesWon;
+              f.gamesPlayed=m.gamesPlayed;
+              saveProfileData();renderFriendsList();
+            }
+          }
+        }catch(err){}
+      };
+      socialWs.onerror=()=>{
+        if(!opened&&index+1<urls.length){
+          updateSocialWsStatus('↻ Bascule vers '+urls[index+1]);
+        }else{
+          updateSocialWsStatus('❌ Erreur de connexion');
         }
-      }catch(err){}
+      };
+      socialWs.onclose=()=>{
+        socialWsOk=false;
+        socialWs=null;
+        document.getElementById('social-ws-btn').textContent='🔗';
+        if(socialWsManualClose){
+          updateSocialWsStatus('Déconnecté');
+          return;
+        }
+        if(!opened&&index+1<urls.length){
+          updateSocialWsStatus('↻ Bascule vers '+urls[index+1]);
+          tryConnect(index+1);
+          return;
+        }
+        updateSocialWsStatus('Déconnecté');
+        scheduleSocialWsReconnect();
+      };
     };
-    socialWs.onerror=()=>{updateSocialWsStatus('❌ Erreur de connexion');};
-    socialWs.onclose=()=>{
-      socialWsOk=false;
-      socialWs=null;
-      updateSocialWsStatus('Déconnecté');
-      document.getElementById('social-ws-btn').textContent='🔗';
-      scheduleSocialWsReconnect();
-    };
-  }catch(e){
-    updateSocialWsStatus('❌ URL invalide');
-    socialWs=null;
-    scheduleSocialWsReconnect();
-  }
+    tryConnect(0);
+  };
+
+  const prep=(typeof ensurePreferredRenderOrigin==='function'&&(isRenderWsUrl(requestedUrl)||/\.onrender\.com$/i.test(String(window.location.hostname||''))))
+    ?ensurePreferredRenderOrigin(auto)
+    :Promise.resolve('');
+  Promise.resolve(prep).catch(()=>{}).finally(startConnection);
 }
 
 function toggleSocialWs(){

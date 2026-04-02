@@ -3,7 +3,9 @@
 // ═══════════════════════════════════════
 const GOOGLE_CLIENT_ID='';
 const GOOGLE_CLIENT_ID_KEY='NP_GOOGLE_CLIENT_ID';
-const CANONICAL_RENDER_ORIGIN='https://neopoly-eu.onrender.com';
+const RENDER_FALLBACK_ORIGINS=['https://neopoly-eu.onrender.com','https://neopoly.onrender.com'];
+const RENDER_PREFERRED_ORIGIN_KEY='NP_RENDER_PREFERRED_ORIGIN_V1';
+let renderOriginProbePromise=null;
 
 function getGoogleClientId(){
   const runtime=(window.NEOPOLY_GOOGLE_CLIENT_ID||'').trim();
@@ -12,12 +14,101 @@ function getGoogleClientId(){
   return runtime||stored||inline;
 }
 
+function normalizeOriginUrl(origin){
+  return String(origin||'').trim().replace(/\/$/,'');
+}
+
+function isRenderOrigin(origin){
+  try{
+    return /\.onrender\.com$/i.test(new URL(normalizeOriginUrl(origin)).hostname||'');
+  }catch(_){
+    return false;
+  }
+}
+
+function getStoredRenderOrigin(){
+  try{
+    const stored=normalizeOriginUrl(localStorage.getItem(RENDER_PREFERRED_ORIGIN_KEY)||'');
+    return isRenderOrigin(stored)?stored:'';
+  }catch(_){
+    return '';
+  }
+}
+
+function rememberRenderOrigin(origin){
+  const normalized=normalizeOriginUrl(origin);
+  if(!isRenderOrigin(normalized))return '';
+  window.NEOPOLY_API_BASE=normalized;
+  try{localStorage.setItem(RENDER_PREFERRED_ORIGIN_KEY,normalized);}catch(_){ }
+  return normalized;
+}
+
 function getCanonicalRenderOrigin(){
-  const configured=(window.NEOPOLY_CANONICAL_ORIGIN||'').trim();
-  if(configured)return configured.replace(/\/$/,'');
-  const host=String(window.location.hostname||'').toLowerCase();
-  if(host==='neopoly.onrender.com'||host==='neopoly-eu.onrender.com')return CANONICAL_RENDER_ORIGIN;
+  const configured=normalizeOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
+  if(configured)return configured;
+  const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
+  if(isRenderOrigin(active))return active;
+  const stored=getStoredRenderOrigin();
+  if(stored)return stored;
+  const current=normalizeOriginUrl(window.location.origin||'');
+  if(isRenderOrigin(current))return current;
   return '';
+}
+
+function getRenderOriginCandidates(){
+  const current=normalizeOriginUrl(window.location.origin||'');
+  const configured=normalizeOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
+  const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
+  const stored=getStoredRenderOrigin();
+  const onRenderHost=/\.onrender\.com$/i.test(String(window.location.hostname||''));
+  const wantsRender=onRenderHost||isRenderOrigin(configured)||isRenderOrigin(active)||isRenderOrigin(stored)||isRenderOrigin(current);
+  const seen=new Set();
+  const pool=wantsRender?[configured,active,stored,current].concat(RENDER_FALLBACK_ORIGINS):[configured,active,stored,current];
+  return pool.filter(origin=>{
+    const normalized=normalizeOriginUrl(origin);
+    if(!normalized||!isRenderOrigin(normalized)||seen.has(normalized))return false;
+    seen.add(normalized);
+    return true;
+  });
+}
+
+async function probeRenderOrigin(origin,timeoutMs=3500){
+  const base=normalizeOriginUrl(origin);
+  if(!isRenderOrigin(base))return false;
+  try{
+    const ctl=new AbortController();
+    const t=setTimeout(()=>ctl.abort(),timeoutMs);
+    const r=await fetch(base+'/api/health',{signal:ctl.signal,cache:'no-store'});
+    clearTimeout(t);
+    const data=await r.json().catch(()=>null);
+    return !!(r.ok&&data&&data.ok);
+  }catch(_){
+    return false;
+  }
+}
+
+function ensurePreferredRenderOrigin(force=false){
+  const shouldProbe=!!(getRenderOriginCandidates().length);
+  if(!shouldProbe)return Promise.resolve('');
+  if(!force){
+    const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
+    if(isRenderOrigin(active))return Promise.resolve(active);
+  }
+  if(renderOriginProbePromise&&!force)return renderOriginProbePromise;
+  renderOriginProbePromise=(async()=>{
+    const candidates=getRenderOriginCandidates();
+    for(const candidate of candidates){
+      if(await probeRenderOrigin(candidate,2800)){
+        const chosen=rememberRenderOrigin(candidate);
+        pushGoogleDebug('Render origin actif: '+chosen);
+        return chosen;
+      }
+    }
+    const fallback=candidates[0]||'';
+    if(fallback)rememberRenderOrigin(fallback);
+    return fallback;
+  })().finally(()=>{renderOriginProbePromise=null;});
+  return renderOriginProbePromise;
 }
 
 function getGoogleApiBase(){
@@ -785,6 +876,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   try{googleZoneAlwaysRedirect=localStorage.getItem('NP_ZONE_ULTRASAFE_REDIRECT')==='1';}catch(_){googleZoneAlwaysRedirect=false;}
   updateConnectionZoneUi();
   initDefaultWsUrlInputs();
+  ensurePreferredRenderOrigin(false).then(()=>initDefaultWsUrlInputs()).catch(()=>{});
   loadJoinBrowserPrefs();
   setJoinRoomFilter(JOIN_ROOM_FILTER);
   setJoinRoomSort(JOIN_ROOM_SORT);
@@ -1409,8 +1501,8 @@ let JOIN_ROOM_REFRESH_IN_FLIGHT=false;
 
 // ── LOBBY TABS ──
 function getDefaultWsUrl(){
-  const renderOrigin=getCanonicalRenderOrigin();
-  if(renderOrigin){
+  const renderOrigin=getGoogleApiBase();
+  if(isRenderOrigin(renderOrigin)){
     return renderOrigin.replace(/^http/i,'ws');
   }
   const isSecure=window.location.protocol==='https:';
@@ -1436,7 +1528,7 @@ function initDefaultWsUrlInputs(){
       input.value=defaultUrl;
       return;
     }
-    // Auto-fix old values like wss://<same-host>:3000 when deployed behind HTTPS proxies (Render).
+    // Auto-fix old or stale Render WS values and keep a single healthy endpoint.
     try{
       const u=new URL(current);
       const sameHost=u.hostname===window.location.hostname;
@@ -2285,13 +2377,33 @@ function wsUrlToHttpBase(wsUrl){
   }
 }
 
+function isRenderWsUrl(wsUrl){
+  return isRenderOrigin(wsUrlToHttpBase(wsUrl));
+}
+
+function getWsFallbackUrls(preferredUrl){
+  const seen=new Set();
+  const urls=[];
+  const add=url=>{
+    const value=String(url||'').trim();
+    if(!value||seen.has(value))return;
+    seen.add(value);
+    urls.push(value);
+  };
+  add(preferredUrl);
+  if(isRenderWsUrl(preferredUrl)||getRenderOriginCandidates().length){
+    getRenderOriginCandidates().forEach(origin=>add(origin.replace(/^http/i,'ws')));
+  }
+  return urls;
+}
+
 function openNetworkDiagModal(){
   openModal('modal-netdiag');
   runNetworkDiagnostics();
 }
 
 async function runNetworkDiagnostics(){
-  const wsUrl=(document.getElementById('social-ws-url')?.value||document.getElementById('jn-ws')?.value||document.getElementById('cr-ws')?.value||'').trim();
+  const wsUrl=(document.getElementById('social-ws-url')?.value||document.getElementById('jn-ws')?.value||document.getElementById('cr-ws')?.value||getDefaultWsUrl()||'').trim();
   setNetDiagLine('netdiag-health','Test en cours...','info');
   setNetDiagLine('netdiag-ws','Test en cours...','info');
   setNetDiagLine('netdiag-social','Test en cours...','info');
@@ -2301,7 +2413,7 @@ async function runNetworkDiagnostics(){
   let healthOk=false;
   let wsOk=false;
 
-  const healthBase=wsUrlToHttpBase(wsUrl)||window.location.origin;
+  const healthBase=wsUrlToHttpBase(wsUrl)||getGoogleApiBase()||window.location.origin;
   const healthUrl=(healthBase?healthBase.replace(/\/$/,''):'')+'/api/health';
   try{
     const ctl=new AbortController();

@@ -483,14 +483,32 @@ function wsLog(msg){
 }
 
 function connectWs(url,room,onOpen){
-  try{
-    G.ws=new WebSocket(url);
+  const requestedUrl=String(url||'').trim();
+  const urls=getWsFallbackUrls(requestedUrl||getDefaultWsUrl());
+
+  const startConnect=(index)=>{
+    const candidate=urls[index]||requestedUrl;
+    let opened=false;
+    try{
+      G.ws=new WebSocket(candidate);
+    }catch(e){
+      if(index+1<urls.length){
+        wsLog('Bascule auto vers '+urls[index+1]);
+        startConnect(index+1);
+        return;
+      }
+      toast('Erreur connexion WS','d');
+      wsLog('Erreur: '+e);
+      return;
+    }
     G.ws.onopen=()=>{
+      opened=true;
       G.wsOk=true;
+      if(typeof rememberRenderOrigin==='function')rememberRenderOrigin(wsUrlToHttpBase(candidate));
       document.getElementById('ws-dot').style.background='var(--accent)';
       document.getElementById('ws-label').textContent='En ligne';
       document.getElementById('disc-btn').disabled=false;
-      wsLog('Connecté à '+url);
+      wsLog('Connecté à '+candidate);
       if(onOpen)onOpen();
     };
     G.ws.onmessage=e=>{
@@ -559,20 +577,36 @@ function connectWs(url,room,onOpen){
           }
         }
         if(msg.type==='chat'&&msg.sender!==G.myId){
-          addChatMsg(msg.name,msg.color,msg.text,{uid:msg.uid||null,admin:!!msg.admin,emoji:msg.emoji||'',avatarImg:msg.avatarImg||null,elo:msg.elo,rankLabel:msg.rankLabel||'',rankClass:msg.rankClass||'',titleLabel:msg.titleLabel||'',gamesWon:msg.gamesWon,gamesPlayed:msg.gamesPlayed,gamesLost:msg.gamesLost,propertiesBought:msg.propertiesBought,moneyEarned:msg.moneyEarned,titlesCount:msg.titlesCount,emojiCount:msg.emojiCount});
+          addChatMsg(msg.name,msg.color,msg.text,{uid:msg.uid||null,admin:!!msg.admin,emoji:msg.emoji||'',avatarImg:msg.avatarImg||null,elo:msg.elo,rankLabel:msg.rankLabel||'',rankClass:msg.rankClass||'',titleLabel:msg.titleLabel||'',gamesWon:msg.gamesWon,gamesPlayed:msg.gamesPlayed,gamesLost:msg.gamesLost,propertiesBought:msg.propertiesBought,moneyEarned:msg.moneyEarned,titlesCount:msg.titlesCount,emojiCount:msg.emojiCount,profilePrivate:!!msg.profilePrivate});
         }
       }catch(err){wsLog('Erreur parse: '+err);}
     };
-    G.ws.onerror=()=>{wsLog('Erreur WebSocket.');};
+    G.ws.onerror=()=>{
+      if(!opened&&index+1<urls.length){
+        wsLog('Erreur WebSocket, tentative '+urls[index+1]);
+      }else{
+        wsLog('Erreur WebSocket.');
+      }
+    };
     G.ws.onclose=()=>{
       G.wsOk=false;
       G.ws=null;
       document.getElementById('ws-dot').style.background='#6b7280';
       document.getElementById('ws-label').textContent='Hors ligne';
       document.getElementById('disc-btn').disabled=true;
+      if(!opened&&index+1<urls.length){
+        wsLog('Déconnecté, bascule auto vers '+urls[index+1]);
+        startConnect(index+1);
+        return;
+      }
       wsLog('Déconnecté.');
     };
-  }catch(e){toast('Erreur connexion WS','d');wsLog('Erreur: '+e);}
+  };
+
+  const prep=(typeof ensurePreferredRenderOrigin==='function'&&isRenderWsUrl(requestedUrl))
+    ?ensurePreferredRenderOrigin(false)
+    :Promise.resolve('');
+  Promise.resolve(prep).catch(()=>{}).finally(()=>startConnect(0));
 }
 
 function broadcast(){
