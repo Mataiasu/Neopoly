@@ -4001,8 +4001,15 @@ let JOIN_ROOM_REFRESH_IN_FLIGHT=false;
 // ── LOBBY TABS ──
 function getDefaultWsUrl(){
   const isSecure=window.location.protocol==='https:';
-  const host=window.location.hostname||'localhost';
-  return (isSecure?'wss':'ws')+'://'+host+':'+DEFAULT_WS_PORT;
+  const host=window.location.host||'localhost';
+  if(isSecure){
+    return 'wss://'+host;
+  }
+  const p=String(window.location.port||'');
+  if(p==='5500'||p==='5173'){
+    return 'ws://'+(window.location.hostname||'localhost')+':'+DEFAULT_WS_PORT;
+  }
+  return 'ws://'+host;
 }
 
 function initDefaultWsUrlInputs(){
@@ -4012,7 +4019,19 @@ function initDefaultWsUrlInputs(){
     if(!input) return;
     input.placeholder=defaultUrl;
     const current=(input.value||'').trim();
-    if(!current||current==='wss://echo.websocket.org') input.value=defaultUrl;
+    if(!current||current==='wss://echo.websocket.org'){
+      input.value=defaultUrl;
+      return;
+    }
+    // Auto-fix old values like wss://<same-host>:3000 when deployed behind HTTPS proxies (Render).
+    try{
+      const u=new URL(current);
+      const sameHost=u.hostname===window.location.hostname;
+      const forced3000=u.port==='3000';
+      if(window.location.protocol==='https:'&&sameHost&&forced3000){
+        input.value=defaultUrl;
+      }
+    }catch(_){ }
   });
 }
 
