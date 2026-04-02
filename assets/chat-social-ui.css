@@ -3,8 +3,8 @@
 .sc-name{font-weight:700;margin-right:4px}
 .sc-time{font-size:.58rem;color:var(--muted);float:right}
 .sc-me .sc-name{color:var(--accent)}
-.chat-user-link{cursor:pointer;text-decoration:underline dotted rgba(148,163,184,.45);text-underline-offset:2px}
-.chat-user-link:hover{opacity:.92}
+.chat-user-link{cursor:pointer;pointer-events:auto;text-decoration:underline dotted rgba(148,163,184,.45);text-underline-offset:2px}
+.chat-user-link:hover{opacity:.92;filter:brightness(1.06)}
 .chat-user-badge{display:inline-block;font-size:.58rem;padding:1px 6px;border-radius:999px;border:1px solid var(--border);margin-left:4px;color:var(--muted)}
 .chat-user-menu{position:fixed;z-index:4000;min-width:300px;max-width:min(420px,calc(100vw - 16px));padding:12px;background:linear-gradient(180deg,rgba(15,23,42,.97),rgba(2,6,23,.97));border:1px solid rgba(148,163,184,.22);border-radius:18px;box-shadow:0 20px 50px rgba(0,0,0,.42);display:none;backdrop-filter:blur(14px)}
 .chat-user-menu.open{display:block}

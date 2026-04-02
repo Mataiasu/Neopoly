@@ -559,7 +559,7 @@ function connectWs(url,room,onOpen){
           }
         }
         if(msg.type==='chat'&&msg.sender!==G.myId){
-          addChatMsg(msg.name,msg.color,msg.text,{uid:msg.uid||null,admin:!!msg.admin,emoji:msg.emoji||'',avatarImg:msg.avatarImg||null,elo:msg.elo,rankLabel:msg.rankLabel||'',rankClass:msg.rankClass||'',titleLabel:msg.titleLabel||'',gamesWon:msg.gamesWon,gamesPlayed:msg.gamesPlayed});
+          addChatMsg(msg.name,msg.color,msg.text,{uid:msg.uid||null,admin:!!msg.admin,emoji:msg.emoji||'',avatarImg:msg.avatarImg||null,elo:msg.elo,rankLabel:msg.rankLabel||'',rankClass:msg.rankClass||'',titleLabel:msg.titleLabel||'',gamesWon:msg.gamesWon,gamesPlayed:msg.gamesPlayed,gamesLost:msg.gamesLost,propertiesBought:msg.propertiesBought,moneyEarned:msg.moneyEarned,titlesCount:msg.titlesCount,emojiCount:msg.emojiCount});
         }
       }catch(err){wsLog('Erreur parse: '+err);}
     };
@@ -747,24 +747,27 @@ function addChatMsg(name,color,text,meta){
   const sp=document.createElement('span');
   sp.style.cssText='color:'+safeCssColor(color,'#22c55e')+';font-weight:700';
   sp.textContent=(extra.admin?'👑 ':'')+String(name||'Joueur')+':';
-  if(uid&&uid!==P.uid){
-    sp.classList.add('chat-user-link');
-    sp.title='Cliquer pour ouvrir les actions';
-    sp.addEventListener('click',ev=>openChatUserMenu(ev,{
-      uid,
-      name:name||'Joueur',
-      color,
-      admin:!!extra.admin,
-      emoji:extra.emoji||'',
-      avatarImg:extra.avatarImg||null,
-      elo:extra.elo,
-      rankLabel:extra.rankLabel||'',
-      rankClass:extra.rankClass||'',
-      titleLabel:extra.titleLabel||'',
-      gamesWon:extra.gamesWon,
-      gamesPlayed:extra.gamesPlayed
-    }));
-  }
+  sp.classList.add('chat-user-link');
+  sp.title='Cliquer pour ouvrir le profil';
+  sp.addEventListener('click',ev=>openChatUserMenu(ev,{
+    uid,
+    name:name||'Joueur',
+    color,
+    admin:!!extra.admin,
+    emoji:extra.emoji||'',
+    avatarImg:extra.avatarImg||null,
+    elo:extra.elo,
+    rankLabel:extra.rankLabel||'',
+    rankClass:extra.rankClass||'',
+    titleLabel:extra.titleLabel||'',
+    gamesWon:extra.gamesWon,
+    gamesPlayed:extra.gamesPlayed,
+    gamesLost:extra.gamesLost,
+    propertiesBought:extra.propertiesBought,
+    moneyEarned:extra.moneyEarned,
+    titlesCount:extra.titlesCount,
+    emojiCount:extra.emojiCount
+  }));
   el.appendChild(sp);
   el.appendChild(document.createTextNode(' '+(blocked?'🚫 message masqué':(muted?'🔇 message masqué':String(text||'')))));
   log.appendChild(el);
