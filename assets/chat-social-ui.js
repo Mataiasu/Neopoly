@@ -1,0 +1,770 @@
+function copyFriendCode(){
+  navigator.clipboard?.writeText(P.uid).then(()=>toast('📋 Code copié !','i')).catch(()=>{});
+}
+
+function normalizeProfileUid(uid){
+  return String(uid||'').trim();
+}
+
+function hasFriendUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.friends)&&P.friends.some(f=>normalizeProfileUid(f.uid)===key));
+}
+
+function isLocallyMutedUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.mutedUsers)&&P.mutedUsers.includes(key));
+}
+
+function isLocallyBlockedUid(uid){
+  const key=normalizeProfileUid(uid);
+  return !!(key&&Array.isArray(P.blockedUsers)&&P.blockedUsers.includes(key));
+}
+
+function setLocalUidMembership(listKey,uid,enabled){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return false;
+  if(!Array.isArray(P[listKey]))P[listKey]=[];
+  if(enabled){
+    if(!P[listKey].includes(key))P[listKey].push(key);
+  }else{
+    P[listKey]=P[listKey].filter(v=>v!==key);
+  }
+  return true;
+}
+
+function addFriendFromProfile(profile,opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  const msg=document.getElementById('add-friend-msg');
+  const uid=normalizeProfileUid(profile&&profile.uid);
+  const name=String(profile&&profile.name||'Ami').trim()||'Ami';
+  if(!uid){
+    if(msg&&!options.silent){msg.style.color='var(--red)';msg.textContent='UID ami introuvable.';}
+    return false;
+  }
+  if(uid===P.uid){
+    if(msg&&!options.silent){msg.style.color='var(--red)';msg.textContent="Tu ne peux pas t'ajouter toi-même.";}
+    return false;
+  }
+  if(isLocallyBlockedUid(uid)){
+    if(msg&&!options.silent){msg.style.color='var(--yellow)';msg.textContent="Débloque ce joueur avant de l'ajouter.";}
+    toast("🚫 Débloque ce joueur avant de l'ajouter en ami",'w');
+    return false;
+  }
+  const safeColor=safeCssColor(profile&&profile.color,'#6b7280');
+  const existing=P.friends.find(f=>normalizeProfileUid(f.uid)===uid);
+  const payload={
+    uid,
+    name,
+    emoji:String(profile&&profile.emoji||existing&&existing.emoji||'👤'),
+    avatarImg:(profile&&profile.avatarImg)||(existing&&existing.avatarImg)||null,
+    color:safeColor,
+    elo:Math.max(0,parseInt(profile&&profile.elo,10)||parseInt(existing&&existing.elo,10)||0),
+    rankLabel:String(profile&&profile.rankLabel||existing&&existing.rankLabel||''),
+    titleLabel:String(profile&&profile.titleLabel||existing&&existing.titleLabel||''),
+    gamesWon:Math.max(0,parseInt(profile&&profile.gamesWon,10)||parseInt(existing&&existing.gamesWon,10)||0),
+    gamesPlayed:Math.max(0,parseInt(profile&&profile.gamesPlayed,10)||parseInt(existing&&existing.gamesPlayed,10)||0),
+    addedAt:(existing&&existing.addedAt)||Date.now()
+  };
+  if(existing){
+    Object.assign(existing,payload);
+    saveProfileData();renderFriendsList();
+    if(msg&&!options.silent){msg.style.color='var(--yellow)';msg.textContent='Cet ami est déjà dans ta liste.';}
+    return false;
+  }
+  P.friends.push(payload);
+  saveProfileData();renderFriendsList();
+  if(msg&&!options.silent){msg.style.color='var(--accent)';msg.textContent='✅ Ami ajouté !';}
+  toast('👫 Ami ajouté !','a');
+  return true;
+}
+
+function getActiveProfileTitleLabel(profile){
+  const source=profile&&typeof profile==='object'?profile:P;
+  if(source&&source.titleLabel)return String(source.titleLabel||'');
+  if(Array.isArray(source?.titles)&&source.titles.includes('winner_looser'))return '🏅 Winner Looser';
+  const key=source&&source.selectedTitle;
+  if(key&&typeof TITLE_DEFS!=='undefined'&&TITLE_DEFS[key])return String(TITLE_DEFS[key].label||'');
+  return '';
+}
+
+function getSharedChatProfilePayload(sourceProfile){
+  const source=sourceProfile&&typeof sourceProfile==='object'?sourceProfile:P;
+  const stats=source&&typeof source.stats==='object'&&source.stats?source.stats:{};
+  const elo=Math.max(0,parseInt(source&&source.elo,10)||0);
+  const rank=(typeof getEloRankInfo==='function')?getEloRankInfo(elo):{label:'— Non Rankée',cls:'er-unranked'};
+  return {
+    uid:normalizeProfileUid(source&&source.uid||P.uid),
+    name:String(source&&source.name||P.name||'Joueur').trim()||'Joueur',
+    color:safeCssColor(source&&source.color||P.color,'#22c55e'),
+    emoji:String(source&&source.emoji||P.emoji||'👤'),
+    avatarImg:(source&&source.avatarImg)||null,
+    admin:!!(source&&source.admin)||!!(source&&source.isAdmin),
+    elo,
+    rankLabel:String(rank.label||'— Non Rankée'),
+    rankClass:String(rank.cls||'er-unranked'),
+    titleLabel:getActiveProfileTitleLabel(source),
+    gamesWon:Math.max(0,parseInt(stats.gamesWon,10)||0),
+    gamesPlayed:Math.max(0,parseInt(stats.gamesPlayed,10)||0),
+  };
+}
+
+function getChatUserRarityClass(rankInfo){
+  const cls=String(rankInfo&&rankInfo.cls||'er-unranked').toLowerCase();
+  if(cls.includes('legend'))return 'chat-rarity-legend';
+  if(cls.includes('diamond'))return 'chat-rarity-diamond';
+  if(cls.includes('plat'))return 'chat-rarity-plat';
+  if(cls.includes('gold'))return 'chat-rarity-gold';
+  if(cls.includes('silver'))return 'chat-rarity-silver';
+  if(cls.includes('bronze'))return 'chat-rarity-bronze';
+  return 'chat-rarity-unranked';
+}
+
+function toggleLocalMuteUser(uid,name){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return;
+  const next=!isLocallyMutedUid(key);
+  setLocalUidMembership('mutedUsers',key,next);
+  saveProfileData();
+  renderSocialChat();
+  closeChatUserMenu();
+  toast((next?'🔇 ':'🔊 ')+(name||'Utilisateur')+(next?' est maintenant en sourdine':' n est plus en sourdine'),'i');
+}
+
+function toggleBlockedUser(uid,name){
+  const key=normalizeProfileUid(uid);
+  if(!key||key===P.uid)return;
+  const next=!isLocallyBlockedUid(key);
+  setLocalUidMembership('blockedUsers',key,next);
+  if(next){
+    P.friends=P.friends.filter(f=>normalizeProfileUid(f.uid)!==key);
+  }
+  saveProfileData();
+  renderFriendsList();
+  renderSocialChat();
+  closeChatUserMenu();
+  toast((next?'🚫 ':'✅ ')+(name||'Utilisateur')+(next?' a été bloqué':' a été débloqué'),'i');
+}
+
+function makeChatUserMenuButton(label,className,onClick){
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='btn btn-xs '+(className||'btn-secondary');
+  btn.textContent=label;
+  btn.addEventListener('click',ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(typeof onClick==='function')onClick();
+  });
+  return btn;
+}
+
+function makeChatUserTag(label,className){
+  const tag=document.createElement('span');
+  tag.className='chat-user-tag'+(className?(' '+className):'');
+  tag.textContent=label;
+  return tag;
+}
+
+function copyChatUserUid(uid){
+  const value=normalizeProfileUid(uid);
+  if(!value)return;
+  navigator.clipboard?.writeText(value)
+    .then(()=>toast('📋 Code ami copié !','i'))
+    .catch(()=>toast('Copie impossible','w'));
+}
+
+function closeChatUserMenu(){
+  const menu=document.getElementById('chat-user-menu');
+  if(!menu)return;
+  menu.classList.remove('open');
+  menu.innerHTML='';
+}
+
+function openChatUserMenu(event,user){
+  const incoming=user&&typeof user==='object'?user:{};
+  const fallbackFriend=Array.isArray(P.friends)?P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(incoming.uid))||{}:{};
+  const profile=Object.assign({},fallbackFriend,incoming);
+  const uid=normalizeProfileUid(profile.uid);
+  if(!uid||uid===P.uid)return;
+  if(event){
+    event.preventDefault();
+    event.stopPropagation();
+  }
+  let menu=document.getElementById('chat-user-menu');
+  if(!menu){
+    menu=document.createElement('div');
+    menu.id='chat-user-menu';
+    menu.className='chat-user-menu';
+    document.body.appendChild(menu);
+  }
+
+  const name=String(profile.name||'Joueur').trim()||'Joueur';
+  const color=safeCssColor(profile.color,'#22c55e');
+  const friend=hasFriendUid(uid);
+  const muted=isLocallyMutedUid(uid);
+  const blocked=isLocallyBlockedUid(uid);
+  const hasSharedStats=(profile.elo!==undefined||profile.rankLabel||profile.gamesWon!==undefined||profile.gamesPlayed!==undefined);
+  const elo=hasSharedStats?Math.max(0,parseInt(profile.elo,10)||0):0;
+  const rank=hasSharedStats?getEloRankInfo(elo):{label:String(profile.rankLabel||'— Stats privées'),cls:'er-unranked',tier:'Inconnu'};
+  const wins=hasSharedStats?Math.max(0,parseInt(profile.gamesWon,10)||0):0;
+  const games=hasSharedStats?Math.max(0,parseInt(profile.gamesPlayed,10)||0):0;
+  const winRate=hasSharedStats&&games>0?Math.round((wins/games)*100):0;
+  const titleText=String(profile.titleLabel||getActiveProfileTitleLabel(profile)||'').trim();
+  const rarityClass=getChatUserRarityClass(rank);
+
+  const card=document.createElement('div');
+  card.className='chat-user-card '+rarityClass;
+  card.style.setProperty('--chat-user-accent-soft',color+'22');
+  card.style.borderColor=color+'55';
+  if(rarityClass==='chat-rarity-legend')card.style.boxShadow='0 0 0 1px rgba(250,204,21,.14), 0 14px 34px rgba(168,85,247,.20)';
+
+  const profileRow=document.createElement('div');
+  profileRow.className='chat-user-profile';
+
+  const avatar=document.createElement('div');
+  avatar.className='chat-user-avatar';
+  avatar.style.borderColor=color;
+  if(profile.avatarImg){
+    const img=document.createElement('img');
+    img.src=profile.avatarImg;
+    img.alt='avatar';
+    avatar.appendChild(img);
+  }else{
+    avatar.style.background=color+'22';
+    avatar.textContent=profile.emoji||'👤';
+  }
+
+  const meta=document.createElement('div');
+  meta.className='chat-user-meta';
+
+  const head=document.createElement('div');
+  head.className='chat-user-menu-head';
+  head.style.color=color;
+  head.textContent=(profile.admin?'👑 ':'')+name;
+
+  const sub=document.createElement('div');
+  sub.className='chat-user-menu-sub';
+  sub.textContent='Carte joueur du chat';
+
+  const tags=document.createElement('div');
+  tags.className='chat-user-tags';
+  if(profile.admin)tags.appendChild(makeChatUserTag('Admin','admin'));
+  if(friend)tags.appendChild(makeChatUserTag('Ami','friend'));
+  if(muted)tags.appendChild(makeChatUserTag('Muet local','muted'));
+  if(blocked)tags.appendChild(makeChatUserTag('Bloqué','blocked'));
+  if(!tags.children.length)tags.appendChild(makeChatUserTag('Joueur'));
+
+  meta.append(head,sub,tags);
+  profileRow.append(avatar,meta);
+  card.appendChild(profileRow);
+
+  const titleEl=document.createElement('div');
+  titleEl.className='chat-user-title';
+  titleEl.textContent=titleText||(hasSharedStats?'Aucun titre équipé':'Stats non partagées');
+  card.appendChild(titleEl);
+
+  const rankLine=document.createElement('div');
+  rankLine.className='chat-user-rank-line';
+  const rankBadge=document.createElement('span');
+  rankBadge.className='elo-rank-badge '+String(rank.cls||'er-unranked');
+  rankBadge.textContent=String(rank.label||'— Stats privées');
+  const rankValue=document.createElement('strong');
+  rankValue.style.color='#e2e8f0';
+  rankValue.style.fontSize='.78rem';
+  rankValue.textContent=hasSharedStats?('ELO '+elo):'ELO —';
+  rankLine.append(rankBadge,rankValue);
+  card.appendChild(rankLine);
+
+  const stats=document.createElement('div');
+  stats.className='chat-user-stats';
+  [
+    {val:hasSharedStats?elo:'—',label:'📊 ELO'},
+    {val:hasSharedStats?wins:'—',label:'🏆 Wins'},
+    {val:hasSharedStats?games:'—',label:'🎮 Parties'},
+    {val:hasSharedStats?(games>0?(winRate+'%'):'—'):'—',label:'⚡ Winrate'}
+  ].forEach(item=>{
+    const box=document.createElement('div');
+    box.className='chat-user-stat';
+    const val=document.createElement('div');
+    val.className='chat-user-stat-val';
+    val.textContent=String(item.val);
+    const label=document.createElement('div');
+    label.className='chat-user-stat-label';
+    label.textContent=item.label;
+    box.append(val,label);
+    stats.appendChild(box);
+  });
+  card.appendChild(stats);
+
+  const progress=document.createElement('div');
+  progress.className='chat-user-progress';
+  const progressTop=document.createElement('div');
+  progressTop.className='chat-user-progress-top';
+  const progressLabel=document.createElement('span');
+  const progressHint=document.createElement('span');
+  const progressBar=document.createElement('div');
+  progressBar.className='chat-user-progress-bar';
+  const progressFill=document.createElement('div');
+  progressFill.className='chat-user-progress-fill';
+
+  if(hasSharedStats){
+    const tiersAsc=[...ELO_TIERS].reverse();
+    const currentTier=tiersAsc.filter(t=>elo>=t.min).slice(-1)[0]||tiersAsc[0];
+    const nextTier=tiersAsc.find(t=>elo<t.min)||null;
+    let pct=100;
+    if(nextTier){
+      const span=Math.max(1,nextTier.min-currentTier.min);
+      pct=Math.max(0,Math.min(100,Math.round(((elo-currentTier.min)/span)*100)));
+      progressLabel.textContent='Progression vers '+nextTier.icon+' '+nextTier.name;
+      progressHint.textContent=(nextTier.min-elo)+' pts';
+    }else{
+      progressLabel.textContent='Rang maximum atteint';
+      progressHint.textContent='MAX';
+    }
+    progressFill.style.width=pct+'%';
+  }else{
+    progressLabel.textContent='Aucune statistique partagée';
+    progressHint.textContent='—';
+    progressFill.style.width='0%';
+  }
+
+  progressBar.appendChild(progressFill);
+  progressTop.append(progressLabel,progressHint);
+  progress.append(progressTop,progressBar);
+  card.appendChild(progress);
+
+  const note=document.createElement('div');
+  note.className='chat-user-note';
+  note.textContent=hasSharedStats?'Profil mis à jour via le chat.':'Le joueur n a pas encore partagé ses stats.';
+  card.appendChild(note);
+
+  const copyRow=document.createElement('div');
+  copyRow.className='chat-user-menu-copy';
+  const code=document.createElement('code');
+  code.textContent=uid;
+  const copyBtn=makeChatUserMenuButton('📋 Copier','btn-secondary',()=>copyChatUserUid(uid));
+  copyBtn.classList.add('btn-wide');
+  copyRow.append(code,copyBtn);
+
+  const actions=document.createElement('div');
+  actions.className='chat-user-menu-actions';
+  actions.appendChild(makeChatUserMenuButton(friend?'❌ Retirer ami':'👫 Ajouter en ami',friend?'btn-secondary':'btn-blue',()=>{
+    if(friend){
+      removeFriend(uid);
+      closeChatUserMenu();
+      toast('👫 Ami retiré','i');
+    }else{
+      addFriendFromProfile(profile,{silent:false});
+      closeChatUserMenu();
+    }
+  }));
+  actions.appendChild(makeChatUserMenuButton(muted?'🔊 Unmute local':'🔇 Mute local','btn-secondary',()=>toggleLocalMuteUser(uid,name)));
+  actions.appendChild(makeChatUserMenuButton(blocked?'✅ Débloquer':'🚫 Bloquer',blocked?'btn-blue':'btn-danger',()=>toggleBlockedUser(uid,name)));
+
+  menu.innerHTML='';
+  menu.appendChild(card);
+  menu.appendChild(copyRow);
+  menu.appendChild(actions);
+
+  if(P.isAdmin){
+    const sep=document.createElement('div');
+    sep.className='chat-user-menu-sep';
+    menu.appendChild(sep);
+
+    const adminActions=document.createElement('div');
+    adminActions.className='chat-user-menu-actions';
+    adminActions.appendChild(makeChatUserMenuButton('🎯 Cibler','btn-secondary',()=>{
+      prepareModerationTarget(uid,name);
+      closeChatUserMenu();
+    }));
+    adminActions.appendChild(makeChatUserMenuButton('Mute','btn-secondary',()=>moderateTarget('mute',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Unmute','btn-secondary',()=>moderateTarget('unmute',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Ban','btn-danger',()=>moderateTarget('ban',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('Unban','btn-blue',()=>moderateTarget('unban',uid,name)));
+    menu.appendChild(adminActions);
+  }
+
+  menu.classList.add('open');
+  menu.style.left='10px';
+  menu.style.top='10px';
+
+  const rect=(event&&event.currentTarget&&typeof event.currentTarget.getBoundingClientRect==='function')
+    ?event.currentTarget.getBoundingClientRect()
+    :(event&&event.target&&typeof event.target.getBoundingClientRect==='function'
+      ?event.target.getBoundingClientRect()
+      :null);
+
+  requestAnimationFrame(()=>{
+    const margin=10;
+    const width=menu.offsetWidth||280;
+    const height=menu.offsetHeight||260;
+    let left=rect?rect.left:margin;
+    let top=rect?(rect.bottom+6):margin;
+    const maxLeft=window.innerWidth-width-margin;
+    const maxTop=window.innerHeight-height-margin;
+    if(left>maxLeft)left=Math.max(margin,maxLeft);
+    if(top>maxTop)top=Math.max(margin,(rect?rect.top-height-6:margin));
+    menu.style.left=left+'px';
+    menu.style.top=top+'px';
+  });
+}
+
+document.addEventListener('click',ev=>{
+  const menu=document.getElementById('chat-user-menu');
+  if(menu&&menu.classList.contains('open')&&!menu.contains(ev.target))closeChatUserMenu();
+});
+window.addEventListener('resize',()=>closeChatUserMenu());
+window.addEventListener('scroll',()=>closeChatUserMenu(),true);
+document.addEventListener('keydown',ev=>{
+  if(ev.key==='Escape')closeChatUserMenu();
+});
+
+function renderFriendsList(){
+  const area=document.getElementById('friends-list-area');if(!area)return;
+  if(!P.friends.length){
+    area.innerHTML='<div style="font-size:.72rem;color:var(--muted);text-align:center;padding:10px">Aucun ami pour l\'instant.<br>Partage ton code !</div>';
+    return;
+  }
+  area.innerHTML='';
+  P.friends.forEach(f=>{
+    const row=document.createElement('div');row.className='friend-row';
+    const safeColor=safeCssColor(f.color,'#6b7280');
+    const avatar=document.createElement('div');
+    avatar.className='friend-avatar';
+    avatar.style.borderColor=safeColor;
+    if(f.avatarImg){
+      const img=document.createElement('img');
+      img.src=f.avatarImg;
+      img.alt='avatar';
+      avatar.appendChild(img);
+    }else{
+      avatar.style.background=safeColor+'22';
+      avatar.style.fontSize='1rem';
+      avatar.textContent=f.emoji||'👤';
+    }
+    const name=document.createElement('span');
+    name.className='friend-name';
+    name.style.color=safeColor;
+    name.textContent=f.name||'Ami';
+    const date=document.createElement('span');
+    date.style.fontSize='.6rem';
+    date.style.color='var(--muted)';
+    date.style.marginRight='6px';
+    date.textContent=new Date(f.addedAt).toLocaleDateString('fr-FR');
+    const btn=document.createElement('button');
+    btn.className='btn btn-xs btn-danger';
+    btn.textContent='✕';
+    btn.addEventListener('click',()=>removeFriend(f.uid));
+    row.appendChild(avatar);
+    row.appendChild(name);
+    row.appendChild(date);
+    row.appendChild(btn);
+    area.appendChild(row);
+  });
+}
+
+function addFriend(){
+  const inp=document.getElementById('add-friend-input');
+  const msg=document.getElementById('add-friend-msg');
+  const code=normalizeProfileUid(inp?.value||'');
+  if(!code){if(msg)msg.style.color='var(--red)';if(msg)msg.textContent='Saisis un code ami.';return;}
+  const ok=addFriendFromProfile({uid:code,name:'Ami ('+code.slice(-4)+')',emoji:'👤',avatarImg:null,color:'#6b7280'},{silent:false});
+  if(ok&&inp)inp.value='';
+}
+
+function removeFriend(uid){
+  P.friends=P.friends.filter(f=>normalizeProfileUid(f.uid)!==normalizeProfileUid(uid));
+  saveProfileData();renderFriendsList();
+}
+
+let socialWs=null,socialWsOk=false,socialWsManualClose=false,socialWsReconnectTimer=null;
+const SOCIAL_ROOM_ID='social-lobby';
+let socialChatRenderQueued=false;
+let socialChatPersistTimer=null;
+
+function queueSocialChatUiRefresh(){
+  if(socialChatRenderQueued)return;
+  socialChatRenderQueued=true;
+  requestAnimationFrame(()=>{
+    socialChatRenderQueued=false;
+    renderSocialChat();
+  });
+}
+
+function queueSocialChatPersist(){
+  if(socialChatPersistTimer)clearTimeout(socialChatPersistTimer);
+  socialChatPersistTimer=setTimeout(()=>{
+    socialChatPersistTimer=null;
+    saveProfileData();
+  },120);
+}
+
+function renderSocialChat(){
+  const log=document.getElementById('social-chat-log');if(!log)return;
+  log.innerHTML='';
+  P.chatLog.slice(-60).forEach(m=>{
+    const uid=normalizeProfileUid(m.uid);
+    const isMuted=isLocallyMutedUid(uid);
+    const isBlocked=isLocallyBlockedUid(uid);
+    const isFriend=hasFriendUid(uid);
+    const d=document.createElement('div');
+    d.className='sc-msg'+(m.mine?' sc-me':'');
+
+    const nm=document.createElement('span');
+    nm.className='sc-name'+((uid&&uid!==P.uid)?' chat-user-link':'');
+    nm.style.color=safeCssColor(m.color,'#22c55e');
+    nm.textContent=(m.admin?'👑 ':'')+(m.name||'Joueur');
+    if(uid&&uid!==P.uid){
+      nm.title='Cliquer pour ouvrir les actions';
+      nm.addEventListener('click',ev=>openChatUserMenu(ev,{
+        uid,
+        name:m.name||'Joueur',
+        color:m.color,
+        admin:!!m.admin,
+        emoji:m.emoji||'',
+        avatarImg:m.avatarImg||null,
+        elo:m.elo,
+        rankLabel:m.rankLabel||'',
+        rankClass:m.rankClass||'',
+        titleLabel:m.titleLabel||'',
+        gamesWon:m.gamesWon,
+        gamesPlayed:m.gamesPlayed
+      }));
+    }
+
+    const tm=document.createElement('span');
+    tm.className='sc-time';
+    tm.textContent=new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+
+    d.appendChild(nm);
+    if(isFriend||isMuted||isBlocked){
+      const badge=document.createElement('span');
+      badge.className='chat-user-badge';
+      badge.textContent=isBlocked?'bloqué':(isMuted?'muet local':'ami');
+      d.appendChild(badge);
+    }
+    d.appendChild(tm);
+
+    const line=document.createElement('div');
+    if(isBlocked){
+      line.style.color='var(--muted)';
+      line.textContent='🚫 Utilisateur bloqué — message masqué';
+    }else if(isMuted){
+      line.style.color='var(--muted)';
+      line.textContent='🔇 Utilisateur en sourdine — message masqué';
+    }else{
+      line.textContent=String(m.text||'');
+    }
+    d.appendChild(line);
+    log.appendChild(d);
+  });
+  log.scrollTop=log.scrollHeight;
+  syncSocialAdminUi();
+}
+
+function addSocialMsg(name,color,text,mine,meta){
+  const extra=meta&&typeof meta==='object'?meta:{};
+  P.chatLog.push({
+    name,
+    color,
+    text,
+    ts:Date.now(),
+    mine:!!mine,
+    uid:extra.uid||null,
+    admin:!!extra.admin,
+    emoji:extra.emoji||'',
+    avatarImg:extra.avatarImg||null,
+    elo:extra.elo,
+    rankLabel:extra.rankLabel||'',
+    rankClass:extra.rankClass||'',
+    titleLabel:extra.titleLabel||'',
+    gamesWon:extra.gamesWon,
+    gamesPlayed:extra.gamesPlayed
+  });
+  if(P.chatLog.length>200)P.chatLog.shift();
+  queueSocialChatPersist();
+  queueSocialChatUiRefresh();
+}
+
+function syncSocialAdminUi(){
+  const status=document.getElementById('social-chat-role');
+  const tools=document.getElementById('social-admin-tools');
+  const input=document.getElementById('social-chat-input');
+  const sendBtn=document.getElementById('social-send-btn');
+  const mod=P.moderation||getDefaultModerationState();
+  const blocked=!!(mod.banned||mod.muted);
+  if(status){
+    if(P.isAdmin){
+      status.innerHTML='<span style="color:#facc15;font-weight:800">👑 Administrateur</span>';
+    }else if(mod.banned){
+      status.innerHTML='<span style="color:#fca5a5">⛔ Chat désactivé (banni)'+(mod.reason?' — '+escapeHtml(mod.reason):'')+'</span>';
+    }else if(mod.muted){
+      status.innerHTML='<span style="color:#fbbf24">🔇 Chat désactivé (mute)'+(mod.reason?' — '+escapeHtml(mod.reason):'')+'</span>';
+    }else{
+      status.textContent='';
+    }
+  }
+  if(tools)tools.style.display=P.isAdmin?'block':'none';
+  if(input){
+    input.disabled=blocked;
+    input.placeholder=mod.banned?'Chat indisponible (banni)':(mod.muted?'Chat indisponible (mute)':'Message…');
+  }
+  if(sendBtn)sendBtn.disabled=blocked;
+}
+
+async function refreshModerationStatus(silent=true){
+  try{
+    const base=getGoogleApiBase();
+    if(!base)throw new Error('missing_api_base');
+    const r=await fetch(base+'/api/mod/status',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid:P.uid,googleSub:P.googleSub||'',email:P.googleEmail||''}),
+    });
+    const data=await r.json();
+    if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');
+    P.isAdmin=!!data.isAdmin||isKnownAdminEmail(P.googleEmail);
+    P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
+  }catch(_){
+    P.isAdmin=isKnownAdminEmail(P.googleEmail);
+    if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
+  }
+  syncSocialAdminUi();
+  renderLobbyProfileTab();
+  renderSocialChat();
+  if(!silent&&P.isAdmin)toast('👑 Mode admin actif','i');
+}
+
+function prepareModerationTarget(uid,name){
+  const input=document.getElementById('social-mod-target');
+  if(!input)return;
+  input.value=String(uid||'').trim();
+  input.placeholder=(name?('UID cible — '+name):'UID cible…');
+  input.focus();
+}
+
+async function moderateTarget(action,targetUid,targetName){
+  if(!P.isAdmin){toast('Action reservee a l admin','d');return;}
+  const input=document.getElementById('social-mod-target');
+  const uid=String(targetUid||input?.value||'').trim();
+  if(!uid){toast('Entre un UID cible','w');return;}
+  const reason=(action==='ban'||action==='mute')?(prompt('Raison (optionnelle) ?','')||''):'';
+  try{
+    const r=await fetch(getGoogleApiBase()+'/api/mod/action',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action,
+        adminEmail:P.googleEmail||'',
+        adminUid:P.uid,
+        adminGoogleSub:P.googleSub||'',
+        targetUid:uid,
+        reason,
+      }),
+    });
+    const data=await r.json();
+    if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_action_failed');
+    if(input)input.value=uid;
+    toast('Action '+action+' appliquée à '+(targetName||uid),'a');
+  }catch(e){
+    toast('Erreur modération: '+String(e&&e.message||'mod_action_failed'),'d');
+  }
+}
+
+function sendSocialChat(){
+  const mod=P.moderation||getDefaultModerationState();
+  if(mod.banned){toast('⛔ Ce compte est banni du chat','d');return;}
+  if(mod.muted){toast('🔇 Ce compte est mute','w');return;}
+  const inp=document.getElementById('social-chat-input');
+  const text=(inp?.value||'').trim();if(!text)return;
+  inp.value='';
+  const chatProfile=getSharedChatProfilePayload();
+  addSocialMsg(P.name,P.color,text,true,chatProfile);
+  if(socialWs&&socialWsOk){
+    try{socialWs.send(JSON.stringify(Object.assign({type:'social_chat',room:SOCIAL_ROOM_ID,text},chatProfile)));}
+    catch(e){}
+  }
+}
+
+function scheduleSocialWsReconnect(){
+  if(socialWsManualClose)return;
+  if(socialWsReconnectTimer)clearTimeout(socialWsReconnectTimer);
+  socialWsReconnectTimer=setTimeout(()=>connectSocialWs(true),2200);
+}
+
+function connectSocialWs(auto=false){
+  if(socialWs||socialWsOk)return;
+  const url=(document.getElementById('social-ws-url')?.value||'').trim();
+  if(!url){if(!auto)toast('Entre une URL WebSocket','w');return;}
+  socialWsManualClose=false;
+  updateSocialWsStatus(auto?'Connexion auto...':'Connexion…');
+  try{
+    socialWs=new WebSocket(url);
+    socialWs.onopen=()=>{
+      socialWsOk=true;
+      if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
+      updateSocialWsStatus('✅ Connecté à '+url);
+      document.getElementById('social-ws-btn').textContent='⛔';
+      socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID},getSharedChatProfilePayload())));
+    };
+    socialWs.onmessage=e=>{
+      try{
+        const m=JSON.parse(e.data);
+        if(m.type==='mod_status'){
+          P.moderation=Object.assign(getDefaultModerationState(),{muted:!!m.muted,banned:!!m.banned,reason:String(m.reason||''),updatedAt:Date.now()});
+          syncSocialAdminUi();
+          if(P.moderation.banned)toast('⛔ Compte banni du chat','d');
+          else if(P.moderation.muted)toast('🔇 Compte mute du chat','w');
+          return;
+        }
+        if(m.type==='social_chat'&&m.uid!==P.uid){
+          addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed});
+        }
+        if(m.type==='social_join'&&m.uid!==P.uid){
+          const f=P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(m.uid));
+          if(f){
+            f.name=m.name;
+            f.color=m.color;
+            f.emoji=m.emoji;
+            f.avatarImg=m.avatarImg||f.avatarImg||null;
+            f.elo=m.elo;
+            f.rankLabel=m.rankLabel||'';
+            f.titleLabel=m.titleLabel||'';
+            f.gamesWon=m.gamesWon;
+            f.gamesPlayed=m.gamesPlayed;
+            saveProfileData();renderFriendsList();
+          }
+        }
+      }catch(err){}
+    };
+    socialWs.onerror=()=>{updateSocialWsStatus('❌ Erreur de connexion');};
+    socialWs.onclose=()=>{
+      socialWsOk=false;
+      socialWs=null;
+      updateSocialWsStatus('Déconnecté');
+      document.getElementById('social-ws-btn').textContent='🔗';
+      scheduleSocialWsReconnect();
+    };
+  }catch(e){
+    updateSocialWsStatus('❌ URL invalide');
+    socialWs=null;
+    scheduleSocialWsReconnect();
+  }
+}
+
+function toggleSocialWs(){
+  if(socialWs){
+    socialWsManualClose=true;
+    if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
+    socialWs.close();socialWs=null;socialWsOk=false;
+    updateSocialWsStatus('Déconnecté');
+    document.getElementById('social-ws-btn').textContent='🔗';
+    return;
+  }
+  connectSocialWs(false);
+}
+
+function updateSocialWsStatus(msg){
+  const el=document.getElementById('social-ws-status');if(el)el.textContent=msg;
+}
