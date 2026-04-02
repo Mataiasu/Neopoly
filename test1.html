@@ -1826,7 +1826,18 @@ body.streamer-mode #invite-link {
             <div id="social-chat-log" style="flex:1;overflow-y:auto;min-height:80px;margin-bottom:8px"></div>
             <div style="display:flex;gap:6px">
               <input id="social-chat-input" placeholder="Message…" style="flex:1;min-width:0" onkeydown="if(event.key==='Enter')sendSocialChat()"/>
-              <button class="btn btn-sm btn-blue" onclick="sendSocialChat()">➤</button>
+              <button class="btn btn-sm btn-blue" id="social-send-btn" onclick="sendSocialChat()">➤</button>
+            </div>
+            <div id="social-chat-role" style="font-size:.65rem;color:var(--muted);margin-top:6px"></div>
+            <div id="social-admin-tools" style="display:none;margin-top:8px;padding-top:8px;border-top:1px solid rgba(148,163,184,.12)">
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px">👑 Outils de modération</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <input id="social-mod-target" placeholder="UID cible…" style="flex:1;min-width:0"/>
+                <button class="btn btn-xs btn-secondary" onclick="moderateTarget('mute')">Mute</button>
+                <button class="btn btn-xs btn-secondary" onclick="moderateTarget('unmute')">Unmute</button>
+                <button class="btn btn-xs btn-danger" onclick="moderateTarget('ban')">Ban</button>
+                <button class="btn btn-xs btn-blue" onclick="moderateTarget('unban')">Unban</button>
+              </div>
             </div>
           </div>
           <div class="card" style="padding:10px">
@@ -2376,62 +2387,37 @@ body.streamer-mode #invite-link {
 </div>
 
   <div class="modal-bg" id="modal-google">
-    <div class="modal">
+    <div class="modal" style="max-width:420px;width:min(94vw,420px)">
       <button type="button" class="modal-close" onclick="closeModal('modal-google')">✕</button>
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
         <svg width="24" height="24" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         <div class="modal-title" style="margin:0">Connexion Google</div>
       </div>
-      <div id="g-ultra-safe-badge" style="display:none;font-size:.68rem;font-weight:700;color:#0b1325;background:#22c55e;border:1px solid #16a34a;padding:5px 8px;border-radius:999px;width:max-content;margin:-2px 0 8px">Ultra-safe ON (redirect)</div>
-      <div class="modal-sub">Lie ton profil NeoPoly à ton compte Google pour le retrouver partout</div>
-      <div class="fgroup">
-        <div style="grid-column:1/-1">
-          <label>Client ID Google OAuth</label><input id="g-client-id" placeholder="1234567890-abcxyz.apps.googleusercontent.com" oninput="updateGoogleConfigUi()"/>
-        </div>
-      </div>
-      <div style="font-size:.7rem;color:var(--muted);padding:8px;background:var(--s3);border-radius:8px;margin-bottom:10px;line-height:1.5">
-        Origine actuelle: <strong id="g-origin"></strong><br/>
-        Dans Google Cloud Console, ajoute cette origine dans <strong>Authorized JavaScript origins</strong>.
-      </div>
-      <div id="g-canonical-banner" style="display:none;font-size:.72rem;color:#fef3c7;background:#7c2d12;border:1px solid #b45309;border-radius:8px;padding:8px;margin-bottom:10px"></div>
-      <div id="g-config-status" style="font-size:.72rem;margin:-2px 0 10px;color:#fbbf24"></div>
-      <div style="font-size:.7rem;color:var(--muted);padding:8px;background:var(--s3);border-radius:8px;margin-bottom:10px;line-height:1.5">
-        <strong>Assistant Google Cloud</strong>
-        <div id="g-cloud-checklist" style="margin-top:6px;display:flex;flex-direction:column;gap:3px"></div>
-      </div>
-      <div style="font-size:.7rem;color:var(--muted);padding:8px;background:var(--s3);border-radius:8px;margin-bottom:10px;line-height:1.5">
-        <strong>Copier config Google Cloud</strong>
-        <textarea id="g-cloud-copy" readonly style="width:100%;min-height:74px;margin-top:6px;font-size:.64rem;background:var(--s2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px"></textarea>
-        <div class="btn-row" style="margin-top:6px">
-          <button type="button" class="btn btn-secondary" onclick="copyGoogleCloudConfig()">Copier config Google Cloud</button>
-        </div>
-      </div>
-      <div class="fgroup">
-        <div><label>Adresse Gmail</label><input id="g-email" type="email" placeholder="prenom@gmail.com"/></div>
-        <div><label>Nom affiché (optionnel)</label><input id="g-dispname" placeholder="Laisse vide pour utiliser le nom du compte"/></div>
-      </div>
-      <div style="font-size:.7rem;color:var(--muted);padding:8px;background:var(--s3);border-radius:8px;margin-bottom:14px;line-height:1.5">
-        Le bouton Google du profil passe maintenant par <strong>une vérification serveur</strong>. Les champs ci-dessous servent seulement de <strong>fallback local</strong> si tu veux tester sans Google.
-      </div>
-      <div class="btn-row">
-        <button type="button" id="g-btn-reco" class="btn btn-primary" onclick="beginGoogleLoginRecommended()">Connexion recommandee</button>
-        <button type="button" id="g-btn-test" class="btn btn-secondary" onclick="testGoogleBackendStatus()">Tester API</button>
-        <button type="button" class="btn btn-secondary" onclick="persistGoogleClientIdFromUi()">Enregistrer le Client ID</button>
-        <button type="button" id="g-btn-redirect" class="btn btn-secondary" onclick="beginGoogleLoginCodeRedirect()">Connexion redirect</button>
-        <button type="button" id="g-btn-alt" class="btn btn-primary" onclick="beginGoogleLoginAlt()">Connexion alternative</button>
-        <button type="button" id="g-btn-popup" class="btn btn-secondary" onclick="beginGoogleLogin()">Connexion popup</button>
-        <button type="button" class="btn btn-secondary" onclick="confirmGoogleLogin()">Mode local</button>
-        <button type="button" class="btn btn-secondary" onclick="exportGoogleDiagnostic()">Exporter diagnostic</button>
-        <button type="button" class="btn btn-secondary" onclick="openSecureGoogleTab()">Ouvrir onglet securise</button>
-        <button type="button" class="btn btn-secondary" onclick="resetGoogleUiState()">Reset Google UI</button>
+      <div class="modal-sub">Connecte ton profil NeoPoly à Google en un clic. Aucune information sensible n'est affichée ici.</div>
+      <div class="btn-row" style="margin-top:14px">
+        <button type="button" id="g-btn-reco" class="btn btn-primary" onclick="beginGoogleLoginRecommended()">Se connecter avec Google</button>
         <button type="button" class="btn btn-secondary" onclick="closeModal('modal-google')">Annuler</button>
       </div>
-      <div id="g-api-active" style="font-size:.68rem;color:var(--muted);margin-top:6px"></div>
-      <div id="g-api-test-status" style="font-size:.7rem;color:var(--muted);margin-top:6px"></div>
-      <div id="g-oauth-last-error" style="font-size:.68rem;color:#fca5a5;margin-top:4px"></div>
+
+      <input id="g-client-id" type="hidden" />
+      <div id="g-origin" style="display:none"></div>
+      <div id="g-ultra-safe-badge" style="display:none"></div>
+      <div id="g-canonical-banner" style="display:none"></div>
+      <div id="g-config-status" style="display:none"></div>
+      <div id="g-cloud-checklist" style="display:none"></div>
+      <textarea id="g-cloud-copy" readonly style="display:none"></textarea>
+      <input id="g-email" type="hidden" />
+      <input id="g-dispname" type="hidden" />
+      <button type="button" id="g-btn-test" style="display:none" onclick="testGoogleBackendStatus()">Tester API</button>
+      <button type="button" id="g-btn-redirect" style="display:none" onclick="beginGoogleLoginCodeRedirect()">Connexion redirect</button>
+      <button type="button" id="g-btn-alt" style="display:none" onclick="beginGoogleLoginAlt()">Connexion alternative</button>
+      <button type="button" id="g-btn-popup" style="display:none" onclick="beginGoogleLogin()">Connexion popup</button>
+      <div id="g-api-active" style="display:none"></div>
+      <div id="g-api-test-status" style="display:none"></div>
+      <div id="g-oauth-last-error" style="font-size:.68rem;color:#fca5a5;margin-top:8px"></div>
       <div id="g-click-indicator" style="font-size:.68rem;color:var(--muted);margin-top:4px;opacity:0;transition:opacity .2s">Clic reçu</div>
-      <textarea id="g-diagnostic-export" style="display:none;width:100%;min-height:92px;margin-top:8px;font-size:.65rem;background:var(--s2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px"></textarea>
-      <pre id="g-debug-log" style="margin-top:8px;max-height:120px;overflow:auto;background:var(--s2);border:1px solid var(--border);border-radius:8px;padding:6px;font-size:.62rem;white-space:pre-wrap;word-break:break-word"></pre>
+      <textarea id="g-diagnostic-export" style="display:none"></textarea>
+      <pre id="g-debug-log" style="display:none"></pre>
     </div>
   </div>
 
@@ -3326,8 +3312,7 @@ function openConnectionZoneGoogle(){
     beginGoogleLoginCodeRedirect();
     return;
   }
-  openGoogleLoginModal();
-  beginGoogleLogin();
+  beginGoogleLoginRecommended();
 }
 
 function openConnectionZoneGoogleSwitch(){
@@ -3335,7 +3320,6 @@ function openConnectionZoneGoogleSwitch(){
     beginGoogleLoginCodeRedirect();
     return;
   }
-  openGoogleLoginModal();
   beginGoogleLogin('select_account');
 }
 
@@ -3563,6 +3547,7 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   initCenterActionsDrag();
   loadProfile();
+  setTimeout(()=>refreshModerationStatus(true),850);
   setTimeout(()=>connectSocialWs(true),700);
   updateConnectionZoneUi();
   initDebugAccessControl();
@@ -3747,6 +3732,8 @@ let connectionZoneSilentTimer=null;
 let P={
   uid:null,name:'Joueur',emoji:'🎲',avatarImg:null,color:'#22c55e',
   googleEmail:null,googleName:null,googleConnected:false,googleSub:null,googleVerifiedAt:0,
+  isAdmin:false,
+  moderation:{muted:false,banned:false,reason:'',updatedAt:0},
   stats:{gamesPlayed:0,gamesWon:0,gamesLost:0,moneyEarned:0,propertiesBought:0,totalTurns:0,bankruptcies:0},
   elo:0,
   titles:[],
@@ -3756,8 +3743,16 @@ let P={
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
   friends:[], // [{uid,name,emoji,avatarImg,color,addedAt}]
-  chatLog:[]  // [{name,color,text,ts,mine}]
+  chatLog:[]  // [{name,color,text,ts,mine,uid,admin}]
 };
+
+const ADMIN_EMAIL_FALLBACK='matthprizee55@gmail.com';
+function isKnownAdminEmail(email){
+  return String(email||'').trim().toLowerCase()===ADMIN_EMAIL_FALLBACK;
+}
+function getDefaultModerationState(){
+  return {muted:false,banned:false,reason:'',updatedAt:0};
+}
 
 function getGoogleBoundUid(sub){
   const raw=String(sub||'').trim();
@@ -3789,6 +3784,14 @@ function loadProfile(opts){
   if(typeof P.stats.gamesLost!=='number')P.stats.gamesLost=parseInt(P.stats.gamesLost,10)||0;
   if(typeof P.elo!=='number'||isNaN(P.elo))P.elo=0;
   if(!('selectedTitle' in P))P.selectedTitle=null;
+  if(typeof P.isAdmin!=='boolean')P.isAdmin=false;
+  if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
+  P.moderation.muted=!!P.moderation.muted;
+  P.moderation.banned=!!P.moderation.banned;
+  P.moderation.reason=String(P.moderation.reason||'');
+  P.moderation.updatedAt=parseInt(P.moderation.updatedAt,10)||0;
+  if(!Array.isArray(P.chatLog))P.chatLog=[];
+  if(isKnownAdminEmail(P.googleEmail))P.isAdmin=true;
   if(!P.uid){P.uid='np_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);changed=true;}
   if(syncUidWithGoogleIdentity(true))changed=true;
   if(changed&&!options.skipPersist)saveProfileData();
@@ -4367,7 +4370,9 @@ async function refreshJoinRoomList(){
 function sendWsMessage(payload){
   if(!G.ws||!G.wsOk) return false;
   try{
-    G.ws.send(JSON.stringify(payload));
+    const enriched=Object.assign({},payload||{});
+    if(P&&P.uid&&!enriched.uid)enriched.uid=P.uid;
+    G.ws.send(JSON.stringify(enriched));
     return true;
   }catch(e){
     wsLog('Erreur envoi: '+e);
@@ -4905,9 +4910,10 @@ function renderLobbyProfileTab(){
       const safeGoogleName=escapeHtml(P.googleName||P.name);
       const safeGoogleEmail=escapeHtml(P.googleEmail||'');
       const googleState=P.googleVerifiedAt?'Verifie par le serveur':'Lien local uniquement';
+      const adminBadge=P.isAdmin?'<div style="font-size:.62rem;color:#facc15;font-weight:800">👑 Administrateur</div>':'';
       gArea.innerHTML=`<div class="google-connected">
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-        <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.78rem">${safeGoogleName}</div><div style="font-size:.65rem;color:var(--muted)">${safeGoogleEmail}</div><div style="font-size:.62rem;color:var(--muted)">${escapeHtml(googleState)}</div></div>
+        <div style="flex:1;min-width:0"><div style="font-weight:700;font-size:.78rem">${safeGoogleName}</div><div style="font-size:.65rem;color:var(--muted)">${safeGoogleEmail}</div>${adminBadge}<div style="font-size:.62rem;color:var(--muted)">${escapeHtml(googleState)}</div></div>
         <button class="btn btn-xs btn-danger" onclick="disconnectGoogle()">✕</button>
       </div>`;
     }else{
@@ -5408,10 +5414,14 @@ function applyGoogleIdentity(email,name,avatarUrl,googleSub,isVerified){
   P.googleName=finalName;
   P.googleSub=googleSub||null;
   P.googleVerifiedAt=isVerified?Date.now():0;
+  P.isAdmin=isKnownAdminEmail(email);
+  P.moderation=P.moderation&&typeof P.moderation==='object'?P.moderation:getDefaultModerationState();
   P.name=finalName;
   P.avatarImg=avatarUrl||fallbackAvatar;
   syncUidWithGoogleIdentity(false);
-  saveProfileData();renderLobbyProfileTab();
+  saveProfileData();renderLobbyProfileTab();renderSocialChat();
+  syncSocialAdminUi();
+  refreshModerationStatus(true);
   unlockConnectionZone('google');
   closeModal('modal-google');
   toast(isVerified?'🔗 Compte Google verifie !':'Profil local lie sans verification Google','a');
@@ -5438,7 +5448,10 @@ function revokeGoogleGrant(){
 function disconnectGoogle(){
   revokeGoogleGrant();
   P.googleConnected=false;P.googleEmail=null;P.googleName=null;P.googleSub=null;P.googleVerifiedAt=0;
-  saveProfileData();renderLobbyProfileTab();
+  P.isAdmin=false;
+  P.moderation=getDefaultModerationState();
+  saveProfileData();renderLobbyProfileTab();renderSocialChat();
+  syncSocialAdminUi();
   toast('Google déconnecté (autorisation révoquée)','i');
 }
 
@@ -5524,7 +5537,7 @@ function renderSocialChat(){
     const nm=document.createElement('span');
     nm.className='sc-name';
     nm.style.color=safeCssColor(m.color,'#22c55e');
-    nm.textContent=m.name||'Joueur';
+    nm.textContent=(m.admin?'👑 ':'')+(m.name||'Joueur');
     const tm=document.createElement('span');
     tm.className='sc-time';
     tm.textContent=new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -5532,24 +5545,143 @@ function renderSocialChat(){
     d.appendChild(tm);
     d.appendChild(document.createElement('br'));
     d.appendChild(document.createTextNode(String(m.text||'')));
+    if(P.isAdmin&&m.uid&&m.uid!==P.uid){
+      const mod=document.createElement('div');
+      mod.style.display='flex';
+      mod.style.gap='4px';
+      mod.style.marginTop='4px';
+      const target=document.createElement('button');
+      target.className='btn btn-xs btn-secondary';
+      target.textContent='🎯';
+      target.title='Cibler ce joueur';
+      target.onclick=()=>prepareModerationTarget(m.uid,m.name||'Joueur');
+      const mute=document.createElement('button');
+      mute.className='btn btn-xs btn-secondary';
+      mute.textContent='Mute';
+      mute.onclick=()=>moderateTarget('mute',m.uid,m.name||'Joueur');
+      const unmute=document.createElement('button');
+      unmute.className='btn btn-xs btn-secondary';
+      unmute.textContent='Unmute';
+      unmute.onclick=()=>moderateTarget('unmute',m.uid,m.name||'Joueur');
+      const ban=document.createElement('button');
+      ban.className='btn btn-xs btn-danger';
+      ban.textContent='Ban';
+      ban.onclick=()=>moderateTarget('ban',m.uid,m.name||'Joueur');
+      const unban=document.createElement('button');
+      unban.className='btn btn-xs btn-blue';
+      unban.textContent='Unban';
+      unban.onclick=()=>moderateTarget('unban',m.uid,m.name||'Joueur');
+      mod.append(target,mute,unmute,ban,unban);
+      d.appendChild(mod);
+    }
     log.appendChild(d);
   });
   log.scrollTop=log.scrollHeight;
+  syncSocialAdminUi();
 }
 
-function addSocialMsg(name,color,text,mine){
-  P.chatLog.push({name,color,text,ts:Date.now(),mine:!!mine});
+function addSocialMsg(name,color,text,mine,meta){
+  const extra=meta&&typeof meta==='object'?meta:{};
+  P.chatLog.push({name,color,text,ts:Date.now(),mine:!!mine,uid:extra.uid||null,admin:!!extra.admin});
   if(P.chatLog.length>200)P.chatLog.shift();
   saveProfileData();renderSocialChat();
 }
 
+function syncSocialAdminUi(){
+  const status=document.getElementById('social-chat-role');
+  const tools=document.getElementById('social-admin-tools');
+  const input=document.getElementById('social-chat-input');
+  const sendBtn=document.getElementById('social-send-btn');
+  const mod=P.moderation||getDefaultModerationState();
+  const blocked=!!(mod.banned||mod.muted);
+  if(status){
+    if(P.isAdmin){
+      status.innerHTML='<span style="color:#facc15;font-weight:800">👑 Administrateur</span>';
+    }else if(mod.banned){
+      status.innerHTML='<span style="color:#fca5a5">⛔ Chat désactivé (banni)'+(mod.reason?' — '+escapeHtml(mod.reason):'')+'</span>';
+    }else if(mod.muted){
+      status.innerHTML='<span style="color:#fbbf24">🔇 Chat désactivé (mute)'+(mod.reason?' — '+escapeHtml(mod.reason):'')+'</span>';
+    }else{
+      status.textContent='';
+    }
+  }
+  if(tools)tools.style.display=P.isAdmin?'block':'none';
+  if(input){
+    input.disabled=blocked;
+    input.placeholder=mod.banned?'Chat indisponible (banni)':(mod.muted?'Chat indisponible (mute)':'Message…');
+  }
+  if(sendBtn)sendBtn.disabled=blocked;
+}
+
+async function refreshModerationStatus(silent=true){
+  try{
+    const base=getGoogleApiBase();
+    if(!base)throw new Error('missing_api_base');
+    const r=await fetch(base+'/api/mod/status',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid:P.uid,googleSub:P.googleSub||'',email:P.googleEmail||''}),
+    });
+    const data=await r.json();
+    if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');
+    P.isAdmin=!!data.isAdmin||isKnownAdminEmail(P.googleEmail);
+    P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
+  }catch(_){
+    P.isAdmin=isKnownAdminEmail(P.googleEmail);
+    if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
+  }
+  syncSocialAdminUi();
+  renderLobbyProfileTab();
+  renderSocialChat();
+  if(!silent&&P.isAdmin)toast('👑 Mode admin actif','i');
+}
+
+function prepareModerationTarget(uid,name){
+  const input=document.getElementById('social-mod-target');
+  if(!input)return;
+  input.value=String(uid||'').trim();
+  input.placeholder=(name?('UID cible — '+name):'UID cible…');
+  input.focus();
+}
+
+async function moderateTarget(action,targetUid,targetName){
+  if(!P.isAdmin){toast('Action reservee a l admin','d');return;}
+  const input=document.getElementById('social-mod-target');
+  const uid=String(targetUid||input?.value||'').trim();
+  if(!uid){toast('Entre un UID cible','w');return;}
+  const reason=(action==='ban'||action==='mute')?(prompt('Raison (optionnelle) ?','')||''):'';
+  try{
+    const r=await fetch(getGoogleApiBase()+'/api/mod/action',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        action,
+        adminEmail:P.googleEmail||'',
+        adminUid:P.uid,
+        adminGoogleSub:P.googleSub||'',
+        targetUid:uid,
+        reason,
+      }),
+    });
+    const data=await r.json();
+    if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_action_failed');
+    if(input)input.value=uid;
+    toast('Action '+action+' appliquée à '+(targetName||uid),'a');
+  }catch(e){
+    toast('Erreur modération: '+String(e&&e.message||'mod_action_failed'),'d');
+  }
+}
+
 function sendSocialChat(){
+  const mod=P.moderation||getDefaultModerationState();
+  if(mod.banned){toast('⛔ Ce compte est banni du chat','d');return;}
+  if(mod.muted){toast('🔇 Ce compte est mute','w');return;}
   const inp=document.getElementById('social-chat-input');
   const text=(inp?.value||'').trim();if(!text)return;
   inp.value='';
-  addSocialMsg(P.name,P.color,text,true);
+  addSocialMsg(P.name,P.color,text,true,{uid:P.uid,admin:!!P.isAdmin});
   if(socialWs&&socialWsOk){
-    try{socialWs.send(JSON.stringify({type:'social_chat',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,text}));}
+    try{socialWs.send(JSON.stringify({type:'social_chat',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,text,admin:!!P.isAdmin}));}
     catch(e){}
   }
 }
@@ -5573,13 +5705,20 @@ function connectSocialWs(auto=false){
       if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
       updateSocialWsStatus('✅ Connecté à '+url);
       document.getElementById('social-ws-btn').textContent='⛔';
-      socialWs.send(JSON.stringify({type:'social_join',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,emoji:P.emoji}));
+      socialWs.send(JSON.stringify({type:'social_join',room:SOCIAL_ROOM_ID,uid:P.uid,name:P.name,color:P.color,emoji:P.emoji,admin:!!P.isAdmin}));
     };
     socialWs.onmessage=e=>{
       try{
         const m=JSON.parse(e.data);
+        if(m.type==='mod_status'){
+          P.moderation=Object.assign(getDefaultModerationState(),{muted:!!m.muted,banned:!!m.banned,reason:String(m.reason||''),updatedAt:Date.now()});
+          syncSocialAdminUi();
+          if(P.moderation.banned)toast('⛔ Compte banni du chat','d');
+          else if(P.moderation.muted)toast('🔇 Compte mute du chat','w');
+          return;
+        }
         if(m.type==='social_chat'&&m.uid!==P.uid){
-          addSocialMsg(m.name,m.color,m.text,false);
+          addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin});
         }
         if(m.type==='social_join'&&m.uid!==P.uid){
           const f=P.friends.find(f=>f.uid===m.uid);

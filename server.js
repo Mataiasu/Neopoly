@@ -12,6 +12,7 @@ const GOOGLE_CONFIG_PATH = path.join(ROOT_DIR, 'assets', 'google-config.js');
 // ── Profile persistent storage ────────────────────────────────────────────────
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const PROFILES_DB_PATH = path.join(DATA_DIR, 'profiles.json');
+const MODERATION_DB_PATH = path.join(DATA_DIR, 'moderation.json');
 
 function loadProfilesDb() {
   try {
@@ -32,6 +33,10 @@ function saveProfilesDb(db) {
 
 function sanitizeStr(v, maxLen) {
   return typeof v === 'string' ? v.slice(0, maxLen) : '';
+}
+
+function normalizeEmail(v) {
+  return String(v || '').trim().toLowerCase().slice(0, 160);
 }
 
 function sanitizeProfilePayload(raw) {
@@ -59,6 +64,90 @@ function getProfileStorageKey(uid, googleSub) {
   }
   return 'uid:' + String(uid || '').trim().slice(0, 128);
 }
+
+const DEFAULT_ADMIN_EMAILS = ['matthprizee55@gmail.com'];
+const ADMIN_EMAILS = new Set(
+  DEFAULT_ADMIN_EMAILS
+    .concat(String(process.env.ADMIN_EMAILS || '').split(','))
+    .map((entry) => normalizeEmail(entry))
+    .filter(Boolean)
+);
+
+function loadModerationDb() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(MODERATION_DB_PATH)) return { users: {} };
+    const parsed = JSON.parse(fs.readFileSync(MODERATION_DB_PATH, 'utf8')) || {};
+    return {
+      users: parsed && typeof parsed.users === 'object' && parsed.users ? parsed.users : {},
+    };
+  } catch (_) {
+    return { users: {} };
+  }
+}
+
+function saveModerationDb(db) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = MODERATION_DB_PATH + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
+    fs.renameSync(tmp, MODERATION_DB_PATH);
+  } catch (_) {}
+}
+
+function getModerationKeys(identity) {
+  const keys = [];
+  const uid = sanitizeStr(identity && identity.uid, 128);
+  const googleSub = sanitizeStr(identity && identity.googleSub, 128);
+  const email = normalizeEmail(identity && identity.email);
+  if (googleSub) keys.push('gsub:' + googleSub);
+  if (email) keys.push('email:' + email);
+  if (uid) keys.push('uid:' + uid);
+  return Array.from(new Set(keys));
+}
+
+function getModerationState(identity) {
+  const db = loadModerationDb();
+  const keys = getModerationKeys(identity);
+  const state = { muted: false, banned: false, reason: '', updatedAt: 0 };
+  keys.forEach((key) => {
+    const entry = db.users[key];
+    if (!entry || typeof entry !== 'object') return;
+    state.muted = state.muted || !!entry.muted;
+    state.banned = state.banned || !!entry.banned;
+    const entryUpdatedAt = Number(entry.updatedAt || 0);
+    if (entryUpdatedAt >= state.updatedAt) {
+      state.reason = sanitizeStr(entry.reason, 160) || state.reason;
+      state.updatedAt = entryUpdatedAt;
+    }
+  });
+  return {
+    isAdmin: ADMIN_EMAILS.has(normalizeEmail(identity && identity.email)),
+    muted: !!state.muted,
+    banned: !!state.banned,
+    reason: state.reason || '',
+    updatedAt: Number(state.updatedAt || 0),
+  };
+}
+
+function updateModerationState(identity, patch, actor) {
+  const keys = getModerationKeys(identity);
+  if (!keys.length) return null;
+  const current = getModerationState(identity);
+  const next = {
+    muted: patch && patch.muted === undefined ? current.muted : !!(patch && patch.muted),
+    banned: patch && patch.banned === undefined ? current.banned : !!(patch && patch.banned),
+    reason: sanitizeStr(patch && patch.reason !== undefined ? patch.reason : current.reason, 160),
+    updatedAt: Date.now(),
+    updatedBy: normalizeEmail(actor && actor.email) || sanitizeStr(actor && actor.uid, 128) || 'admin',
+  };
+  const db = loadModerationDb();
+  keys.forEach((key) => {
+    db.users[key] = next;
+  });
+  saveModerationDb(db);
+  return next;
+}
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
 const GOOGLE_RECENT_AUTH_ATTEMPTS = [];
 const GOOGLE_MAX_AUTH_ATTEMPTS = 20;
@@ -79,6 +168,7 @@ const rooms = {};
 const roomAddons = {};
 const roomMeta = {};
 const MAX_ROOM_PLAYERS = 6;
+const SOCIAL_ROOM_ID = 'social-lobby';
 
 const CFG_BOUNDS = {
   eventChance:    [0, 100],
@@ -186,6 +276,7 @@ function ensureRoomMeta(room) {
       isPrivate: false,
       roomPassword: '',
       updatedAt: 0,
+      hidden: false,
     };
   }
   return roomMeta[room];
@@ -259,6 +350,10 @@ function getRoomSummary(room) {
 
 function listPublicRooms() {
   return Object.keys(rooms)
+    .filter((room) => {
+      const meta = ensureRoomMeta(room);
+      return !meta.hidden && room !== SOCIAL_ROOM_ID;
+    })
     .map((room) => getRoomSummary(room))
     .sort((a, b) => {
       if (a.started !== b.started) return Number(a.started) - Number(b.started);
@@ -629,6 +724,75 @@ async function handleApi(req, res, pathname) {
     return true;
   }
 
+  if (pathname === '/api/mod/status' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const state = getModerationState({
+        uid: body && body.uid,
+        googleSub: body && body.googleSub,
+        email: body && body.email,
+      });
+      sendApiJson(req, res, 200, {
+        ok: true,
+        isAdmin: !!state.isAdmin,
+        moderation: {
+          muted: !!state.muted,
+          banned: !!state.banned,
+          reason: state.reason || '',
+          updatedAt: state.updatedAt || 0,
+        },
+      });
+    } catch (_) {
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/mod/action' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const adminState = getModerationState({
+        uid: body && body.adminUid,
+        googleSub: body && body.adminGoogleSub,
+        email: body && body.adminEmail,
+      });
+      if (!adminState.isAdmin) {
+        sendApiJson(req, res, 403, { ok: false, error: 'admin_required' });
+        return true;
+      }
+
+      const action = String(body && body.action || '').trim().toLowerCase();
+      const target = {
+        uid: body && body.targetUid,
+        googleSub: body && body.targetGoogleSub,
+        email: body && body.targetEmail,
+      };
+      let patch = null;
+      if (action === 'mute') patch = { muted: true, reason: body && body.reason };
+      if (action === 'unmute') patch = { muted: false, reason: body && body.reason };
+      if (action === 'ban') patch = { banned: true, muted: true, reason: body && body.reason };
+      if (action === 'unban') patch = { banned: false, muted: false, reason: body && body.reason };
+      if (!patch) {
+        sendApiJson(req, res, 400, { ok: false, error: 'invalid_action' });
+        return true;
+      }
+
+      const moderation = updateModerationState(target, patch, {
+        uid: body && body.adminUid,
+        email: body && body.adminEmail,
+      });
+      if (!moderation) {
+        sendApiJson(req, res, 400, { ok: false, error: 'missing_target' });
+        return true;
+      }
+
+      sendApiJson(req, res, 200, { ok: true, action, moderation });
+    } catch (_) {
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
+    }
+    return true;
+  }
+
   return false;
 }
 
@@ -689,6 +853,32 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      const senderMod = getModerationState({
+        uid: msg.uid || msg.playerId || msg.userId || msg.sender,
+        googleSub: msg.googleSub,
+        email: msg.email || msg.googleEmail,
+      });
+      const isChatMessage = msg.type === 'social_join' || msg.type === 'social_chat' || msg.type === 'chat';
+      const isOnlineAction = msg.type === 'create_room' || msg.type === 'ready' || msg.type === 'state';
+      if (isChatMessage && (senderMod.banned || senderMod.muted)) {
+        sendJson(ws, {
+          type: 'mod_status',
+          banned: !!senderMod.banned,
+          muted: !!senderMod.muted,
+          reason: senderMod.reason || '',
+        });
+        return;
+      }
+      if (isOnlineAction && senderMod.banned) {
+        sendJson(ws, {
+          type: 'mod_status',
+          banned: true,
+          muted: !!senderMod.muted,
+          reason: senderMod.reason || '',
+        });
+        return;
+      }
+
       const room = msg.room || myRoom;
       if (!room) return;
       myRoom = room;
@@ -714,12 +904,27 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      const isSocialMessage = msg.type === 'social_join' || msg.type === 'social_chat';
       if (!rooms[room]) {
-        sendJson(ws, { type: 'error', code: 'ROOM_NOT_FOUND', room });
-        return;
+        if (isSocialMessage && room === SOCIAL_ROOM_ID) {
+          rooms[room] = new Set();
+          const socialMeta = ensureRoomMeta(room);
+          socialMeta.hidden = true;
+          socialMeta.hostName = 'Chat social';
+          socialMeta.started = false;
+          socialMeta.isPrivate = false;
+          socialMeta.updatedAt = Date.now();
+        } else {
+          sendJson(ws, { type: 'error', code: 'ROOM_NOT_FOUND', room });
+          return;
+        }
       }
 
       const meta = ensureRoomMeta(room);
+      if (isSocialMessage && room === SOCIAL_ROOM_ID) {
+        meta.hidden = true;
+        meta.updatedAt = Date.now();
+      }
 
       if (!roomRegistered && msg.type === 'ready') {
         const roomInfo = getRoomSummary(room);
