@@ -515,7 +515,9 @@ function renderOnlineLobby(){
   const lobby=document.getElementById('online-lobby');
   const pl=document.getElementById('online-lobby-players');
   const hostBtn=document.getElementById('host-start-btn');
+  const hostPartyBtn=document.getElementById('host-party-btn');
   const readyBtn=document.getElementById('ready-me-btn');
+  if(typeof syncPartyOptionsBlockVisibility==='function')syncPartyOptionsBlockVisibility();
   if(!lobby)return;
   const show=G.mode==='online'&&!G.started;
   lobby.style.display=show?'block':'none';
@@ -540,6 +542,10 @@ function renderOnlineLobby(){
   const allReady=G.players.length>=2&&G.players.every(p=>p.ready);
   const isHost=G.myId&&G.myId.startsWith('h-');
   if(hostBtn){hostBtn.style.display=isHost?'inline-flex':'none';hostBtn.disabled=!allReady;}
+  if(hostPartyBtn){
+    hostPartyBtn.style.display=isHost?'inline-flex':'none';
+    hostPartyBtn.disabled=!!G.started;
+  }
   if(readyBtn){
     readyBtn.className='btn btn-sm '+(G.myReady?'btn-primary':'btn-secondary');
     readyBtn.textContent=G.myReady?'✅ Prêt !':'⏳ Je suis Prêt';
@@ -666,6 +672,7 @@ function backToLobby(){
   G.myReady=false;
   G.room='';
   G.mode='local';
+  if(typeof syncPartyOptionsBlockVisibility==='function')syncPartyOptionsBlockVisibility();
   G.rolled=false;
   G.cur=0;
   G.turnCount=1;

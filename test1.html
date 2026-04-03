@@ -1919,6 +1919,7 @@ body.streamer-mode #invite-link {
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <button class="btn btn-secondary btn-sm" id="ready-me-btn" onclick="toggleOnlineReady()">⏳ Je suis Prêt</button>
+            <button class="btn btn-blue btn-sm" id="host-party-btn" type="button" onclick="openPartyWheel('online')" style="display:none">⚙️ Personnalisation</button>
             <button class="btn btn-primary btn-sm" id="host-start-btn" onclick="doStart()" style="display:none" disabled>🚀 Lancer !</button>
           </div>
         </div>
@@ -2136,8 +2137,17 @@ body.streamer-mode #invite-link {
           </div>
           <div id="cfg-options-partie" style="margin-top:6px;padding:8px;border:1px dashed var(--border);border-radius:10px;background:var(--s2)">
             <div style="font-size:.72rem;color:var(--muted);margin-bottom:6px">Options de partie</div>
-            <div class="btn-row" style="justify-content:flex-start">
-              <button class="btn btn-blue btn-sm" onclick="openPartyWheel('local')">🧩 Roue d'options</button>
+            <div class="btn-row" style="justify-content:flex-start;flex-wrap:wrap">
+              <button class="btn btn-blue btn-sm" id="open-party-custom-btn" onclick="openPartyWheel(G.mode==='online'?'online':'local')">⚙️ Personnaliser la partie</button>
+            </div>
+            <div class="opt-field" style="margin-top:8px;max-width:280px">
+              <label>Mode équipes</label>
+              <select id="cfg-team-mode" onchange="setTeamModePreset(this.value)">
+                <option value="off">Désactivé</option>
+                <option value="2v2">2v2 (4 joueurs)</option>
+                <option value="2v2v2">2v2v2 (6 joueurs)</option>
+              </select>
+              <div id="cfg-team-mode-note" style="font-size:.66rem;color:var(--muted);margin-top:4px">Visible ici et dans la roue d'options.</div>
             </div>
             <div id="party-quick-summary" style="font-size:.68rem;color:var(--muted);margin-top:6px">Départ 1500$ • Bonus 200$ • Amende 50$</div>
           </div>

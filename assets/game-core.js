@@ -539,9 +539,6 @@ async function applyGoogleModeHintFromServer(){
     const redirectBtn=document.getElementById('g-btn-redirect');
     if(redirectBtn)redirectBtn.disabled=true;
   }
-  if(googleServerMode==='popup_or_idtoken_only'){
-    googlePopupRejectedCount=Math.max(googlePopupRejectedCount,1);
-  }
   updateGoogleConfigUi();
   refreshGooglePreferredAction();
 }
@@ -581,9 +578,9 @@ async function beginGoogleLoginRecommended(){
       beginGoogleLoginCodeRedirect();
       return;
     }
-    pushGoogleDebug('Recommended flow: alternative (server mode)');
+    pushGoogleDebug('Recommended flow: popup (server mode without redirect)');
     updateGoogleDebugPanel();
-    beginGoogleLoginAlt();
+    beginGoogleLogin('select_account');
     return;
   }
 
@@ -610,12 +607,12 @@ function refreshGooglePreferredAction(){
   const popup=document.getElementById('g-btn-popup');
   const alt=document.getElementById('g-btn-alt');
   if(!popup||!alt)return;
-  const preferAlt=true;
+  const preferAlt=!!(googlePopupRejectedCount>0&&googleServerMode!=='popup_or_idtoken_only');
   popup.classList.toggle('btn-primary',!preferAlt);
   popup.classList.toggle('btn-secondary',preferAlt);
   alt.classList.toggle('btn-primary',preferAlt);
   alt.classList.toggle('btn-secondary',!preferAlt);
-  if(googlePopupRejectedCount>0){
+  if(preferAlt){
     alt.style.outline='2px solid var(--accent)';
     alt.style.outlineOffset='1px';
   }else{
@@ -3124,10 +3121,10 @@ function beginGoogleLoginAlt(){
         return;
       }
       googleLastOauthError='fedcm_token_error_no_redirect';
-      pushGoogleDebug('Alternative timeout: no redirect available (server mode popup_or_idtoken_only)');
+      pushGoogleDebug('Alternative timeout: fallback popup (no redirect available)');
       updateGoogleDebugPanel();
       updateGoogleConfigUi();
-      toast('Google bloque One Tap/FedCM et le redirect est indisponible (secret serveur manquant). Configure GOOGLE_CLIENT_SECRET ou utilise Mode local.','w');
+      beginGoogleLogin('select_account');
     },2200);
   }catch(_){
     openModal('modal-google');
@@ -5468,11 +5465,19 @@ function canEditPartyOptions(){
   return isOnlineHost();
 }
 
+function syncPartyOptionsBlockVisibility(){
+  const block=document.getElementById('cfg-options-partie');
+  if(!block)return;
+  const show=(G.mode!=='online')||isOnlineHost();
+  block.style.display=show?'block':'none';
+}
+
 function isPartyOptionsLocked(){
   return !!(G.started||!canEditPartyOptions());
 }
 
 function applyPartyWheelLockState(){
+  syncPartyOptionsBlockVisibility();
   const modal=document.getElementById('modal-party-wheel');
   if(!modal)return;
   const locked=isPartyOptionsLocked();
@@ -6007,6 +6012,7 @@ function refreshTurnTimerWheelDisplay(currentLeft){
 }
 
 function refreshPartyRuleUi(){
+  syncPartyOptionsBlockVisibility();
   const sm=document.getElementById('pw-start-money');
   const pg=document.getElementById('pw-passgo-bonus');
   const jf=document.getElementById('pw-jail-fine');
@@ -6021,7 +6027,10 @@ function refreshPartyRuleUi(){
   const bonusRate=document.getElementById('pw-bonus-turn-rate');
   const park=document.getElementById('pw-parking-pot-chk');
   const teamPreset=document.getElementById('pw-team-mode');
+  const cfgTeamPreset=document.getElementById('cfg-team-mode');
   const teamNote=document.getElementById('pw-team-mode-note');
+  const cfgTeamNote=document.getElementById('cfg-team-mode-note');
+  const openPartyBtn=document.getElementById('open-party-custom-btn');
   const turnTimer=document.getElementById('pw-turn-timer-chk');
   const turnTimerDur=document.getElementById('pw-turn-timer-dur');
   if(sm)sm.value=G.startingMoney;
@@ -6038,17 +6047,23 @@ function refreshPartyRuleUi(){
   if(bonusRate)bonusRate.value=G.bonusTurnChance;
   if(park)park.checked=!!G.parkingPotEnabled;
   if(teamPreset)teamPreset.value=normalizeTeamModePreset(G.teamModePreset);
+  if(cfgTeamPreset)cfgTeamPreset.value=normalizeTeamModePreset(G.teamModePreset);
   if(turnTimer)turnTimer.checked=!!G.timerEnabled;
   if(turnTimerDur)turnTimerDur.value=G.timerDuration;
   if(teamPreset)teamPreset.disabled=!canEditPartyOptions();
+  if(cfgTeamPreset)cfgTeamPreset.disabled=isPartyOptionsLocked();
   if(turnTimer)turnTimer.disabled=!canEditPartyOptions();
   if(turnTimerDur)turnTimerDur.disabled=!canEditPartyOptions();
-  if(teamNote){
-    const preset=normalizeTeamModePreset(G.teamModePreset);
-    const requiredPlayers=getTeamModeRequirement(preset);
-    teamNote.textContent=preset==='off'
-      ?'Modes d\'équipe désactivés : la partie restera en chacun pour soi.'
-      :(getTeamModeLabel(preset)+' : '+requiredPlayers+' joueurs requis ('+(preset==='2v2'?'2 équipes de 2':'3 équipes de 2')+').');
+  const preset=normalizeTeamModePreset(G.teamModePreset);
+  const requiredPlayers=getTeamModeRequirement(preset);
+  const teamHelpText=preset==='off'
+    ?'Modes d\'équipe désactivés : la partie restera en chacun pour soi.'
+    :(getTeamModeLabel(preset)+' : '+requiredPlayers+' joueurs requis ('+(preset==='2v2'?'2 équipes de 2':'3 équipes de 2')+').');
+  if(teamNote)teamNote.textContent=teamHelpText;
+  if(cfgTeamNote)cfgTeamNote.textContent=teamHelpText;
+  if(openPartyBtn){
+    openPartyBtn.disabled=isPartyOptionsLocked();
+    openPartyBtn.textContent=G.mode==='online'?'⚙️ Personnaliser la partie (hôte)':'⚙️ Personnaliser la partie';
   }
   refreshTurnTimerWheelDisplay(document.getElementById('timer-num')?.textContent||G.timerDuration);
   const quick=document.getElementById('party-quick-summary');
