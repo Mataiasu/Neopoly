@@ -131,6 +131,9 @@ const TITLE_DEFS={
   s_ascendant: {label:'🪐 Ascendant',          cls:'vt-s8', cond:'Atteindre 3200 ELO'},
   s_collection:{label:'🧠 Collectionneur',     cls:'vt-s9', cond:'Acheter 120 propriétés cumulées'},
   season_contender:{label:'👑 Prétendant saisonnier', cls:'vt-legend', cond:'Obtenir la Couronne Néon'},
+  quest_scout:{label:'🧭 Éclaireur des quêtes', cls:'vt-s4', cond:'Compléter un défi quotidien cosmétique'},
+  quest_architect:{label:'🏗️ Architecte mystique', cls:'vt-s7', cond:'Réussir une mission secrète du bâtisseur'},
+  quest_curator:{label:'🎨 Curateur prismatique', cls:'vt-legend', cond:'Obtenir la Palette prismatique via une quête'},
 };
 
 const SECRET_FEATURE_DEFS={
@@ -537,7 +540,9 @@ function debugUnlockWinnerLooser(){
   toast('🏅 Titre "Winner Looser" déverrouillé (debug)','a');
 }
 
-function debugResetStats(){
+function resetProfileProgress(options){
+  const opts=options&&typeof options==='object'?options:{};
+  const resetAt=Math.max(0,parseInt(opts.resetAt,10)||Date.now());
   P.stats={gamesPlayed:0,gamesWon:0,gamesLost:0,moneyEarned:0,propertiesBought:0,totalTurns:0,bankruptcies:0};
   P.elo=0;
   P.titles=[];
@@ -550,9 +555,16 @@ function debugResetStats(){
   P.rareRewards=[];
   P.rareTokenCount=0;
   P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  if(opts.source==='admin')P.lastAdminStatsResetAt=Math.max(parseInt(P.lastAdminStatsResetAt,10)||0,resetAt);
   saveProfileData();
   renderLobbyProfileTab();
-  toast('🧹 Reset total: stats, ELO, titres, dates et secrets','i');
+  if(typeof renderFriendsList==='function')renderFriendsList();
+  if(typeof renderSocialChat==='function')renderSocialChat();
+  if(!opts.silent)toast(opts.toast||(opts.source==='admin'?'🧹 Tes stats ont été réinitialisées par un admin.':'🧹 Reset total: stats, ELO, titres, dates et secrets'),'i');
+}
+
+function debugResetStats(){
+  resetProfileProgress({source:'debug',toast:'🧹 Reset total: stats, ELO, titres, dates et secrets'});
 }
 
 function debugRemoveWinnerLooser(){

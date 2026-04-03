@@ -73,6 +73,36 @@ function getGoogleBoundUid(sub) {
   return 'npg_' + raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
 }
 
+function resetProfileStatsInDb(identity) {
+  const uid = sanitizeStr(identity && identity.uid, 128);
+  const googleSub = sanitizeStr(identity && identity.googleSub, 128);
+  const keys = Array.from(new Set([
+    getProfileStorageKey(uid, googleSub),
+    uid ? getProfileStorageKey(uid, '') : '',
+  ].filter(Boolean)));
+  if (!keys.length) return false;
+  const db = loadProfilesDb();
+  let changed = false;
+  keys.forEach((key) => {
+    const entry = db[key];
+    if (!entry || !entry.profile || typeof entry.profile !== 'object') return;
+    db[key] = {
+      profile: Object.assign({}, entry.profile, {
+        wins: 0,
+        losses: 0,
+        gamesPlayed: 0,
+        totalMoney: 0,
+        badges: [],
+        unlockedTitles: [],
+      }),
+      updatedAt: Date.now(),
+    };
+    changed = true;
+  });
+  if (changed) saveProfilesDb(db);
+  return changed;
+}
+
 const DEFAULT_ADMIN_EMAILS = [
   'matprize055@gmail.com',
 ];
@@ -119,12 +149,13 @@ function getModerationKeys(identity) {
 function getModerationState(identity) {
   const db = loadModerationDb();
   const keys = getModerationKeys(identity);
-  const state = { muted: false, banned: false, reason: '', updatedAt: 0 };
+  const state = { muted: false, banned: false, reason: '', updatedAt: 0, profileResetAt: 0 };
   keys.forEach((key) => {
     const entry = db.users[key];
     if (!entry || typeof entry !== 'object') return;
     state.muted = state.muted || !!entry.muted;
     state.banned = state.banned || !!entry.banned;
+    state.profileResetAt = Math.max(state.profileResetAt, Number(entry.profileResetAt || 0));
     const entryUpdatedAt = Number(entry.updatedAt || 0);
     if (entryUpdatedAt >= state.updatedAt) {
       state.reason = sanitizeStr(entry.reason, 160) || state.reason;
@@ -137,6 +168,7 @@ function getModerationState(identity) {
     banned: !!state.banned,
     reason: state.reason || '',
     updatedAt: Number(state.updatedAt || 0),
+    profileResetAt: Number(state.profileResetAt || 0),
   };
 }
 
@@ -148,6 +180,7 @@ function updateModerationState(identity, patch, actor) {
     muted: patch && patch.muted === undefined ? current.muted : !!(patch && patch.muted),
     banned: patch && patch.banned === undefined ? current.banned : !!(patch && patch.banned),
     reason: sanitizeStr(patch && patch.reason !== undefined ? patch.reason : current.reason, 160),
+    profileResetAt: patch && patch.profileResetAt === undefined ? Number(current.profileResetAt || 0) : Math.max(0, Number(patch && patch.profileResetAt || 0)),
     updatedAt: Date.now(),
     updatedBy: sanitizeStr(actor && actor.uid, 128) || 'admin',
   };
@@ -481,6 +514,19 @@ function broadcastSocialClear(payload) {
     room: SOCIAL_ROOM_ID,
     clearedAt: Date.now(),
     auto: false,
+    by: 'admin',
+  }, payload || {}));
+}
+
+function broadcastSocialProfileReset(payload) {
+  ensureSocialRoom();
+  broadcastToRoom(SOCIAL_ROOM_ID, Object.assign({
+    type: 'social_profile_reset',
+    room: SOCIAL_ROOM_ID,
+    resetAt: Date.now(),
+    targetUid: '',
+    targetName: 'Joueur',
+    byUid: '',
     by: 'admin',
   }, payload || {}));
 }
@@ -983,6 +1029,7 @@ async function handleApi(req, res, pathname) {
           reason: state.reason || '',
           updatedAt: state.updatedAt || 0,
         },
+        profileResetAt: state.profileResetAt || 0,
       });
     } catch (_) {
       sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
@@ -1019,6 +1066,7 @@ async function handleApi(req, res, pathname) {
       if (action === 'unmute') patch = { muted: false, reason: body && body.reason };
       if (action === 'ban') patch = { banned: true, muted: true, reason: body && body.reason };
       if (action === 'unban') patch = { banned: false, muted: false, reason: body && body.reason };
+      if (action === 'reset_stats') patch = { profileResetAt: Date.now() };
       if (!patch) {
         sendApiJson(req, res, 400, { ok: false, error: 'invalid_action' });
         return true;
@@ -1032,7 +1080,18 @@ async function handleApi(req, res, pathname) {
         return true;
       }
 
-      sendApiJson(req, res, 200, { ok: true, action, moderation });
+      if (action === 'reset_stats') {
+        resetProfileStatsInDb(target);
+        broadcastSocialProfileReset({
+          resetAt: moderation.profileResetAt || Date.now(),
+          targetUid: sanitizeStr(body && body.targetUid, 128),
+          targetName: sanitizeStr(body && body.targetName, 80) || sanitizeStr(body && body.targetUid, 80) || 'Joueur',
+          byUid: sanitizeStr(body && body.adminUid, 128),
+          by: sanitizeStr(session && (session.email || body && body.adminUid), 160) || 'admin',
+        });
+      }
+
+      sendApiJson(req, res, 200, { ok: true, action, moderation, profileResetAt: moderation.profileResetAt || 0 });
     } catch (_) {
       sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
     }

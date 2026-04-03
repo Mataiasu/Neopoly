@@ -876,6 +876,82 @@ const IS_PC_PLATFORM=(()=>{
   return !isMobileUa&&!isIpadOs;
 })();
 
+let UI_TOOLTIP_EL=null;
+function ensureUiTooltip(){
+  if(UI_TOOLTIP_EL&&document.body&&document.body.contains(UI_TOOLTIP_EL)) return UI_TOOLTIP_EL;
+  UI_TOOLTIP_EL=document.getElementById('ui-tooltip');
+  if(!UI_TOOLTIP_EL&&document.body){
+    UI_TOOLTIP_EL=document.createElement('div');
+    UI_TOOLTIP_EL.id='ui-tooltip';
+    UI_TOOLTIP_EL.setAttribute('role','tooltip');
+    UI_TOOLTIP_EL.setAttribute('aria-hidden','true');
+    document.body.appendChild(UI_TOOLTIP_EL);
+  }
+  return UI_TOOLTIP_EL;
+}
+function positionUiTooltip(clientX,clientY){
+  const tip=ensureUiTooltip();
+  if(!tip) return;
+  const margin=12;
+  const rect=tip.getBoundingClientRect();
+  let left=(Number.isFinite(clientX)?clientX:margin)+14;
+  let top=(Number.isFinite(clientY)?clientY:margin)+16;
+  if(left+rect.width+margin>window.innerWidth) left=Math.max(margin,(Number.isFinite(clientX)?clientX:window.innerWidth)-rect.width-14);
+  if(top+rect.height+margin>window.innerHeight) top=Math.max(margin,(Number.isFinite(clientY)?clientY:window.innerHeight)-rect.height-14);
+  tip.style.left=`${left}px`;
+  tip.style.top=`${top}px`;
+}
+function showUiTooltip(el,evt){
+  if(!el) return;
+  const text=String(el.getAttribute('data-tip')||'').trim();
+  if(!text){ hideUiTooltip(); return; }
+  const tip=ensureUiTooltip();
+  if(!tip) return;
+  if(tip.textContent!==text) tip.textContent=text;
+  tip.setAttribute('aria-hidden','false');
+  tip.classList.add('show');
+  const rect=el.getBoundingClientRect();
+  const x=evt&&Number.isFinite(evt.clientX)?evt.clientX:(rect.left+rect.width/2);
+  const y=evt&&Number.isFinite(evt.clientY)?evt.clientY:(rect.top+rect.height/2);
+  positionUiTooltip(x,y);
+}
+function hideUiTooltip(){
+  const tip=ensureUiTooltip();
+  if(!tip) return;
+  tip.classList.remove('show');
+  tip.setAttribute('aria-hidden','true');
+}
+function initUiTooltips(){
+  if(!document.body||document.body.dataset.npTooltipsBound==='1') return;
+  ensureUiTooltip();
+  document.body.dataset.npTooltipsBound='1';
+
+  document.addEventListener('mouseover',e=>{
+    const el=e&&e.target&&e.target.closest?e.target.closest('[data-tip]'):null;
+    if(el) showUiTooltip(el,e);
+  });
+  document.addEventListener('mousemove',e=>{
+    const tip=ensureUiTooltip();
+    if(tip&&tip.classList.contains('show')) positionUiTooltip(e.clientX,e.clientY);
+  });
+  document.addEventListener('mouseout',e=>{
+    const from=e&&e.target&&e.target.closest?e.target.closest('[data-tip]'):null;
+    if(!from) return;
+    const to=e&&e.relatedTarget&&e.relatedTarget.closest?e.relatedTarget.closest('[data-tip]'):null;
+    if(from!==to) hideUiTooltip();
+  });
+  document.addEventListener('focusin',e=>{
+    const el=e&&e.target&&e.target.closest?e.target.closest('[data-tip]'):null;
+    if(el) showUiTooltip(el);
+  });
+  document.addEventListener('focusout',e=>{
+    const el=e&&e.target&&e.target.closest?e.target.closest('[data-tip]'):null;
+    if(el) hideUiTooltip();
+  });
+  window.addEventListener('scroll',hideUiTooltip,true);
+  window.addEventListener('resize',hideUiTooltip,{passive:true});
+}
+
 // Sélecteur d'emoji pour pion (tous modes)
 document.addEventListener('DOMContentLoaded',()=>{
   enforceCanonicalLocalOrigin();
@@ -891,6 +967,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   initMobileSidebarSwipe();
   loadClientUiPrefs();
   setClientCellScale(CLIENT_UI.cellScale);
+  initUiTooltips();
   ensureEmojiUnlocks(false);
   renderPartyEmojiPickers();
   setTimeout(updateBoardAdaptiveScale,0);
@@ -1291,6 +1368,7 @@ const EMOJI_UNLOCK_DEFS=[
   {key:'secret_glitch',emoji:'👾',label:'Glitch',desc:'Une anomalie retro venue d\'ailleurs.',secret:true,cond:'Condition secrète',unlock:p=>!!p?.secretUnlocks?.fx_arcade},
   {key:'secret_cosmic',emoji:'🛸',label:'Cosmique',desc:'Un visiteur venu des etoiles.',secret:true,cond:'Condition secrète',unlock:p=>!!p?.secretUnlocks?.fx_cosmic},
   {key:'secret_shadow',emoji:'🕶️',label:'Ombre',desc:'Style clandestin reserve aux obstines.',secret:true,cond:'Condition secrète',unlock:p=>((parseInt(p?.stats?.gamesLost,10)||0)>=13&&(parseInt(p?.stats?.gamesWon,10)||0)>=13)},
+  {key:'quest_orchid',emoji:'🪷',label:'Lotus astral',desc:'Cosmétique premium obtenu via les quêtes.',secret:true,cond:'Obtenir la Palette prismatique',unlock:p=>!!p?.emojiUnlocks?.quest_orchid},
   {key:'rare_unicorn',emoji:'🦄',label:'Licorne Néo',desc:'Récompense hebdomadaire rare.',secret:true,cond:'Obtenir une mission hebdo rare',unlock:p=>!!p?.emojiUnlocks?.rare_unicorn},
   {key:'rare_phoenix',emoji:'🐦‍🔥',label:'Phénix',desc:'Récompense légendaire de saison.',secret:true,cond:'Débloquer un palier de saison rare',unlock:p=>!!p?.emojiUnlocks?.rare_phoenix}
 ];
@@ -1410,6 +1488,7 @@ let P={
   mutedUsers:[],
   blockedUsers:[],
   chatProfilePrivate:false,
+  lastAdminStatsResetAt:0,
   friends:[], // [{uid,name,emoji,avatarImg,color,addedAt}]
   chatLog:[]  // [{name,color,text,ts,mine,uid,admin,emoji,avatarImg}]
 };
@@ -1474,6 +1553,7 @@ function loadProfile(opts){
   if(!Array.isArray(P.seasonData.claimedTiers))P.seasonData.claimedTiers=[];
   if(!Array.isArray(P.seasonData.history))P.seasonData.history=[];
   if(typeof P.chatProfilePrivate!=='boolean')P.chatProfilePrivate=!!P.chatProfilePrivate;
+  P.lastAdminStatsResetAt=Math.max(0,parseInt(P.lastAdminStatsResetAt,10)||0);
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   if(!Array.isArray(P.chatLog))P.chatLog=[];
@@ -1506,6 +1586,7 @@ const DAILY_CHALLENGE_POOL=[
   {id:'play_1',label:'Lancer 1 partie',stat:'gamesPlayed',amount:1,reward:{type:'diceBoost',qty:1}},
   {id:'buy_4',label:'Acheter 4 propriétés',stat:'propertiesBought',amount:4,reward:{type:'antiJail',qty:1}},
   {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'elo',qty:15}},
+  {id:'quest_turns_18',label:'Tenir 18 tours aujourd’hui',stat:'totalTurns',amount:18,reward:{type:'unlockTitle',key:'quest_scout',fallback:{type:'elo',qty:12}}},
   {id:'win_1',label:'Gagner 1 partie',stat:'gamesWon',amount:1,reward:{type:'diceBoost',qty:2}},
   {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'mortgageDiscount',qty:1}},
 ];
@@ -1513,15 +1594,16 @@ const DAILY_CHALLENGE_POOL=[
 const WEEKLY_MISSION_POOL=[
   {id:'week_play_5',label:'Jouer 5 parties cette semaine',stat:'gamesPlayed',amount:5,reward:{type:'seasonXp',qty:140}},
   {id:'week_win_3',label:'Gagner 3 parties cette semaine',stat:'gamesWon',amount:3,reward:{type:'rareReward',key:'crown_neon'}},
-  {id:'week_buy_18',label:'Acheter 18 propriétés',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn'}},
-  {id:'week_turns_80',label:'Jouer 80 tours',stat:'totalTurns',amount:80,reward:{type:'rareToken',qty:1}},
-  {id:'week_money_5000',label:'Cumuler 5000$ gagnés',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura'}},
+  {id:'week_buy_18',label:'Acheter 18 propriétés',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn',fallback:{type:'rareToken',qty:1}}},
+  {id:'week_turns_80',label:'Jouer 80 tours',stat:'totalTurns',amount:80,reward:{type:'rareReward',key:'quest_palette'}},
+  {id:'week_money_5000',label:'Cumuler 5000$ gagnés',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura',fallback:{type:'seasonXp',qty:90}}},
 ];
 
 const RARE_REWARD_DEFS={
   crown_neon:{label:'Couronne Néon',icon:'👑',rarity:'épique',desc:'Titre saisonnier clinquant.',titleKey:'season_contender'},
   phoenix_core:{label:'Cœur Phénix',icon:'🔥',rarity:'légendaire',desc:'Débloque l’emoji Phénix.',emojiKey:'rare_phoenix'},
   aurora_shard:{label:'Éclat Aurora',icon:'✨',rarity:'rare',desc:'Débloque l’aura Elite.',secretKey:'fx_aura'},
+  quest_palette:{label:'Palette Prismatique',icon:'🎨',rarity:'épique',desc:'Débloque un lotus astral et un titre cosmétique exclusif.',emojiKey:'quest_orchid',titleKey:'quest_curator'},
   vault_key:{label:'Clé du Coffre',icon:'🗝️',rarity:'épique',desc:'Offre des objets premium.',itemBonus:{diceBoost:2,mortgageDiscount:1}},
 };
 
@@ -1549,7 +1631,7 @@ const SEASON_LEAGUES=[
 
 const MATCH_OBJECTIVE_POOL=[
   {id:'collector',title:'Collection discrète',desc:'Achète 3 propriétés pendant cette partie.',target:3,reward:{type:'diceBoost',qty:1}},
-  {id:'builder',title:'Architecte du quartier',desc:'Construis 2 maisons ou hôtels.',target:2,reward:{type:'elo',qty:20}},
+  {id:'builder',title:'Architecte du quartier',desc:'Construis 2 maisons ou hôtels.',target:2,reward:{type:'unlockTitle',key:'quest_architect',fallback:{type:'elo',qty:20}}},
   {id:'voyager',title:'Tour express',desc:'Passe 2 fois par Départ.',target:2,reward:{type:'antiJail',qty:1}},
   {id:'rentier',title:'Cash-flow caché',desc:'Encaisse 250$ de loyers.',target:250,reward:{type:'mortgageDiscount',qty:1}},
   {id:'railmaster',title:'Baron du rail',desc:'Contrôle 2 gares en même temps.',target:2,reward:{type:'diceBoost',qty:1}},
@@ -1588,6 +1670,7 @@ function pickRandomEntries(list,count){
 
 function getRewardText(reward){
   const qty=Math.max(1,parseInt(reward?.qty,10)||1);
+  const emojiDef=(EMOJI_UNLOCK_DEFS||[]).find(def=>def&&def.key===reward?.key);
   switch(reward?.type){
     case 'diceBoost':return '⚡ +'+qty+' booster'+(qty>1?'s':'');
     case 'antiJail':return '🛡️ +'+qty+' anti-prison';
@@ -1596,8 +1679,9 @@ function getRewardText(reward){
     case 'seasonXp':return '🏆 +'+qty+' XP saison';
     case 'rareToken':return '💠 +'+qty+' jeton rare';
     case 'rareReward':return '💎 '+(RARE_REWARD_DEFS[reward.key]?.label||'récompense rare');
-    case 'unlockEmoji':return '🦄 Emoji rare';
-    case 'unlockSecret':return '✨ Aura rare';
+    case 'unlockEmoji':return (emojiDef?.emoji||'🧩')+' '+(emojiDef?.label||'Cosmétique emoji');
+    case 'unlockTitle':return '🏅 '+(TITLE_DEFS?.[reward.key]?.label||'Titre exclusif');
+    case 'unlockSecret':return '✨ '+((typeof SECRET_FEATURE_DEFS!=='undefined'&&SECRET_FEATURE_DEFS?.[reward.key]?.label)||'Aura rare');
     default:return 'Bonus surprise';
   }
 }
@@ -1721,14 +1805,26 @@ function grantProfileReward(reward){
     P.rareTokenCount=Math.max(0,(parseInt(P.rareTokenCount,10)||0)+qty);
     return true;
   }
-  if(reward.type==='rareReward')return recordRareReward(reward.key,false);
+  if(reward.type==='rareReward'){
+    const ok=recordRareReward(reward.key,false);
+    return ok||(reward.fallback?grantProfileReward(reward.fallback):false);
+  }
   if(reward.type==='unlockEmoji'){
     if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
+    if(P.emojiUnlocks[reward.key])return reward.fallback?grantProfileReward(reward.fallback):false;
     P.emojiUnlocks[reward.key]=Date.now();
     return true;
   }
+  if(reward.type==='unlockTitle'){
+    if(!Array.isArray(P.titles))P.titles=[];
+    if(P.titles.includes(reward.key))return reward.fallback?grantProfileReward(reward.fallback):false;
+    P.titles.push(reward.key);
+    if(typeof ensureTitleMeta==='function')ensureTitleMeta(reward.key);
+    return true;
+  }
   if(reward.type==='unlockSecret'){
-    return typeof unlockSecretFeature==='function'?!!unlockSecretFeature(reward.key):false;
+    const ok=typeof unlockSecretFeature==='function'?!!unlockSecretFeature(reward.key):false;
+    return ok||(reward.fallback?grantProfileReward(reward.fallback):false);
   }
   if(!P.inventory||typeof P.inventory!=='object')P.inventory={diceBoost:0,antiJail:0,mortgageDiscount:0};
   if(!(reward.type in P.inventory))return false;

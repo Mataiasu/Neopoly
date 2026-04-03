@@ -611,6 +611,11 @@ function openChatUserMenu(event,user){
     sep.className='chat-user-menu-sep';
     menu.appendChild(sep);
 
+    const adminLabel=document.createElement('div');
+    adminLabel.style.cssText='font-size:.66rem;color:var(--muted);font-weight:700;margin:4px 0 8px';
+    adminLabel.innerHTML='👑 Modération <span class="access-badge admin-only">Admin</span>';
+    dialog.appendChild(adminLabel);
+
     const adminActions=document.createElement('div');
     adminActions.className='chat-user-menu-actions';
     adminActions.appendChild(makeChatUserMenuButton('🎯 Cibler','btn-secondary',()=>{
@@ -621,6 +626,7 @@ function openChatUserMenu(event,user){
     adminActions.appendChild(makeChatUserMenuButton('Unmute','btn-secondary',()=>moderateTarget('unmute',uid,name)));
     adminActions.appendChild(makeChatUserMenuButton('Ban','btn-danger',()=>moderateTarget('ban',uid,name)));
     adminActions.appendChild(makeChatUserMenuButton('Unban','btn-blue',()=>moderateTarget('unban',uid,name)));
+    adminActions.appendChild(makeChatUserMenuButton('🧹 Reset stats','btn-yellow',()=>moderateTarget('reset_stats',uid,name)));
     dialog.appendChild(adminActions);
   }
 
@@ -887,6 +893,10 @@ async function refreshModerationStatus(silent=true){
     if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');
     P.isAdmin=!!data.isAdmin||localAdmin;
     P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
+    const resetAt=Math.max(0,parseInt(data&&data.profileResetAt,10)||0);
+    if(resetAt>(parseInt(P.lastAdminStatsResetAt,10)||0)&&typeof resetProfileProgress==='function'){
+      resetProfileProgress({source:'admin',resetAt,silent:!!silent,toast:'🧹 Tes stats ont été réinitialisées par un admin.'});
+    }
   }catch(_){
     P.isAdmin=localAdmin;
     if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
@@ -910,6 +920,8 @@ async function moderateTarget(action,targetUid,targetName){
   const input=document.getElementById('social-mod-target');
   const uid=String(targetUid||input?.value||'').trim();
   if(!uid){toast('Entre un UID cible','w');return;}
+  const isResetAction=action==='reset_stats';
+  if(isResetAction&&!confirm('Réinitialiser toutes les stats et la progression de '+String(targetName||uid)+' ?'))return;
   const reason=(action==='ban'||action==='mute')?(prompt('Raison (optionnelle) ?','')||''):'';
   try{
     const r=await fetch(getGoogleApiBase()+'/api/mod/action',{
@@ -920,13 +932,21 @@ async function moderateTarget(action,targetUid,targetName){
         adminUid:P.uid,
         sessionToken:P.googleSessionToken||'',
         targetUid:uid,
+        targetName:targetName||'',
         reason,
       }),
     });
     const data=await r.json();
     if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_action_failed');
     if(input)input.value=uid;
-    toast('Action '+action+' appliquée à '+(targetName||uid),'a');
+    if(isResetAction){
+      toast('🧹 Stats réinitialisées pour '+(targetName||uid),'a');
+      if(normalizeProfileUid(uid)===normalizeProfileUid(P.uid)&&typeof resetProfileProgress==='function'){
+        resetProfileProgress({source:'admin',resetAt:data.profileResetAt||Date.now(),silent:false,toast:'🧹 Tes stats ont été réinitialisées par un admin.'});
+      }
+    }else{
+      toast('Action '+action+' appliquée à '+(targetName||uid),'a');
+    }
   }catch(e){
     toast('Erreur modération: '+String(e&&e.message||'mod_action_failed'),'d');
   }
@@ -1031,6 +1051,15 @@ function connectSocialWs(auto=false){
             syncSocialAdminUi();
             if(P.moderation.banned)toast('⛔ Compte banni du chat','d');
             else if(P.moderation.muted)toast('🔇 Compte mute du chat','w');
+            return;
+          }
+          if(m.type==='social_profile_reset'){
+            const targetUid=normalizeProfileUid(m.targetUid);
+            if(targetUid&&targetUid===normalizeProfileUid(P.uid)&&typeof resetProfileProgress==='function'){
+              resetProfileProgress({source:'admin',resetAt:m.resetAt||Date.now(),silent:false,toast:'🧹 Tes stats ont été réinitialisées par un admin.'});
+            }else if(P.isAdmin&&normalizeProfileUid(m.byUid||'')===normalizeProfileUid(P.uid)){
+              toast('🧹 Stats de '+String(m.targetName||m.targetUid||'ce joueur')+' réinitialisées.','a');
+            }
             return;
           }
           if(m.type==='social_chat'&&m.uid!==P.uid){
