@@ -1839,8 +1839,8 @@ body.streamer-mode #invite-link {
               <input id="secret-code-inp" placeholder="Entrer un code…" style="flex:1;font-size:.7rem" onkeydown="if(event.key==='Enter')redeemSecretCode()"/>
               <button class="btn btn-xs btn-blue" onclick="redeemSecretCode()">OK</button>
             </div>
-            <div style="display:flex;justify-content:flex-end;margin-top:6px">
-              <button class="btn btn-xs btn-secondary" onclick="adminRebindIpPrompt()">🔐 Reassigner IP (admin)</button>
+            <div id="secret-admin-rebind-wrap" style="display:none;justify-content:flex-end;margin-top:6px">
+              <button class="btn btn-xs btn-secondary" id="secret-admin-rebind-btn" onclick="adminRebindIpPrompt()">🔐 Reassigner IP (admin)</button>
             </div>
           </details>
         </div>

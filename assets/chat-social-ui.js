@@ -846,6 +846,8 @@ function addSocialMsg(name,color,text,mine,meta){
 function syncSocialAdminUi(){
   const status=document.getElementById('social-chat-role');
   const tools=document.getElementById('social-admin-tools');
+  const adminRebindWrap=document.getElementById('secret-admin-rebind-wrap');
+  const adminRebindBtn=document.getElementById('secret-admin-rebind-btn');
   const input=document.getElementById('social-chat-input');
   const sendBtn=document.getElementById('social-send-btn');
   const mod=P.moderation||getDefaultModerationState();
@@ -862,6 +864,8 @@ function syncSocialAdminUi(){
     }
   }
   if(tools)tools.style.display=P.isAdmin?'block':'none';
+  if(adminRebindWrap)adminRebindWrap.style.display=P.isAdmin?'flex':'none';
+  if(adminRebindBtn)adminRebindBtn.disabled=!P.isAdmin;
   if(input){
     input.disabled=blocked;
     input.placeholder=mod.banned?'Chat indisponible (banni)':(mod.muted?'Chat indisponible (mute)':'Message…');

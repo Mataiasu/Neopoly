@@ -621,6 +621,10 @@ function doStart(){
 }
 
 function doReset(){
+  if(typeof canEditPartyOptions==='function'&&!canEditPartyOptions()){
+    toast('Seul l\'hôte peut réinitialiser la partie en multijoueur.','w');
+    return;
+  }
   if(!confirm('Réinitialiser la partie ?'))return;
   enforceUniquePlayerColors();
   G.board=clone(DEF);
@@ -1136,6 +1140,10 @@ function updateCellPrev(){
 }
 
 function applyCell(){
+  if(typeof canEditPartyOptions==='function'&&!canEditPartyOptions()){
+    toast('Seul l\'hôte peut modifier le plateau en multijoueur.','w');
+    return;
+  }
   if(G.started){toast('Modification des cases verrouillée pendant la partie.','w');return;}
   const idx=parseInt(document.getElementById('cell-sel').value,10);
   const cell=G.board[idx];if(!cell)return;
@@ -1155,6 +1163,10 @@ function applyCell(){
 }
 
 function resetCell(){
+  if(typeof canEditPartyOptions==='function'&&!canEditPartyOptions()){
+    toast('Seul l\'hôte peut modifier le plateau en multijoueur.','w');
+    return;
+  }
   if(G.started){toast('Modification des cases verrouillée pendant la partie.','w');return;}
   const idx=parseInt(document.getElementById('cell-sel').value,10);
   G.board[idx]=clone(DEF[idx]);
@@ -1169,6 +1181,10 @@ function exportJson(){
 }
 
 function importJson(){
+  if(typeof canEditPartyOptions==='function'&&!canEditPartyOptions()){
+    toast('Seul l\'hôte peut modifier le plateau en multijoueur.','w');
+    return;
+  }
   if(G.started){toast('Modification des cases verrouillée pendant la partie.','w');return;}
   try{
     const data=JSON.parse(document.getElementById('board-json').value);
@@ -1179,6 +1195,10 @@ function importJson(){
 }
 
 function resetBoard(){
+  if(typeof canEditPartyOptions==='function'&&!canEditPartyOptions()){
+    toast('Seul l\'hôte peut modifier le plateau en multijoueur.','w');
+    return;
+  }
   if(G.started){toast('Modification des cases verrouillée pendant la partie.','w');return;}
   if(!confirm('Réinitialiser tout le plateau ?'))return;
   G.board=clone(DEF);buildBoard();populateCellSel();loadCellEditor();

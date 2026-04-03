@@ -5467,9 +5467,14 @@ function canEditPartyOptions(){
 
 function syncPartyOptionsBlockVisibility(){
   const block=document.getElementById('cfg-options-partie');
-  if(!block)return;
+  const resetRow=document.getElementById('cfg-reset-row');
+  const cellEditor=document.getElementById('cfg-cell-editor');
+  const jsonBox=document.getElementById('cfg-json-export');
   const show=(G.mode!=='online')||isOnlineHost();
-  block.style.display=show?'block':'none';
+  if(block)block.style.display=show?'block':'none';
+  if(resetRow)resetRow.style.display=show?'flex':'none';
+  if(cellEditor)cellEditor.style.display=show?'block':'none';
+  if(jsonBox)jsonBox.style.display=show?'block':'none';
 }
 
 function isPartyOptionsLocked(){
