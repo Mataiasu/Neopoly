@@ -870,6 +870,7 @@ function syncSocialAdminUi(){
 }
 
 async function refreshModerationStatus(silent=true){
+  const localAdmin=isKnownAdminEmail(P.googleEmail);
   try{
     const base=(getGoogleApiBase()||'').replace(/\/$/,'');
     const r=await fetch(base+'/api/mod/status',{
@@ -880,10 +881,10 @@ async function refreshModerationStatus(silent=true){
     });
     const data=await r.json();
     if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');
-    P.isAdmin=!!data.isAdmin;
+    P.isAdmin=!!data.isAdmin||localAdmin;
     P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
   }catch(_){
-    P.isAdmin=isKnownAdminEmail(P.googleEmail);
+    P.isAdmin=localAdmin;
     if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
   }
   syncSocialAdminUi();
