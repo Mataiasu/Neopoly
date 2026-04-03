@@ -67,7 +67,7 @@ function renderPlayers(){
   const playerSignature=JSON.stringify({
     cur:G.cur,
     started:!!G.started,
-    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,matchItems:p.matchItems||{}}))
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',matchItems:p.matchItems||{}}))
   });
   if(G.playerPanelSignature!==playerSignature){
     list.innerHTML='';
@@ -87,6 +87,7 @@ function renderPlayers(){
     }
     const mi=p.matchItems||{};
     const _pBadges=[];
+    if(p.teamId&&typeof getTeamLabel==='function')_pBadges.push('🤝 '+getTeamLabel(p.teamId));
     if(p.bot&&typeof getBotPersonaConfig==='function'){
       const persona=getBotPersonaConfig(p);
       _pBadges.push(persona.icon+' '+persona.label);
@@ -160,6 +161,8 @@ function renderPlayers(){
   renderMatchItemsUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   if(typeof renderTurnHistory==='function')renderTurnHistory();
+  if(typeof renderBoardEventUi==='function')renderBoardEventUi();
+  if(typeof renderAlliancePanel==='function')renderAlliancePanel();
   scheduleBotTurn();
 }
 
@@ -568,6 +571,9 @@ function doStart(){
   G.pendingRollBoostFor=null;
   G.secretObjective=null;
   G.turnHistory=[];
+  G.boardEvent=null;
+  G.lastBoardEventTurn=0;
+  clearTeamMode?.();
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.txns=[];G.undoStack=[];G.jailTurns={};
   G.pendingBuy=null;G.started=true;G.myReady=false;
@@ -580,6 +586,7 @@ function doStart(){
     p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
     if(p.bot)ensureBotPersona(p);
   });
+  setupTeamMode?.();
   document.getElementById('winner-overlay').classList.remove('open');
   const _ol=document.getElementById('online-lobby');if(_ol)_ol.style.display='none';
   closeModal('modal-local');
@@ -591,6 +598,8 @@ function doStart(){
   ensureMatchObjectiveExists(true);
   renderMatchObjectiveUi();
   renderTurnHistory();
+  renderBoardEventUi?.();
+  renderAlliancePanel?.();
   toast(G.pendingRematch?'🔁 Revanche prête !':'🚀 Partie démarrée !','a');
   if(G.mode==='online') document.getElementById('chat-card').style.display='block';
   if(G.timerEnabled)startTimer();
@@ -599,6 +608,8 @@ function doStart(){
   P.stats.gamesPlayed++;
   saveProfileData();
   syncDailyChallengesProgress(true);
+  syncWeeklyMissionsProgress(true);
+  addSeasonProgress(8,'participation');
   renderLobbyProfileTab();
   G.pendingRematch=false;
 }
@@ -619,8 +630,12 @@ function doReset(){
   G.pendingRollBoostFor=null;
   G.secretObjective=null;
   G.turnHistory=[];
+  G.boardEvent=null;
+  G.lastBoardEventTurn=0;
+  clearTeamMode?.();
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.pendingBuy=null;G.jailTurns={};
+  setupTeamMode?.();
   stopGlobalTimer();
   startGlobalTimer();
   updateMusicForContext();
@@ -628,6 +643,8 @@ function doReset(){
   ensureMatchObjectiveExists(true);
   renderMatchObjectiveUi();
   renderTurnHistory();
+  renderBoardEventUi?.();
+  renderAlliancePanel?.();
   toast('🔄 Partie réinitialisée.','i');
 }
 
@@ -656,6 +673,9 @@ function backToLobby(){
   G.bonusTurns={};
   G.secretObjective=null;
   G.turnHistory=[];
+  G.boardEvent=null;
+  G.lastBoardEventTurn=0;
+  clearTeamMode?.();
   G.pendingRematch=false;
   G.pendingPartyBots=[];
   G.onlineLobbySignature='';

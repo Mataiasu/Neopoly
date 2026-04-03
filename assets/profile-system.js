@@ -130,6 +130,7 @@ const TITLE_DEFS={
   s_marathon:  {label:'🏃 Marathonien',        cls:'vt-s7', cond:'Jouer 1500 tours cumulés'},
   s_ascendant: {label:'🪐 Ascendant',          cls:'vt-s8', cond:'Atteindre 3200 ELO'},
   s_collection:{label:'🧠 Collectionneur',     cls:'vt-s9', cond:'Acheter 120 propriétés cumulées'},
+  season_contender:{label:'👑 Prétendant saisonnier', cls:'vt-legend', cond:'Obtenir la Couronne Néon'},
 };
 
 const SECRET_FEATURE_DEFS={
@@ -400,6 +401,9 @@ function renderLobbyProfileTab(){
   renderPartyEmojiPickers();
   renderEmojiCollection();
   if(typeof renderDailyChallengesUi==='function')renderDailyChallengesUi();
+  if(typeof renderWeeklyMissionsUi==='function')renderWeeklyMissionsUi();
+  if(typeof renderRareRewardsUi==='function')renderRareRewardsUi();
+  if(typeof renderSeasonHubUi==='function')renderSeasonHubUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   const av=document.getElementById('pc-avatar');
   if(av){
@@ -541,6 +545,10 @@ function debugResetStats(){
   P.emojiUnlocks={};
   P.selectedTitle=null;
   P.dailyChallenges={dateKey:'',streak:0,lastCompletedDate:'',items:[]};
+  P.weeklyMissions={weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false};
+  P.rareRewards=[];
+  P.rareTokenCount=0;
+  P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
   saveProfileData();
   renderLobbyProfileTab();
   toast('🧹 Reset total: stats, ELO, titres, dates et secrets','i');

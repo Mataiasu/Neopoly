@@ -1293,7 +1293,9 @@ const EMOJI_UNLOCK_DEFS=[
   {key:'dragon_1600_elo',emoji:'🐉',label:'Dragon',desc:'Embleme des joueurs montes en elo.',cond:'Atteindre 1600 ELO',unlock:p=>(parseInt(p?.elo,10)||0)>=1600},
   {key:'secret_glitch',emoji:'👾',label:'Glitch',desc:'Une anomalie retro venue d\'ailleurs.',secret:true,cond:'Condition secrète',unlock:p=>!!p?.secretUnlocks?.fx_arcade},
   {key:'secret_cosmic',emoji:'🛸',label:'Cosmique',desc:'Un visiteur venu des etoiles.',secret:true,cond:'Condition secrète',unlock:p=>!!p?.secretUnlocks?.fx_cosmic},
-  {key:'secret_shadow',emoji:'🕶️',label:'Ombre',desc:'Style clandestin reserve aux obstines.',secret:true,cond:'Condition secrète',unlock:p=>((parseInt(p?.stats?.gamesLost,10)||0)>=13&&(parseInt(p?.stats?.gamesWon,10)||0)>=13)}
+  {key:'secret_shadow',emoji:'🕶️',label:'Ombre',desc:'Style clandestin reserve aux obstines.',secret:true,cond:'Condition secrète',unlock:p=>((parseInt(p?.stats?.gamesLost,10)||0)>=13&&(parseInt(p?.stats?.gamesWon,10)||0)>=13)},
+  {key:'rare_unicorn',emoji:'🦄',label:'Licorne Néo',desc:'Récompense hebdomadaire rare.',secret:true,cond:'Obtenir une mission hebdo rare',unlock:p=>!!p?.emojiUnlocks?.rare_unicorn},
+  {key:'rare_phoenix',emoji:'🐦‍🔥',label:'Phénix',desc:'Récompense légendaire de saison.',secret:true,cond:'Débloquer un palier de saison rare',unlock:p=>!!p?.emojiUnlocks?.rare_phoenix}
 ];
 const COLORS=['#22c55e','#3b82f6','#f97316','#ef4444','#a855f7','#facc15'];
 
@@ -1352,6 +1354,11 @@ const G={
   rematchStarterIndex:0,
   rematchCount:0,
   lastWinnerId:null,
+  boardEvent:null,
+  lastBoardEventTurn:0,
+  teamMode:false,
+  teamModePreset:'off',
+  teamModeFormat:'off',
 };
 const NET_TRADE={
   outgoing:{},
@@ -1399,6 +1406,10 @@ let P={
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
   dailyChallenges:{dateKey:'',streak:0,lastCompletedDate:'',items:[]},
+  weeklyMissions:{weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false},
+  rareRewards:[],
+  rareTokenCount:0,
+  seasonData:{seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]},
   mutedUsers:[],
   blockedUsers:[],
   chatProfilePrivate:false,
@@ -1406,8 +1417,13 @@ let P={
   chatLog:[]  // [{name,color,text,ts,mine,uid,admin,emoji,avatarImg}]
 };
 
+const KNOWN_ADMIN_EMAILS=new Set([
+  'matprize055@gmail.com',
+]);
+
 function isKnownAdminEmail(_email){
-  return false;
+  const email=String(_email||'').trim().toLowerCase();
+  return !!email&&KNOWN_ADMIN_EMAILS.has(email);
 }
 function getDefaultModerationState(){
   return {muted:false,banned:false,reason:'',updatedAt:0};
@@ -1444,7 +1460,7 @@ function loadProfile(opts){
   if(typeof P.elo!=='number'||isNaN(P.elo))P.elo=0;
   if(!('selectedTitle' in P))P.selectedTitle=null;
   if(typeof P.isAdmin!=='boolean')P.isAdmin=false;
-  P.googleSessionToken=null;
+  P.googleSessionToken=P.googleSessionToken?String(P.googleSessionToken):null;
   if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
   P.moderation.muted=!!P.moderation.muted;
   P.moderation.banned=!!P.moderation.banned;
@@ -1454,6 +1470,12 @@ function loadProfile(opts){
   if(!Array.isArray(P.mutedUsers))P.mutedUsers=[];
   if(!Array.isArray(P.blockedUsers))P.blockedUsers=[];
   if(!P.dailyChallenges||typeof P.dailyChallenges!=='object')P.dailyChallenges={dateKey:'',streak:0,lastCompletedDate:'',items:[]};
+  if(!P.weeklyMissions||typeof P.weeklyMissions!=='object')P.weeklyMissions={weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false};
+  if(!Array.isArray(P.rareRewards))P.rareRewards=[];
+  P.rareTokenCount=Math.max(0,parseInt(P.rareTokenCount,10)||0);
+  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  if(!Array.isArray(P.seasonData.claimedTiers))P.seasonData.claimedTiers=[];
+  if(!Array.isArray(P.seasonData.history))P.seasonData.history=[];
   if(typeof P.chatProfilePrivate!=='boolean')P.chatProfilePrivate=!!P.chatProfilePrivate;
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
@@ -1463,6 +1485,8 @@ function loadProfile(opts){
   if(syncUidWithGoogleIdentity(true))changed=true;
   if(changed&&!options.skipPersist)saveProfileData();
   if(typeof ensureDailyChallenges==='function')ensureDailyChallenges(false);
+  if(typeof ensureWeeklyMissions==='function')ensureWeeklyMissions(false);
+  if(typeof ensureSeasonData==='function')ensureSeasonData(false);
   checkWinTitles();
   checkSecretTitles(false);
   ensureEmojiUnlocks(false);
@@ -1472,7 +1496,9 @@ function loadProfile(opts){
   renderLobbyProfileTab();renderFriendsList();renderSocialChat();
 }
 function saveProfileData(){
-  const safeProfile=Object.assign({},P,{googleSessionToken:null});
+  const safeProfile=Object.assign({},P,{
+    googleSessionToken:P.googleSessionToken?String(P.googleSessionToken):null
+  });
   localStorage.setItem(PROFILE_KEY,JSON.stringify(safeProfile));
   if(PROFILE_SYNC_BUS){
     try{PROFILE_SYNC_BUS.postMessage({type:'profile_updated',at:Date.now()});}catch(_){ }
@@ -1485,6 +1511,43 @@ const DAILY_CHALLENGE_POOL=[
   {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'elo',qty:15}},
   {id:'win_1',label:'Gagner 1 partie',stat:'gamesWon',amount:1,reward:{type:'diceBoost',qty:2}},
   {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'mortgageDiscount',qty:1}},
+];
+
+const WEEKLY_MISSION_POOL=[
+  {id:'week_play_5',label:'Jouer 5 parties cette semaine',stat:'gamesPlayed',amount:5,reward:{type:'seasonXp',qty:140}},
+  {id:'week_win_3',label:'Gagner 3 parties cette semaine',stat:'gamesWon',amount:3,reward:{type:'rareReward',key:'crown_neon'}},
+  {id:'week_buy_18',label:'Acheter 18 propriétés',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn'}},
+  {id:'week_turns_80',label:'Jouer 80 tours',stat:'totalTurns',amount:80,reward:{type:'rareToken',qty:1}},
+  {id:'week_money_5000',label:'Cumuler 5000$ gagnés',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura'}},
+];
+
+const RARE_REWARD_DEFS={
+  crown_neon:{label:'Couronne Néon',icon:'👑',rarity:'épique',desc:'Titre saisonnier clinquant.',titleKey:'season_contender'},
+  phoenix_core:{label:'Cœur Phénix',icon:'🔥',rarity:'légendaire',desc:'Débloque l’emoji Phénix.',emojiKey:'rare_phoenix'},
+  aurora_shard:{label:'Éclat Aurora',icon:'✨',rarity:'rare',desc:'Débloque l’aura Elite.',secretKey:'fx_aura'},
+  vault_key:{label:'Clé du Coffre',icon:'🗝️',rarity:'épique',desc:'Offre des objets premium.',itemBonus:{diceBoost:2,mortgageDiscount:1}},
+};
+
+const SEASON_ROTATION=[
+  {id:'aurora',label:'Saison Aurora',icon:'🌅'},
+  {id:'solstice',label:'Saison Solstice',icon:'☀️'},
+  {id:'harvest',label:'Saison Harvest',icon:'🍂'},
+  {id:'nebula',label:'Saison Nebula',icon:'🌌'},
+];
+
+const SEASON_PASS_REWARDS=[
+  {tier:1,xp:80,reward:{type:'diceBoost',qty:1}},
+  {tier:2,xp:180,reward:{type:'rareReward',key:'aurora_shard'}},
+  {tier:3,xp:320,reward:{type:'rareReward',key:'phoenix_core'}},
+  {tier:4,xp:520,reward:{type:'rareReward',key:'vault_key'}},
+];
+
+const SEASON_LEAGUES=[
+  {min:0,label:'Bronze',icon:'🥉',cls:'bronze'},
+  {min:120,label:'Argent',icon:'🥈',cls:'silver'},
+  {min:260,label:'Or',icon:'🥇',cls:'gold'},
+  {min:420,label:'Élite',icon:'💎',cls:'elite'},
+  {min:620,label:'Légende',icon:'👑',cls:'legend'},
 ];
 
 const MATCH_OBJECTIVE_POOL=[
@@ -1533,8 +1596,119 @@ function getRewardText(reward){
     case 'antiJail':return '🛡️ +'+qty+' anti-prison';
     case 'mortgageDiscount':return '🏦 +'+qty+' remise hypo';
     case 'elo':return '📈 +'+qty+' ELO';
+    case 'seasonXp':return '🏆 +'+qty+' XP saison';
+    case 'rareToken':return '💠 +'+qty+' jeton rare';
+    case 'rareReward':return '💎 '+(RARE_REWARD_DEFS[reward.key]?.label||'récompense rare');
+    case 'unlockEmoji':return '🦄 Emoji rare';
+    case 'unlockSecret':return '✨ Aura rare';
     default:return 'Bonus surprise';
   }
+}
+
+function getWeekKey(){
+  const now=new Date();
+  const d=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
+  d.setUTCDate(d.getUTCDate()+4-(d.getUTCDay()||7));
+  const yearStart=new Date(Date.UTC(d.getUTCFullYear(),0,1));
+  const week=Math.ceil((((d-yearStart)/86400000)+1)/7);
+  return d.getUTCFullYear()+'-W'+String(week).padStart(2,'0');
+}
+
+function getCurrentSeasonInfo(){
+  const now=new Date();
+  const idx=Math.floor(now.getMonth()/3)%SEASON_ROTATION.length;
+  const base=SEASON_ROTATION[idx]||SEASON_ROTATION[0];
+  return Object.assign({key:now.getFullYear()+'-'+base.id},base);
+}
+
+function getSeasonLeagueInfo(score){
+  const pts=Math.max(0,parseInt(score,10)||0);
+  for(let i=SEASON_LEAGUES.length-1;i>=0;i--){
+    const league=SEASON_LEAGUES[i];
+    if(pts>=league.min){
+      const next=SEASON_LEAGUES[i+1]||null;
+      const span=next?Math.max(1,next.min-league.min):120;
+      const progress=next?Math.max(0,Math.min(100,Math.round(((pts-league.min)/span)*100))):100;
+      return Object.assign({score:pts,next,progress},league);
+    }
+  }
+  return Object.assign({score:pts,next:SEASON_LEAGUES[1]||null,progress:0},SEASON_LEAGUES[0]);
+}
+
+function ensureSeasonData(forceReset=false){
+  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  const info=getCurrentSeasonInfo();
+  const data=P.seasonData;
+  let changed=false;
+  if(forceReset||data.seasonKey!==info.key){
+    if(data.seasonKey&&data.label){
+      data.history.unshift({seasonKey:data.seasonKey,label:data.label,score:parseInt(data.score,10)||0,xp:parseInt(data.xp,10)||0,closedAt:Date.now()});
+      if(data.history.length>6)data.history.length=6;
+    }
+    data.seasonKey=info.key;
+    data.label=info.icon+' '+info.label;
+    data.xp=0;
+    data.score=0;
+    data.claimedTiers=[];
+    changed=true;
+  }
+  const league=getSeasonLeagueInfo(data.score||0);
+  if(!data.bestLeague||league.label!==data.bestLeague)data.bestLeague=league.label;
+  if(changed)saveProfileData();
+  return data;
+}
+
+function recordRareReward(key,silent=false){
+  const def=RARE_REWARD_DEFS[key];
+  if(!def)return false;
+  if(!Array.isArray(P.rareRewards))P.rareRewards=[];
+  if(P.rareRewards.some(entry=>entry&&entry.key===key))return false;
+  P.rareRewards.unshift({key,label:def.label,icon:def.icon,rarity:def.rarity,desc:def.desc,obtainedAt:Date.now()});
+  if(P.rareRewards.length>18)P.rareRewards.length=18;
+  if(def.emojiKey){
+    if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
+    P.emojiUnlocks[def.emojiKey]=Date.now();
+  }
+  if(def.secretKey&&typeof unlockSecretFeature==='function')unlockSecretFeature(def.secretKey);
+  if(def.itemBonus){
+    if(!P.inventory||typeof P.inventory!=='object')P.inventory={diceBoost:0,antiJail:0,mortgageDiscount:0};
+    Object.keys(def.itemBonus).forEach(itemKey=>{
+      P.inventory[itemKey]=Math.max(0,(parseInt(P.inventory[itemKey],10)||0)+(parseInt(def.itemBonus[itemKey],10)||0));
+    });
+  }
+  if(def.titleKey&&Array.isArray(P.titles)&&!P.titles.includes(def.titleKey)){
+    P.titles.push(def.titleKey);
+    if(typeof ensureTitleMeta==='function')ensureTitleMeta(def.titleKey);
+  }
+  if(!silent)toast('💎 Récompense rare : '+def.icon+' '+def.label,'a');
+  return true;
+}
+
+function syncSeasonPassRewards(shouldPersist=true){
+  const data=ensureSeasonData(false);
+  let changed=false;
+  SEASON_PASS_REWARDS.forEach(step=>{
+    if((data.xp||0)>=step.xp&&!data.claimedTiers.includes(step.tier)){
+      data.claimedTiers.push(step.tier);
+      grantProfileReward(step.reward);
+      toast('🏁 Palier de saison débloqué : niveau '+step.tier+' • '+getRewardText(step.reward),'a');
+      changed=true;
+    }
+  });
+  if(changed&&shouldPersist)saveProfileData();
+  return changed;
+}
+
+function addSeasonProgress(amount,reason,shouldPersist=true){
+  const gain=Math.max(0,parseInt(amount,10)||0);
+  if(!gain)return false;
+  const data=ensureSeasonData(false);
+  data.xp=Math.max(0,(parseInt(data.xp,10)||0)+gain);
+  data.score=Math.max(0,(parseInt(data.score,10)||0)+Math.round(gain*0.85));
+  syncSeasonPassRewards(false);
+  if(shouldPersist)saveProfileData();
+  if(reason)G.lastSeasonGainReason=reason;
+  return true;
 }
 
 function grantProfileReward(reward){
@@ -1544,6 +1718,20 @@ function grantProfileReward(reward){
     P.elo=Math.max(0,Math.min(9999,(parseInt(P.elo,10)||0)+qty));
     if(typeof checkSecretTitles==='function')checkSecretTitles(false);
     return true;
+  }
+  if(reward.type==='seasonXp')return addSeasonProgress(qty,'récompense',false);
+  if(reward.type==='rareToken'){
+    P.rareTokenCount=Math.max(0,(parseInt(P.rareTokenCount,10)||0)+qty);
+    return true;
+  }
+  if(reward.type==='rareReward')return recordRareReward(reward.key,false);
+  if(reward.type==='unlockEmoji'){
+    if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
+    P.emojiUnlocks[reward.key]=Date.now();
+    return true;
+  }
+  if(reward.type==='unlockSecret'){
+    return typeof unlockSecretFeature==='function'?!!unlockSecretFeature(reward.key):false;
   }
   if(!P.inventory||typeof P.inventory!=='object')P.inventory={diceBoost:0,antiJail:0,mortgageDiscount:0};
   if(!(reward.type in P.inventory))return false;
@@ -1628,6 +1816,136 @@ function renderDailyChallengesUi(){
       '<div style="font-size:.64rem;color:var(--muted);margin-top:5px">Récompense : '+escapeUiText(getRewardText(item.reward))+'</div>'+
     '</div>';
   }).join('');
+}
+
+function ensureWeeklyMissions(forceNew=false){
+  if(!P.weeklyMissions||typeof P.weeklyMissions!=='object')P.weeklyMissions={weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false};
+  const pack=P.weeklyMissions;
+  const weekKey=getWeekKey();
+  let changed=false;
+  if(forceNew||pack.weekKey!==weekKey||!Array.isArray(pack.items)||pack.items.length<3){
+    if(pack.weekKey&&pack.weekKey!==weekKey){
+      const wasDone=(pack.items||[]).length>0&&(pack.items||[]).every(item=>item&&item.done);
+      pack.streak=wasDone?(Math.max(0,parseInt(pack.streak,10)||0)+1):0;
+      if(wasDone)pack.lastCompletedWeek=pack.weekKey;
+    }
+    pack.weekKey=weekKey;
+    pack.items=pickRandomEntries(WEEKLY_MISSION_POOL,3).map(def=>(
+      {id:def.id,label:def.label,stat:def.stat,amount:def.amount,reward:def.reward,base:readProfileStatValue(def.stat),progress:0,done:false,rewarded:false}
+    ));
+    pack.fullRewarded=false;
+    changed=true;
+  }
+  if(syncWeeklyMissionsProgress(false))changed=true;
+  if(changed)saveProfileData();
+  return pack;
+}
+
+function syncWeeklyMissionsProgress(shouldPersist=true){
+  if(!P.weeklyMissions||typeof P.weeklyMissions!=='object')return false;
+  let changed=false;
+  let granted=false;
+  const items=P.weeklyMissions.items||[];
+  items.forEach(item=>{
+    if(!item||!item.stat)return;
+    const target=Math.max(1,parseInt(item.amount,10)||1);
+    const base=Math.max(0,parseInt(item.base,10)||0);
+    const progress=Math.max(0,Math.min(target,readProfileStatValue(item.stat)-base));
+    if(item.progress!==progress){item.progress=progress;changed=true;}
+    if(progress>=target&&!item.done){item.done=true;changed=true;}
+    if(item.done&&!item.rewarded){
+      item.rewarded=true;
+      grantProfileReward(item.reward);
+      toast('📆 Mission hebdo complétée : '+item.label+' • '+getRewardText(item.reward),'a');
+      granted=true;
+      changed=true;
+    }
+  });
+  const fullDone=items.length>0&&items.every(item=>item&&item.done);
+  if(fullDone&&!P.weeklyMissions.fullRewarded){
+    P.weeklyMissions.fullRewarded=true;
+    recordRareReward('vault_key',false);
+    P.rareTokenCount=Math.max(0,(parseInt(P.rareTokenCount,10)||0)+1);
+    toast('💎 Semaine parfaite : coffre rare débloqué !','a');
+    granted=true;
+    changed=true;
+  }
+  if(granted){
+    renderInventoryUi?.();
+    renderPartyEmojiPickers?.();
+    if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  }
+  if(changed&&shouldPersist)saveProfileData();
+  return changed;
+}
+
+function renderWeeklyMissionsUi(){
+  const list=document.getElementById('weekly-missions-list');
+  const meta=document.getElementById('weekly-missions-meta');
+  if(!list)return;
+  const pack=ensureWeeklyMissions(false);
+  const items=Array.isArray(pack?.items)?pack.items:[];
+  const streak=Math.max(0,parseInt(pack?.streak,10)||0);
+  const done=items.filter(item=>item&&item.done).length;
+  if(meta)meta.textContent=(pack?.weekKey||getWeekKey())+' • série '+streak+' • '+done+'/'+items.length;
+  if(!items.length){
+    list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Les missions hebdo arrivent bientôt.</div>';
+    return;
+  }
+  list.innerHTML=items.map(item=>{
+    const target=Math.max(1,parseInt(item.amount,10)||1);
+    const progress=Math.max(0,Math.min(target,parseInt(item.progress,10)||0));
+    const pct=Math.max(8,Math.round((progress/target)*100));
+    const ok=!!item.done;
+    return '<div style="padding:8px 9px;border:1px solid '+(ok?'rgba(45,212,191,.45)':'var(--border)')+';border-radius:10px;background:'+(ok?'rgba(45,212,191,.09)':'var(--s2)')+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+        '<div style="font-size:.72rem;font-weight:700">'+(ok?'✅ ':'📌 ')+escapeUiText(item.label)+'</div>'+
+        '<div style="font-size:.62rem;color:'+(ok?'#2dd4bf':'var(--muted)')+'">'+progress+'/'+target+'</div>'+
+      '</div>'+
+      '<div style="height:7px;margin-top:6px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(ok?'linear-gradient(90deg,#2dd4bf,#60a5fa)':'linear-gradient(90deg,#60a5fa,#a855f7)')+'"></div></div>'+
+      '<div style="font-size:.64rem;color:var(--muted);margin-top:5px">Butin : '+escapeUiText(getRewardText(item.reward))+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function renderRareRewardsUi(){
+  const list=document.getElementById('rare-rewards-list');
+  if(!list)return;
+  const rewards=Array.isArray(P.rareRewards)?P.rareRewards.slice(0,4):[];
+  const tokens=Math.max(0,parseInt(P.rareTokenCount,10)||0);
+  if(!rewards.length){
+    list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Aucune récompense rare pour le moment. Jetons : <b>'+tokens+'</b></div>';
+    return;
+  }
+  list.innerHTML=rewards.map(entry=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
+      '<span style="font-size:1rem">'+escapeUiText(entry.icon||'💎')+'</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:700">'+escapeUiText(entry.label||'Récompense')+'</div><div style="font-size:.62rem;color:var(--muted)">'+escapeUiText(entry.rarity||'rare')+'</div></div>'+
+    '</div>').join('')+
+    '<div style="font-size:.64rem;color:var(--muted)">Jetons rares : <b>'+tokens+'</b></div>';
+}
+
+function renderSeasonHubUi(){
+  const body=document.getElementById('season-hub-body');
+  if(!body)return;
+  const data=ensureSeasonData(false);
+  const league=getSeasonLeagueInfo(data.score||0);
+  const nextReward=SEASON_PASS_REWARDS.find(step=>(parseInt(data.xp,10)||0)<step.xp)||null;
+  const targetXp=nextReward?nextReward.xp:(SEASON_PASS_REWARDS[SEASON_PASS_REWARDS.length-1]?.xp||1);
+  const pct=Math.max(6,Math.min(100,Math.round(((parseInt(data.xp,10)||0)/Math.max(1,targetXp))*100)));
+  const addons=typeof readPackManagerFallbackState==='function'?readPackManagerFallbackState():null;
+  const seasonsFlag=addons?.seasons?'ON':'OFF';
+  const eventsFlag=addons?.events?'ON':'OFF';
+  body.innerHTML=''+
+    '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:.74rem;font-weight:800">'+escapeUiText(data.label||getCurrentSeasonInfo().label)+'</div><div style="font-size:.64rem;color:var(--muted)">'+league.icon+' '+escapeUiText(league.label)+'</div></div>'+
+      '<div style="font-size:.64rem;color:var(--muted);margin-top:4px">Score saisonnier: '+(parseInt(data.score,10)||0)+' • Addons saisons '+seasonsFlag+' • events '+eventsFlag+'</div>'+
+      '<div style="height:8px;margin-top:7px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#f59e0b,#eab308,#2dd4bf)"></div></div>'+
+      '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.64rem;color:var(--muted);margin-top:6px"><span>XP: '+(parseInt(data.xp,10)||0)+'</span><span>'+(nextReward?('Prochain palier '+nextReward.tier+' à '+nextReward.xp+' XP'):'Pass saison complété')+'</span></div>'+
+    '</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+      '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Meilleure ligue</div><div style="font-size:.88rem;font-weight:800">'+league.icon+' '+escapeUiText(P.seasonData.bestLeague||league.label)+'</div></div>'+
+      '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Paliers obtenus</div><div style="font-size:.88rem;font-weight:800">'+((P.seasonData.claimedTiers||[]).length)+' / '+SEASON_PASS_REWARDS.length+'</div></div>'+
+    '</div>';
 }
 
 function ensurePlayerMatchStats(player){
@@ -1793,6 +2111,162 @@ function renderTurnHistory(){
   };
   renderList(full,false);
   renderList(mini,true);
+}
+
+function getHouseCost(cell){
+  const base=Math.floor((cell?.p||0)*0.5);
+  const ev=G.boardEvent&&((G.turnCount||1)<=(G.boardEvent.untilTurn||0))?G.boardEvent:null;
+  if(ev?.houseDiscount)return Math.max(20,Math.round(base*ev.houseDiscount));
+  return base;
+}
+
+function normalizeTeamModePreset(value){
+  const raw=String(value||'off').toLowerCase();
+  return raw==='2v2'||raw==='2v2v2'?raw:'off';
+}
+
+function getTeamModeRequirement(preset){
+  const mode=normalizeTeamModePreset(preset);
+  if(mode==='2v2')return 4;
+  if(mode==='2v2v2')return 6;
+  return 0;
+}
+
+function getTeamModeIds(preset){
+  const mode=normalizeTeamModePreset(preset);
+  if(mode==='2v2')return ['team-a','team-b'];
+  if(mode==='2v2v2')return ['team-a','team-b','team-c'];
+  return [];
+}
+
+function getTeamModeLabel(preset){
+  const mode=normalizeTeamModePreset(preset);
+  return mode==='2v2'?'2v2':mode==='2v2v2'?'2v2v2':'Désactivé';
+}
+
+function getTeamLabel(teamId){
+  return teamId==='team-a'?'Équipe A':teamId==='team-b'?'Équipe B':teamId==='team-c'?'Équipe C':'Solo';
+}
+
+function getTeamMembers(teamId,aliveOnly=false){
+  return (G.players||[]).filter(player=>player&&player.teamId===teamId&&(!aliveOnly||!player.bust));
+}
+
+function clearTeamMode(){
+  G.teamMode=false;
+  G.teamModeFormat='off';
+  (G.players||[]).forEach(player=>{ if(player)player.teamId=null; });
+}
+
+function setupTeamMode(){
+  clearTeamMode();
+  const preset=normalizeTeamModePreset(G.teamModePreset);
+  const teamIds=getTeamModeIds(preset);
+  const requiredPlayers=getTeamModeRequirement(preset);
+  if(!teamIds.length||!requiredPlayers){renderAlliancePanel();return false;}
+  if((G.players?.length||0)!==requiredPlayers){renderAlliancePanel();return false;}
+  (G.players||[]).forEach((player,index)=>{ player.teamId=teamIds[index%teamIds.length]; });
+  G.teamMode=true;
+  G.teamModeFormat=preset;
+  const versus=teamIds.map(teamId=>getTeamMembers(teamId).map(p=>p.name).join(' + ')).filter(Boolean).join(' VS ');
+  glog('🤝 Mode '+getTeamModeLabel(preset)+' activé : '+versus+'.','a');
+  renderAlliancePanel();
+  return true;
+}
+
+function arePlayersAllied(p1,p2){
+  return !!(G.teamMode&&p1&&p2&&p1.id!==p2.id&&p1.teamId&&p1.teamId===p2.teamId);
+}
+
+function checkTeamVictory(){
+  if(!G.teamMode)return false;
+  const teamIds=[...new Set((G.players||[]).map(player=>player?.teamId).filter(Boolean))];
+  const aliveTeams=teamIds.filter(teamId=>getTeamMembers(teamId,true).length>0);
+  if(aliveTeams.length>1)return false;
+  const survivors=aliveTeams[0]?getTeamMembers(aliveTeams[0],true):[];
+  endGame(survivors.sort((a,b)=>(b.money||0)-(a.money||0))[0]||null);
+  return true;
+}
+
+function renderAlliancePanel(){
+  const panel=document.getElementById('alliance-panel');
+  const status=document.getElementById('alliance-status');
+  if(!panel||!status)return;
+  if(!G.started){panel.style.display='none';return;}
+  panel.style.display='block';
+  const preset=normalizeTeamModePreset(G.teamModePreset);
+  const requiredPlayers=getTeamModeRequirement(preset);
+  if(G.teamMode){
+    const teamIds=getTeamModeIds(G.teamModeFormat||preset);
+    const versus=teamIds.map(teamId=>{
+      const members=getTeamMembers(teamId).map(p=>p.emoji+' '+p.name).join(' • ');
+      return '<b>'+getTeamLabel(teamId)+'</b> : '+escapeUiText(members||'—');
+    }).join(' <span style="color:var(--muted)">VS</span> ');
+    status.innerHTML='<b>'+getTeamModeLabel(G.teamModeFormat||preset)+' actif</b> — '+versus+'<div style="font-size:.66rem;color:var(--muted);margin-top:4px">Les alliés paient 50% du loyer et gagnent ensemble.</div>';
+    return;
+  }
+  if(preset==='off'){
+    status.innerHTML='Mode équipes <b>désactivé</b> pour cette partie. Active <b>2v2</b> ou <b>2v2v2</b> dans les paramètres si tu veux jouer en duo.';
+    return;
+  }
+  status.innerHTML='Option <b>'+getTeamModeLabel(preset)+'</b> sélectionnée, mais il faut <b>'+requiredPlayers+' joueurs</b> pour l\'activer.';
+}
+
+function createDynamicBoardEvent(){
+  const colors=[...new Set((G.board||[]).filter(cell=>cell&&cell.t==='property'&&cell.c).map(cell=>cell.c))];
+  const targetColor=colors[Math.floor(Math.random()*colors.length)]||'#22c55e';
+  const sampleCell=(G.board||[]).find(cell=>cell&&cell.c===targetColor);
+  const colorName=sampleCell?.n||'quartier ciblé';
+  const pool=[
+    {id:'rent_surge',label:'💥 Boom des loyers',desc:'Le quartier '+colorName+' rapporte +60% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,targetColor,rentMultiplier:1.6},
+    {id:'go_festival',label:'🎉 Festival du départ',desc:'Le bonus Départ est augmenté de 50% pendant 3 tours.',untilTurn:(G.turnCount||1)+3,goBonusMultiplier:1.5},
+    {id:'builder_sale',label:'🏗️ Salon du BTP',desc:'Le coût des maisons baisse de 30% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,houseDiscount:0.7},
+    {id:'utility_blackout',label:'⚡ Blackout',desc:'Les compagnies ne rapportent plus pendant 2 tours.',untilTurn:(G.turnCount||1)+2,zeroUtility:true},
+    {id:'rail_rush',label:'🚂 Rush ferroviaire',desc:'Les gares rapportent +50% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,railroadBonus:1.5},
+  ];
+  return pool[Math.floor(Math.random()*pool.length)]||null;
+}
+
+function getActiveBoardEvent(){
+  const ev=G.boardEvent;
+  if(!ev)return null;
+  if((G.turnCount||1)>(ev.untilTurn||0)){
+    G.boardEvent=null;
+    renderBoardEventUi();
+    return null;
+  }
+  return ev;
+}
+
+function maybeTriggerBoardEvent(force=false){
+  if(!G.started)return false;
+  if(!force){
+    if((G.turnCount||1)<4)return false;
+    if(((G.turnCount||1)-(G.lastBoardEventTurn||0))<3)return false;
+    if(Math.random()>0.18)return false;
+  }
+  const next=createDynamicBoardEvent();
+  if(!next)return false;
+  G.boardEvent=next;
+  G.lastBoardEventTurn=G.turnCount||1;
+  glog('🌩️ '+next.label+' — '+next.desc,'a');
+  toast(next.label,'a');
+  renderBoardEventUi();
+  return true;
+}
+
+function renderBoardEventUi(){
+  const card=document.getElementById('board-event-card');
+  const status=document.getElementById('board-event-status');
+  if(!card||!status)return;
+  if(!G.started){card.style.display='none';return;}
+  card.style.display='block';
+  const ev=getActiveBoardEvent();
+  if(!ev){
+    status.innerHTML='Aucun événement actif. <span style="color:var(--muted)">Le prochain peut arriver à partir du tour '+Math.max(4,(G.lastBoardEventTurn||1)+3)+'.</span>';
+    return;
+  }
+  status.innerHTML='<b>'+escapeUiText(ev.label)+'</b><div style="font-size:.66rem;color:var(--muted);margin-top:4px">'+escapeUiText(ev.desc)+' • fin au tour '+(ev.untilTurn||G.turnCount||1)+'</div>';
 }
 
 function startRematch(){
@@ -3063,6 +3537,8 @@ function recordTxn(p,amount,desc){
   if(p&&amount>0&&typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p)){
     P.stats.moneyEarned=Math.max(0,(parseInt(P.stats.moneyEarned,10)||0)+Math.round(amount));
     syncDailyChallengesProgress(false);
+    syncWeeklyMissionsProgress(false);
+    saveProfileData();
   }
 }
 
@@ -3938,8 +4414,11 @@ function movePlayer(p,steps){
   p.pos=(old+steps)%40;
   if(old+steps>=40){
     ensurePlayerMatchStats(p).passedGo=(ensurePlayerMatchStats(p).passedGo||0)+1;
-    p.money+=G.passGoBonus;recordTxn(p,G.passGoBonus,'Passage Départ');
-    glog(p.name+' passe par Départ → +'+G.passGoBonus+'$.','a');toast('🚦 +'+G.passGoBonus+'$ !','a');
+    let passBonus=G.passGoBonus;
+    const ev=getActiveBoardEvent();
+    if(ev?.goBonusMultiplier)passBonus=Math.round(passBonus*ev.goBonusMultiplier);
+    p.money+=passBonus;recordTxn(p,passBonus,'Passage Départ');
+    glog(p.name+' passe par Départ → +'+passBonus+'$.','a');toast('🚦 +'+passBonus+'$ !','a');
     if(Math.random()<0.12)grantRandomMatchItem(p,'passage départ');
   }
   const cell=G.board[p.pos];
@@ -4011,13 +4490,19 @@ function drawCard(p,deck,label){
 function calcRent(cell,snapshot){
   if(cell.mortgaged||cell.owner==null)return 0;
   const eco=snapshot||getBoardEconomySnapshot();
+  const ev=getActiveBoardEvent();
+  if(ev?.zeroUtility&&cell.t==='utility')return 0;
+  let rent=0;
   if(cell.t==='railroad'){
     const n=eco.railroadsByOwner.get(cell.owner)||0;
-    return Math.round(25*Math.pow(2,Math.max(0,n-1))*getInflationMultiplier());
+    rent=Math.round(25*Math.pow(2,Math.max(0,n-1))*getInflationMultiplier());
+    if(ev?.railroadBonus)rent=Math.round(rent*ev.railroadBonus);
+    return rent;
   }
   if(cell.t==='utility'){
     const n=eco.utilitiesByOwner.get(cell.owner)||0;
-    return Math.round((cell.r||30)*(n>=2?2:1)*getInflationMultiplier());
+    rent=Math.round((cell.r||30)*(n>=2?2:1)*getInflationMultiplier());
+    return rent;
   }
   const base=cell.r||10;
   const houses=cell.houses||0;
@@ -4025,10 +4510,14 @@ function calcRent(cell,snapshot){
     const total=eco.propertyGroupTotals.get(cell.c)||0;
     const owned=(eco.propertyGroupOwned.get(cell.c)?.get(cell.owner))||0;
     const ownsAll=total>1&&owned===total;
-    return Math.round((ownsAll?base*2:base)*getInflationMultiplier());
+    rent=Math.round((ownsAll?base*2:base)*getInflationMultiplier());
+  }else{
+    const mult=[0,5,15,45,80,125];
+    rent=Math.round(base*(mult[Math.min(houses,5)]||1)*getInflationMultiplier());
   }
-  const mult=[0,5,15,45,80,125];
-  return Math.round(base*(mult[Math.min(houses,5)]||1)*getInflationMultiplier());
+  if(ev?.targetColor&&cell.c===ev.targetColor&&ev.rentMultiplier)rent=Math.round(rent*ev.rentMultiplier);
+  if(ev?.globalRentMultiplier)rent=Math.round(rent*ev.globalRentMultiplier);
+  return rent;
 }
 
 function handleProp(p,cell){
@@ -4055,7 +4544,11 @@ function handleProp(p,cell){
       renderPlayers();refreshHouses();refreshOwners();updBtns();broadcast();
       return;
     }
-    const rent=calcRent(cell);if(rent<=0)return;
+    let rent=calcRent(cell);if(rent<=0)return;
+    if(arePlayersAllied(p,owner)){
+      rent=Math.max(0,Math.ceil(rent*0.5));
+      glog('🤝 Alliance active : loyer réduit entre '+p.name+' et '+owner.name+'.','i');
+    }
     const payerStats=ensurePlayerMatchStats(p);
     const ownerStats=ensurePlayerMatchStats(owner);
     payerStats.rentPaid=Math.max(0,(parseInt(payerStats.rentPaid,10)||0)+rent);
@@ -4087,6 +4580,8 @@ function confirmBuy(){
   }
   if(p.id===G.myId){P.stats.propertiesBought++;saveProfileData();}
   syncDailyChallengesProgress(true);
+  syncWeeklyMissionsProgress(true);
+  if(isProfileControlledPlayer(p))addSeasonProgress(10,'achat propriété');
   updateSecretObjectiveProgress();
 }
 
@@ -4115,7 +4610,7 @@ function getHouseBuildStatus(player,cell){
   const reasons=[];
   if(!player||!cell||cell.t!=='property')reasons.push('Case invalide.');
   if(!player||!cell)return {ok:false,reasons,cost:0};
-  const cost=Math.floor((cell.p||0)*0.5);
+  const cost=getHouseCost(cell);
   const houses=cell.houses||0;
   const unlockTurn=getHouseBuildUnlockTurn();
   const group=G.board.filter(c=>c&&c.t==='property'&&c.c===cell.c);
@@ -4619,6 +5114,8 @@ function checkBust(p){
   glog(p.name+' est en faillite ! 💀','d');
   toast('💀 '+p.name+' est en faillite !','d');
   refreshOwners();refreshHouses();
+  renderAlliancePanel();
+  if(checkTeamVictory())return;
   const alive=G.players.filter(p=>!p.bust);
   if(alive.length<=1)endGame(alive[0]);
 }
@@ -4637,13 +5134,20 @@ function endGame(winner){
   updateCenterActionsPopup();
   const overlay=document.getElementById('winner-overlay');
   overlay.classList.add('open');
-  document.getElementById('endgame-body').textContent=
-    (winner?winner.emoji+' '+winner.name:'Égalité')+' gagne !';
-    if(winner&&winner.id===G.myId){P.stats.gamesWon++;P.elo=Math.min(9999,(P.elo||1000)+30);checkWinTitles();checkSecretTitles();saveProfileData();renderLobbyProfileTab();}
-    else if(winner&&G.players.some(p=>!p.bot&&isProfileControlledPlayer(p))){P.stats.gamesLost=(P.stats.gamesLost||0)+1;P.elo=Math.max(0,(P.elo||1000)-20);saveProfileData();}
+  const winnerLabel=winner
+    ?(G.teamMode&&winner.teamId
+      ?('🤝 '+getTeamLabel(winner.teamId)+' — '+getTeamMembers(winner.teamId).map(p=>p.name).join(' + '))
+      :(winner.emoji+' '+winner.name))
+    :'Égalité';
+  document.getElementById('endgame-body').textContent=winnerLabel+' gagne !';
+    const profilePlayer=G.players.find(p=>!p.bot&&isProfileControlledPlayer(p))||null;
+    const profileWon=!!(winner&&profilePlayer&&(winner.id===profilePlayer.id||(G.teamMode&&winner.teamId&&profilePlayer.teamId===winner.teamId)));
+    if(profileWon){P.stats.gamesWon++;P.elo=Math.min(9999,(P.elo||1000)+30);checkWinTitles();checkSecretTitles();saveProfileData();renderLobbyProfileTab();addSeasonProgress(70,'victoire');}
+    else if(winner&&profilePlayer){P.stats.gamesLost=(P.stats.gamesLost||0)+1;P.elo=Math.max(0,(P.elo||1000)-20);saveProfileData();addSeasonProgress(22,'fin de partie');}
     syncDailyChallengesProgress(true);
+    syncWeeklyMissionsProgress(true);
     renderLobbyProfileTab();
-    if(winner&&!winner.bot&&isProfileControlledPlayer(winner)){
+    if(profileWon&&profilePlayer){
       grantRandomItem('victoire');
     }
   const scoreById=new Map();
@@ -4651,6 +5155,8 @@ function endGame(winner){
     if(c&&c.owner!=null)scoreById.set(c.owner,(scoreById.get(c.owner)||0)+Number(c.p||0));
   });
   renderMatchObjectiveUi();
+  renderBoardEventUi();
+  renderAlliancePanel();
   const grid=document.getElementById('p-count');grid.innerHTML='';
   const sorted=[...G.players].sort((a,b)=>((b.money+(scoreById.get(b.id)||0))-(a.money+(scoreById.get(a.id)||0))));
   const frag=document.createDocumentFragment();
@@ -4675,6 +5181,16 @@ function getLeaderByNetWorth(){
   const alive=G.players.filter(p=>!p.bust);
   if(!alive.length)return null;
   const eco=getBoardEconomySnapshot();
+  if(G.teamMode){
+    const teamTotals=new Map();
+    alive.forEach(player=>{
+      const key=player.teamId||player.id;
+      teamTotals.set(key,(teamTotals.get(key)||0)+getPlayerNetWorth(player,eco));
+    });
+    const bestTeam=[...teamTotals.entries()].sort((a,b)=>b[1]-a[1])[0]?.[0];
+    const teamMembers=alive.filter(player=>(player.teamId||player.id)===bestTeam);
+    return teamMembers.sort((a,b)=>getPlayerNetWorth(b,eco)-getPlayerNetWorth(a,eco))[0]||alive[0]||null;
+  }
   return [...alive].sort((a,b)=>getPlayerNetWorth(b,eco)-getPlayerNetWorth(a,eco))[0]||null;
 }
 
@@ -4746,7 +5262,12 @@ function doNextTurn(){
   P.stats.totalTurns++;
   saveProfileData();
   syncDailyChallengesProgress(true);
+  syncWeeklyMissionsProgress(true);
+  addSeasonProgress(1,'tour',true);
   updateSecretObjectiveProgress();
+  maybeTriggerBoardEvent();
+  renderBoardEventUi();
+  renderAlliancePanel();
 }
 
 // ═══════════════════════════════════════
@@ -5499,6 +6020,8 @@ function refreshPartyRuleUi(){
   const bonus=document.getElementById('pw-bonus-turn-chk');
   const bonusRate=document.getElementById('pw-bonus-turn-rate');
   const park=document.getElementById('pw-parking-pot-chk');
+  const teamPreset=document.getElementById('pw-team-mode');
+  const teamNote=document.getElementById('pw-team-mode-note');
   const turnTimer=document.getElementById('pw-turn-timer-chk');
   const turnTimerDur=document.getElementById('pw-turn-timer-dur');
   if(sm)sm.value=G.startingMoney;
@@ -5514,17 +6037,27 @@ function refreshPartyRuleUi(){
   if(bonus)bonus.checked=!!G.bonusTurnEnabled;
   if(bonusRate)bonusRate.value=G.bonusTurnChance;
   if(park)park.checked=!!G.parkingPotEnabled;
+  if(teamPreset)teamPreset.value=normalizeTeamModePreset(G.teamModePreset);
   if(turnTimer)turnTimer.checked=!!G.timerEnabled;
   if(turnTimerDur)turnTimerDur.value=G.timerDuration;
+  if(teamPreset)teamPreset.disabled=!canEditPartyOptions();
   if(turnTimer)turnTimer.disabled=!canEditPartyOptions();
   if(turnTimerDur)turnTimerDur.disabled=!canEditPartyOptions();
+  if(teamNote){
+    const preset=normalizeTeamModePreset(G.teamModePreset);
+    const requiredPlayers=getTeamModeRequirement(preset);
+    teamNote.textContent=preset==='off'
+      ?'Modes d\'équipe désactivés : la partie restera en chacun pour soi.'
+      :(getTeamModeLabel(preset)+' : '+requiredPlayers+' joueurs requis ('+(preset==='2v2'?'2 équipes de 2':'3 équipes de 2')+').');
+  }
   refreshTurnTimerWheelDisplay(document.getElementById('timer-num')?.textContent||G.timerDuration);
   const quick=document.getElementById('party-quick-summary');
   if(quick){
     const turnsTxt=G.maxTurns>0?(' • '+G.maxTurns+' tours max'):' • tours infinis';
     const goalTxt=G.goalMoney>0?(' • objectif '+G.goalMoney+'$'):' • objectif off';
     const domTxt=G.dominationTarget>0?(' • domination '+G.dominationTarget):'';
-    quick.textContent='Départ '+G.startingMoney+'$ • Bonus '+G.passGoBonus+'$ • Amende '+G.jailFine+'$'+turnsTxt+goalTxt+domTxt;
+    const teamTxt=' • équipes '+(normalizeTeamModePreset(G.teamModePreset)==='off'?'désactivées':getTeamModeLabel(G.teamModePreset));
+    quick.textContent='Départ '+G.startingMoney+'$ • Bonus '+G.passGoBonus+'$ • Amende '+G.jailFine+'$'+turnsTxt+goalTxt+domTxt+teamTxt;
   }
   const skip=document.getElementById('skip-btn');
   if(skip){
@@ -5610,6 +6143,13 @@ function setBonusTurnChance(v){
 function setParkingPotEnabled(v){
   G.parkingPotEnabled=!!v;
   refreshPartyRuleUi();
+}
+
+function setTeamModePreset(v){
+  G.teamModePreset=normalizeTeamModePreset(v);
+  clearTeamMode();
+  refreshPartyRuleUi();
+  renderAlliancePanel();
 }
 
 function renderInventoryUi(){
@@ -5956,16 +6496,19 @@ function applyPartyPreset(kind){
     setStartingMoney(1500);setPassGoBonus(200);setJailFine(50);setMaxTurns(0);setGoalMoney(0);
     setDominationTarget(0);setGlobalTimerSec(0);setInflationEnabled(false);setInflationRate(2);
     setTaxVarianceEnabled(false);setBonusTurnEnabled(false);setBonusTurnChance(12);setParkingPotEnabled(false);
+    setTeamModePreset('off');
     setAutoEnd(false);setTimerEnabled(false);
   }else if(kind==='quick'){
     setStartingMoney(1200);setPassGoBonus(150);setJailFine(75);setMaxTurns(40);setGoalMoney(5000);
     setDominationTarget(0);setGlobalTimerSec(1200);setInflationEnabled(true);setInflationRate(2.5);
     setTaxVarianceEnabled(true);setBonusTurnEnabled(true);setBonusTurnChance(18);setParkingPotEnabled(true);
+    setTeamModePreset('off');
     setAutoEnd(true);setTimerEnabled(true);setTimerDuration(30);
   }else if(kind==='chaos'){
     setStartingMoney(2500);setPassGoBonus(350);setJailFine(0);setMaxTurns(25);setGoalMoney(12000);
     setDominationTarget(2);setGlobalTimerSec(900);setInflationEnabled(true);setInflationRate(4);
     setTaxVarianceEnabled(true);setBonusTurnEnabled(true);setBonusTurnChance(30);setParkingPotEnabled(true);
+    setTeamModePreset('off');
     setAutoEnd(false);setTimerEnabled(false);
   }
   refreshAdvancedStats();
@@ -5989,6 +6532,7 @@ function saveCustomPreset(slot){
     bonusTurnEnabled:G.bonusTurnEnabled,
     bonusTurnChance:G.bonusTurnChance,
     parkingPotEnabled:G.parkingPotEnabled,
+    teamModePreset:G.teamModePreset,
   };
   localStorage.setItem(PARTY_PRESET_KEY,JSON.stringify(all));
   toast('Preset '+key+' sauvegardé','a');
@@ -6012,6 +6556,7 @@ function loadCustomPreset(slot){
   setBonusTurnEnabled(p.bonusTurnEnabled);
   setBonusTurnChance(p.bonusTurnChance);
   setParkingPotEnabled(p.parkingPotEnabled);
+  setTeamModePreset(p.teamModePreset??'off');
   refreshAdvancedStats();
   toast('Preset '+key+' chargé','a');
 }
@@ -6057,6 +6602,7 @@ function snapshotGame(){
       inflationEnabled:G.inflationEnabled,inflationRate:G.inflationRate,
       taxVarianceEnabled:G.taxVarianceEnabled,bonusTurnEnabled:G.bonusTurnEnabled,
       bonusTurnChance:G.bonusTurnChance,parkingPotEnabled:G.parkingPotEnabled,parkingPot:G.parkingPot,
+      teamModePreset:G.teamModePreset,teamMode:G.teamMode,teamModeFormat:G.teamModeFormat,
       timerEnabled:G.timerEnabled,timerDuration:G.timerDuration,autoEnd:G.autoEnd,
       centerActions:G.centerActions,gameZoom:G.gameZoom,centerDiceScale:G.centerDiceScale,pawnScale:G.pawnScale,pawnGlow:G.pawnGlow,streamerMode:G.streamerMode,musicSource:G.musicSource,musicBoostEnabled:G.musicBoostEnabled,musicBoostPercent:G.musicBoostPercent,toastMs:G.toastMs,
     },
@@ -6106,6 +6652,7 @@ function applyImportedSnapshot(snap){
   setBonusTurnEnabled(g.bonusTurnEnabled??G.bonusTurnEnabled);
   setBonusTurnChance(g.bonusTurnChance??G.bonusTurnChance);
   setParkingPotEnabled(g.parkingPotEnabled??G.parkingPotEnabled);
+  setTeamModePreset(g.teamModePreset??g.teamModeFormat??((g.teamMode&&Array.isArray(g.players)&&g.players.length===6)?'2v2v2':((g.teamMode&&Array.isArray(g.players)&&g.players.length===4)?'2v2':'off')));
   G.parkingPot=Math.max(0,parseInt(g.parkingPot,10)||0);
   G.turnCount=Math.max(1,parseInt(g.turnCount,10)||1);
   setTimerDuration(g.timerDuration??G.timerDuration);
@@ -6126,6 +6673,8 @@ function applyImportedSnapshot(snap){
   if(snap.profile&&snap.profile.inventory){
     P.inventory=Object.assign({},P.inventory||{},snap.profile.inventory);
   }
+  if(G.started)setupTeamMode();
+  else clearTeamMode();
   saveProfileData();renderLobbyProfileTab();
   buildBoard();renderPlayers();updBtns();renderStats();renderTxns();refreshInviteLink();refreshAdvancedStats();refreshPartyRuleUi();
 }

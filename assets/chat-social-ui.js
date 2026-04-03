@@ -883,7 +883,7 @@ async function refreshModerationStatus(silent=true){
     P.isAdmin=!!data.isAdmin;
     P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
   }catch(_){
-    P.isAdmin=false;
+    P.isAdmin=isKnownAdminEmail(P.googleEmail);
     if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
   }
   syncSocialAdminUi();

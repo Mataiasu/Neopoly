@@ -73,7 +73,9 @@ function getGoogleBoundUid(sub) {
   return 'npg_' + raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
 }
 
-const DEFAULT_ADMIN_EMAILS = [];
+const DEFAULT_ADMIN_EMAILS = [
+  'matprize055@gmail.com',
+];
 const ADMIN_EMAILS = new Set(
   DEFAULT_ADMIN_EMAILS
     .concat(String(process.env.ADMIN_EMAILS || '').split(','))
