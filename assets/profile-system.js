@@ -305,7 +305,6 @@ function getEmojiTooltip(def){
 const _S={
   a:btoa('spectre'),
   b:btoa('np2026'),
-  c:btoa('ip-admin-neo'),
   d:btoa('nebula'),
   e:btoa('8bit'),
 };
@@ -614,8 +613,6 @@ function redeemSecretCode(){
     if(!unlockSecretFeature('fx_arcade','🕹️ Fonction secrète débloquée : Arcade Pulse'))toast('Secret déjà obtenu.','i');
     ensureEmojiUnlocks(true);
     renderLobbyProfileTab();
-  } else if(code===atob(_S.c)){
-    rebindDebugOwnerIp('code');
   } else if(code.length>0){
     toast('Code invalide.','w');
   }

@@ -2407,6 +2407,10 @@ function setDebugMenuVisibility(allowed,msg){
 }
 
 async function initDebugAccessControl(){
+  if(P?.isAdmin){
+    setDebugMenuVisibility(true,'Acces administrateur autorise.');
+    return;
+  }
   const curIp=await resolvePublicIp();
   if(!curIp){
     setDebugMenuVisibility(false,'Debug verrouille: IP non resolue.');
@@ -2432,13 +2436,6 @@ async function rebindDebugOwnerIp(source='debug'){
 
 function debugRebindOwnerIp(){
   rebindDebugOwnerIp('debug');
-}
-
-function adminRebindIpPrompt(){
-  const code=prompt('Code admin pour reassignment IP:');
-  if(!code)return;
-  if(code.trim()!==atob(_S.c)){toast('Code admin invalide.','d');return;}
-  rebindDebugOwnerIp('code');
 }
 
 function getProfileDefaultName(fallback='Joueur'){
@@ -3047,6 +3044,21 @@ function initMobileSidebarSwipe(){
 function switchLobbyTab(name){
   document.querySelectorAll('.lobby-tab').forEach(t=>t.classList.toggle('active',t.dataset.ltab===name));
   document.querySelectorAll('.lobby-tab-pane').forEach(p=>p.classList.toggle('active',p.id===name));
+}
+
+function openAdminDebugMenu(){
+  if(!P?.isAdmin){
+    toast('Accès réservé aux admins.','w');
+    return;
+  }
+  showScreen('lobby');
+  switchLobbyTab('profil-pane');
+  const card=document.getElementById('debug-tools-card');
+  if(card){
+    card.style.display='block';
+    card.open=true;
+    card.scrollIntoView({behavior:'smooth',block:'start'});
+  }
 }
 
 // Profile / ELO / titles system moved to `assets/profile-system.js`.
@@ -3840,9 +3852,10 @@ function showScreen(id){
 
 function updateAddonButtonVisibility(){
   const btn=document.getElementById('pack-manager-btn');
-  if(!btn)return;
+  const debugBtn=document.getElementById('admin-debug-btn');
   const inLobby=!!document.getElementById('lobby')?.classList.contains('active');
-  btn.style.display=inLobby?'block':'none';
+  if(btn)btn.style.display=inLobby?'block':'none';
+  if(debugBtn)debugBtn.style.display=(inLobby&&!!P?.isAdmin)?'block':'none';
 }
 
 // ═══════════════════════════════════════

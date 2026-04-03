@@ -52,6 +52,27 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 #pack-manager-btn:hover{
   background:#16a34a;
 }
+#admin-debug-btn{
+  display:none;
+  position:fixed;
+  top:52px !important;
+  left:10px !important;
+  right:auto !important;
+  bottom:auto !important;
+  z-index:150;
+  padding:7px 12px;
+  background:#111827;
+  color:#fde68a;
+  border:1px solid rgba(250,204,21,.35);
+  border-radius:8px;
+  font-weight:700;
+  cursor:pointer;
+  font-size:.8rem;
+}
+#admin-debug-btn:hover{
+  background:#172036;
+  border-color:#facc15;
+}
 #mobile-sidebar-gear{display:none}
 #app-wrap.in-lobby #pack-manager-btn{display:block !important}
 
@@ -1622,6 +1643,7 @@ body.streamer-mode #invite-link {
 <!-- ══════════ SCREENS ══════════ -->
 <div id="app-wrap" class="in-lobby">
 <button id="pack-manager-btn" type="button" onclick="openPackManager()">Addons</button>
+<button id="admin-debug-btn" type="button" onclick="openAdminDebugMenu()" data-tip="Ouvre le menu debug administrateur.">⚙️ Debug</button>
 <div id="screens-wrap">
 <div id="lobby" class="screen active" style="flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px">
   <div class="ambient-layer" id="lobby-ambient" aria-hidden="true">
@@ -1847,9 +1869,6 @@ body.streamer-mode #invite-link {
             <div style="display:flex;gap:6px;margin-top:5px">
               <input id="secret-code-inp" placeholder="Entrer un code…" style="flex:1;font-size:.7rem" onkeydown="if(event.key==='Enter')redeemSecretCode()"/>
               <button class="btn btn-xs btn-blue" onclick="redeemSecretCode()">OK</button>
-            </div>
-            <div id="secret-admin-rebind-wrap" style="display:none;justify-content:flex-end;margin-top:6px">
-              <button class="btn btn-xs btn-secondary" id="secret-admin-rebind-btn" onclick="adminRebindIpPrompt()">🔐 Reassigner IP <span class="access-badge admin-only">Admin</span></button>
             </div>
           </details>
         </div>
