@@ -189,6 +189,7 @@ function applySecretUnlocks(){
 
 function unlockSecretFeature(key,toastMsg){
   if(!SECRET_FEATURE_DEFS[key])return false;
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression())return false;
   if(P.secretUnlocks?.[key])return false;
   ensureSecretUnlock(key);
   applySecretUnlocks();
@@ -214,6 +215,7 @@ function getUnlockedEmojis(){
 }
 
 function ensureEmojiUnlocks(notify=true){
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression())return false;
   if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
   let changed=false;
   EMOJI_UNLOCK_DEFS.forEach(def=>{
@@ -318,6 +320,7 @@ const UI_RENDER_CACHE={
 };
 
 function checkSecretTitles(showToast=true){
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression())return false;
   if(!Array.isArray(P.titles))P.titles=[];
   let changed=false;
   const fuse=(key)=>{
@@ -353,6 +356,7 @@ function clearTitleDot(){
 }
 
 function checkWinTitles(){
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression())return false;
   const wins=parseInt(P.stats?.gamesWon,10)||0;
   if(!Array.isArray(P.titles))P.titles=[];
   let changed=false;
@@ -397,6 +401,156 @@ function selectTitle(key){
   renderTitleSelector();
 }
 
+const PUBLIC_PROFILE_QUERY_KEY='profile';
+
+function encodePublicProfileString(value){
+  try{
+    return btoa(encodeURIComponent(String(value||'')).replace(/%([0-9A-F]{2})/g,(_,hex)=>String.fromCharCode(parseInt(hex,16))));
+  }catch(_){
+    return '';
+  }
+}
+
+function decodePublicProfileString(value){
+  try{
+    const binary=atob(String(value||''));
+    let escaped='';
+    for(let i=0;i<binary.length;i++)escaped+='%'+binary.charCodeAt(i).toString(16).padStart(2,'0');
+    return decodeURIComponent(escaped);
+  }catch(_){
+    return '';
+  }
+}
+
+function getSourcePublicTitleLabel(src){
+  if(Array.isArray(src?.titles)&&src.titles.includes('winner_looser'))return '🏅 Winner Looser';
+  if(src?.selectedTitle&&TITLE_DEFS[src.selectedTitle])return TITLE_DEFS[src.selectedTitle].label;
+  return '— Aucun titre';
+}
+
+function buildPublicProfilePayload(sourceProfile){
+  const src=sourceProfile&&typeof sourceProfile==='object'?sourceProfile:P;
+  const stats=src?.stats&&typeof src.stats==='object'?src.stats:{};
+  const elo=Math.max(0,parseInt(src?.elo,10)||0);
+  const rank=getEloRankInfo(elo);
+  const titles=Array.isArray(src?.titles)?src.titles.filter(key=>TITLE_DEFS[key]).slice(0,4).map(key=>TITLE_DEFS[key].label):[];
+  return {
+    v:1,
+    uid:String(src?.uid||'—').slice(0,32),
+    name:String(src?.name||'Joueur').slice(0,32),
+    emoji:String(src?.emoji||'🎲'),
+    color:safeCssColor(src?.color,'#22c55e'),
+    elo,
+    rankLabel:rank.label||'—',
+    titleLabel:getSourcePublicTitleLabel(src),
+    titles,
+    stats:{
+      wins:Math.max(0,parseInt(stats.gamesWon,10)||0),
+      games:Math.max(0,parseInt(stats.gamesPlayed,10)||0),
+      losses:Math.max(0,parseInt(stats.gamesLost,10)||0),
+      money:Math.max(0,parseInt(stats.moneyEarned,10)||0),
+      properties:Math.max(0,parseInt(stats.propertiesBought,10)||0),
+      turns:Math.max(0,parseInt(stats.totalTurns,10)||0),
+    },
+    seasonBest:String(src?.seasonData?.bestLeague||src?.seasonData?.label||'—').slice(0,40),
+    sharedAt:Date.now(),
+  };
+}
+
+function getPublicProfileShareUrl(){
+  try{
+    const url=new URL(window.location.href);
+    url.searchParams.set(PUBLIC_PROFILE_QUERY_KEY,encodePublicProfileString(JSON.stringify(buildPublicProfilePayload())));
+    return url.toString();
+  }catch(_){
+    return window.location.href.split('?')[0];
+  }
+}
+
+function setPublicProfileShareUrl(url){
+  const finalUrl=String(url||getPublicProfileShareUrl());
+  if(typeof G==='object'&&G)G.activePublicProfileShareUrl=finalUrl;
+  const input=document.getElementById('public-profile-url');
+  if(input)input.value=finalUrl;
+  return finalUrl;
+}
+
+async function copyPublicProfileLink(){
+  const currentUrl=(typeof G==='object'&&G&&G.activePublicProfileShareUrl)||getPublicProfileShareUrl();
+  const url=setPublicProfileShareUrl(currentUrl);
+  const input=document.getElementById('public-profile-url');
+  try{
+    if(input){
+      input.focus();
+      input.select();
+      if(typeof input.setSelectionRange==='function')input.setSelectionRange(0,url.length);
+    }
+    if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(url);
+    else if(document.execCommand)document.execCommand('copy');
+    toast('🔗 Lien public copié.','a');
+  }catch(_){
+    toast('🔗 Lien prêt à être copié.','i');
+  }
+}
+
+function renderPublicProfilePreview(payload,sharedMode){
+  const titleEl=document.getElementById('public-profile-preview-title');
+  const bodyEl=document.getElementById('public-profile-preview-body');
+  if(!titleEl||!bodyEl)return;
+  const data=payload&&typeof payload==='object'?payload:{};
+  const accent=safeCssColor(data.color,'#22c55e');
+  const stats=data.stats&&typeof data.stats==='object'?data.stats:{};
+  const badges=(Array.isArray(data.titles)?data.titles:[]).slice(0,4).map(label=>'<span style="padding:4px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--border);font-size:.64rem">'+escapeHtml(label)+'</span>').join('');
+  const sharedDate=data.sharedAt?new Date(data.sharedAt).toLocaleDateString('fr-FR'):'—';
+  titleEl.textContent=sharedMode?'🔗 Profil public partagé':'🔗 Mon profil public';
+  bodyEl.innerHTML=
+    '<div style="display:flex;align-items:center;gap:12px;padding:10px;border:1px solid var(--border);border-radius:12px;background:var(--s2);margin-bottom:10px">'+
+      '<div style="width:56px;height:56px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.7rem;background:'+accent+'22;border:2px solid '+accent+'">'+escapeHtml(data.emoji||'🎲')+'</div>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:1rem;font-weight:800">'+escapeHtml(data.name||'Joueur')+'</div>'+
+        '<div style="font-size:.66rem;color:var(--muted)">ID public: '+escapeHtml(data.uid||'—')+' • Partagé le '+escapeHtml(sharedDate)+'</div>'+
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">'+
+          '<span style="padding:4px 8px;border-radius:999px;background:'+accent+'22;border:1px solid '+accent+';font-size:.64rem;font-weight:700">'+escapeHtml(data.rankLabel||'—')+'</span>'+
+          '<span style="padding:4px 8px;border-radius:999px;background:var(--s2);border:1px solid var(--border);font-size:.64rem">'+escapeHtml(data.titleLabel||'— Aucun titre')+'</span>'+
+        '</div>'+
+      '</div>'+
+    '</div>'+
+    '<div class="stats-grid">'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+(parseInt(stats.wins,10)||0)+'</div><div class="stat-tile-label">🏆 Victoires</div></div>'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+(parseInt(stats.games,10)||0)+'</div><div class="stat-tile-label">🎮 Parties</div></div>'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+(parseInt(data.elo,10)||0)+'</div><div class="stat-tile-label">📊 ELO</div></div>'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+escapeHtml(data.seasonBest||'—')+'</div><div class="stat-tile-label">🏅 Ligue</div></div>'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+(parseInt(stats.properties,10)||0)+'</div><div class="stat-tile-label">🏠 Achats</div></div>'+
+      '<div class="stat-tile"><div class="stat-tile-val">'+(parseInt(stats.turns,10)||0)+'</div><div class="stat-tile-label">⏱️ Tours</div></div>'+
+    '</div>'+
+    '<div style="margin-top:10px;font-size:.67rem;color:var(--muted)">Aucune donnée privée (email, session, IP) n’est partagée.</div>'+
+    (badges?('<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+badges+'</div>'):'');
+}
+
+function openMyPublicProfilePreview(){
+  setPublicProfileShareUrl(getPublicProfileShareUrl());
+  renderPublicProfilePreview(buildPublicProfilePayload(),false);
+  openModal('modal-public-profile');
+}
+
+function maybeOpenSharedProfileFromUrl(){
+  let encoded='';
+  try{
+    encoded=new URL(window.location.href).searchParams.get(PUBLIC_PROFILE_QUERY_KEY)||'';
+  }catch(_){
+    encoded='';
+  }
+  if(!encoded)return;
+  const raw=decodePublicProfileString(encoded);
+  if(!raw)return;
+  let payload=null;
+  try{payload=JSON.parse(raw);}catch(_){payload=null;}
+  if(!payload||typeof payload!=='object')return;
+  setPublicProfileShareUrl(window.location.href);
+  renderPublicProfilePreview(payload,true);
+  openModal('modal-public-profile');
+}
+
 function renderLobbyProfileTab(){
   applySecretUnlocks();
   ensureEmojiUnlocks(false);
@@ -421,6 +575,7 @@ function renderLobbyProfileTab(){
   const pcUid=document.getElementById('pc-uid');
   if(pcUid){pcUid.textContent='ID: '+P.uid;pcUid.title='Clique pour copier (code ami)';}
   const fcEl=document.getElementById('my-friend-code');if(fcEl)fcEl.textContent=P.uid;
+  setPublicProfileShareUrl(getPublicProfileShareUrl());
   const gArea=document.getElementById('google-connect-area');
   if(gArea){
     if(P.googleConnected){
@@ -435,10 +590,11 @@ function renderLobbyProfileTab(){
         <button class="btn btn-xs btn-danger" onclick="disconnectGoogle()">✕</button>
       </div>`;
     }else{
-      gArea.innerHTML=`<button class="google-btn" onclick="openGoogleLoginModal()">
+      const guestNote=typeof getInviteAccountLockText==='function'?getInviteAccountLockText():'Mode invité : stats conservées, progression de profil verrouillée.';
+      gArea.innerHTML=`<div style="display:flex;flex-direction:column;gap:8px"><button class="google-btn" onclick="openGoogleLoginModal()">
         <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
         Se connecter avec Google
-      </button>`;
+      </button><div style="font-size:.64rem;color:var(--muted)">${escapeHtml(guestNote)}</div></div>`;
     }
   }
   updateGoogleConfigUi();
@@ -579,6 +735,10 @@ function debugRemoveWinnerLooser(){
 }
 
 function redeemSecretCode(){
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression()){
+    showInviteAccountLock?.('Les codes de progression');
+    return;
+  }
   const inp=document.getElementById('secret-code-inp');
   if(!inp)return;
   const code=inp.value.trim();

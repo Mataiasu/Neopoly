@@ -13,17 +13,41 @@
 <link rel="preconnect" href="https://www.googleapis.com" crossorigin/>
 <style>
 :root{
-  --bg:#080c18;--s1:#0d1525;--s2:#111827;--s3:#1a2235;
-  --accent:#22c55e;--ag:rgba(34,197,94,.3);
-  --blue:#3b82f6;--yellow:#facc15;--red:#ef4444;--purple:#a855f7;
-  --text:#e5e7eb;--muted:#9ca3af;--border:rgba(148,163,184,.18);
+  --bg:#050816;--s1:#0b1226;--s2:#101a33;--s3:#162342;
+  --accent:#67f7d7;--ag:rgba(103,247,215,.28);
+  --blue:#8aa1ff;--yellow:#ffd166;--red:#ff647c;--purple:#d36bff;
+  --text:#eef4ff;--muted:#9fb0d1;--border:rgba(149,168,255,.18);
   --pawn-scale:.3;--pawn-glow:.8;--center-dice-scale:1.3;--game-zoom:1;--game-zoom-fit:1;--game-tilt:0deg;--zoom-detail:1;--cell-upscale:1;
   --center-actions-scale:1;--center-actions-tx:-50%;--center-actions-ty:-50%;
   --app-vh:100vh;
   --r:14px;--r2:10px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:radial-gradient(circle at top,rgba(211,107,255,.12),transparent 0 38%),radial-gradient(circle at bottom right,rgba(103,247,215,.12),transparent 0 34%),linear-gradient(135deg,#050816 0%,#09122a 48%,#050816 100%);color:var(--text);text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
+html[data-da-theme="aurora"]{
+  --bg:#050816;--s1:#0b1226;--s2:#101a33;--s3:#162342;
+  --accent:#67f7d7;--ag:rgba(103,247,215,.28);
+  --blue:#8aa1ff;--yellow:#ffd166;--red:#ff647c;--purple:#d36bff;
+  --text:#eef4ff;--muted:#9fb0d1;--border:rgba(149,168,255,.18);
+}
+html[data-da-theme="arcade"]{
+  --bg:#14061f;--s1:#1d0c30;--s2:#261242;--s3:#31185a;
+  --accent:#ff5ca8;--ag:rgba(255,92,168,.28);
+  --blue:#7c8dff;--yellow:#ffe66d;--red:#ff6b7a;--purple:#be7bff;
+  --text:#fff1fb;--muted:#ccb5da;--border:rgba(222,141,255,.2);
+}
+html[data-da-theme="royal"]{
+  --bg:#120d07;--s1:#1a140d;--s2:#241c12;--s3:#312515;
+  --accent:#f6c453;--ag:rgba(246,196,83,.24);
+  --blue:#78c8ff;--yellow:#ffe39a;--red:#d96b57;--purple:#b88cff;
+  --text:#fff7e8;--muted:#cdbb96;--border:rgba(246,196,83,.18);
+}
+html[data-da-theme="midnight"]{
+  --bg:#04131f;--s1:#081b2b;--s2:#0d2539;--s3:#133147;
+  --accent:#6ee7ff;--ag:rgba(110,231,255,.24);
+  --blue:#4ba3ff;--yellow:#9ce7ff;--red:#ff6f91;--purple:#7c9dff;
+  --text:#e8f7ff;--muted:#92b7c8;--border:rgba(110,231,255,.18);
+}
 
 /* ── SCREENS ── */
 #app-wrap{display:flex;height:var(--app-vh);overflow:hidden}
@@ -41,16 +65,17 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
   bottom:auto !important;
   z-index:150;
   padding:8px 14px;
-  background:#22c55e;
-  color:#080c18;
+  background:linear-gradient(135deg,var(--accent),var(--blue));
+  color:#041018;
   border:none;
-  border-radius:8px;
-  font-weight:600;
+  border-radius:10px;
+  font-weight:800;
   cursor:pointer;
   font-size:.85rem;
+  box-shadow:0 10px 24px rgba(103,247,215,.18);
 }
 #pack-manager-btn:hover{
-  background:#16a34a;
+  filter:brightness(1.05);
 }
 #admin-debug-btn{
   display:none;
@@ -61,43 +86,57 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
   bottom:auto !important;
   z-index:150;
   padding:7px 12px;
-  background:#111827;
-  color:#fde68a;
-  border:1px solid rgba(250,204,21,.35);
-  border-radius:8px;
-  font-weight:700;
+  background:linear-gradient(180deg,rgba(11,18,38,.96),rgba(16,26,51,.92));
+  color:#ffe29a;
+  border:1px solid rgba(255,209,102,.35);
+  border-radius:10px;
+  font-weight:800;
   cursor:pointer;
   font-size:.8rem;
+  box-shadow:0 10px 22px rgba(2,6,23,.28);
 }
 #admin-debug-btn:hover{
-  background:#172036;
-  border-color:#facc15;
+  background:linear-gradient(180deg,rgba(18,28,54,.98),rgba(20,34,66,.95));
+  border-color:#ffd166;
 }
 #mobile-sidebar-gear{display:none}
 #app-wrap.in-lobby #pack-manager-btn{display:block !important}
+.lobby-feature-ribbon{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;max-width:980px}
+.feature-chip{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:12px;border:1px solid rgba(148,163,184,.2);background:linear-gradient(180deg,rgba(17,24,39,.94),rgba(13,21,37,.94));color:#e5eefc;font-size:.76rem;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(2,6,23,.18)}
+.feature-chip:hover{border-color:rgba(34,197,94,.35);transform:translateY(-1px)}
+.filter-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.filter-row select,.filter-row input{min-width:140px}
+.news-grid{display:grid;grid-template-columns:1fr;gap:8px}
+.news-tile{padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:var(--s2)}
+.news-tile b{color:#f8fafc}
+.faq-item{padding:8px 9px;border-radius:10px;border:1px solid var(--border);background:var(--s2)}
+.shortcut-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.shortcut-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.22);font-size:.62rem;font-weight:700;color:#bfdbfe}
+.kb-chip{display:inline-flex;align-items:center;justify-content:center;min-width:22px;padding:2px 6px;border-radius:6px;background:#0b1220;border:1px solid rgba(148,163,184,.28);font-size:.62rem;color:#f8fafc}
+#turn-summary-card .stat-tile{min-height:70px}
 
 /* ── BOUTIQUE POWER-UPS ── */
-#shop-modal-bg{display:none;position:fixed;inset:0;background:rgba(8,12,24,.88);z-index:160;align-items:center;justify-content:center;padding:16px}
+#shop-modal-bg{display:none;position:fixed;inset:0;background:rgba(5,8,22,.9);z-index:160;align-items:center;justify-content:center;padding:16px;backdrop-filter:blur(8px)}
 #shop-modal-bg.open{display:flex}
-#shop-box{background:#0d1525;border:1px solid rgba(59,130,246,.3);border-radius:16px;padding:24px;width:min(94vw,460px);max-height:90vh;overflow-y:auto}
-#shop-title{font-size:1.1rem;font-weight:900;color:#3b82f6;margin-bottom:4px}
-#shop-balance{font-size:.8rem;color:#9ca3af;margin-bottom:16px}
-.shop-item{display:flex;align-items:center;gap:12px;background:#111827;border:1px solid rgba(59,130,246,.15);border-radius:10px;padding:10px;margin-bottom:8px}
+#shop-box{background:linear-gradient(180deg,rgba(11,18,38,.97),rgba(16,26,51,.94));border:1px solid rgba(138,161,255,.28);border-radius:18px;padding:24px;width:min(94vw,460px);max-height:90vh;overflow-y:auto;box-shadow:0 22px 44px rgba(1,6,18,.42)}
+#shop-title{font-size:1.1rem;font-weight:900;color:var(--blue);margin-bottom:4px}
+#shop-balance{font-size:.8rem;color:var(--muted);margin-bottom:16px}
+.shop-item{display:flex;align-items:center;gap:12px;background:linear-gradient(180deg,rgba(16,26,51,.95),rgba(11,18,38,.9));border:1px solid rgba(138,161,255,.12);border-radius:12px;padding:10px;margin-bottom:8px}
 .shop-item-icon{font-size:1.5rem;flex-shrink:0}
 .shop-item-info{flex:1;min-width:0}
 .shop-item-name{font-size:.82rem;font-weight:700}
-.shop-item-desc{font-size:.68rem;color:#9ca3af;margin-top:2px}
-.shop-item-price{color:#facc15;font-weight:900;font-size:.82rem;flex-shrink:0}
+.shop-item-desc{font-size:.68rem;color:var(--muted);margin-top:2px}
+.shop-item-price{color:var(--yellow);font-weight:900;font-size:.82rem;flex-shrink:0}
 .shop-item-btn{flex-shrink:0}
 .shop-item.cant-afford{opacity:.45}
-.shop-selection{margin-top:14px;padding:14px;border:1px solid rgba(59,130,246,.18);border-radius:12px;background:#111827}
+.shop-selection{margin-top:14px;padding:14px;border:1px solid rgba(103,247,215,.18);border-radius:14px;background:linear-gradient(180deg,rgba(16,26,51,.95),rgba(11,18,38,.92))}
 .shop-selection-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
-.shop-selection-title{font-size:.86rem;font-weight:800;color:#e5e7eb}
-.shop-selection-sub{font-size:.7rem;color:#9ca3af;margin-top:2px}
+.shop-selection-title{font-size:.86rem;font-weight:800;color:var(--text)}
+.shop-selection-sub{font-size:.7rem;color:var(--muted);margin-top:2px}
 .shop-target-list{display:flex;flex-direction:column;gap:8px}
-.shop-target-btn{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:#0f172a;border:1px solid rgba(148,163,184,.18);border-radius:10px;color:var(--text);padding:10px 12px;cursor:pointer}
-.shop-target-btn:hover{border-color:#3b82f6;background:#122036}
-.shop-target-meta{margin-left:auto;font-size:.7rem;color:#9ca3af;white-space:nowrap}
+.shop-target-btn{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:rgba(8,15,30,.88);border:1px solid rgba(149,168,255,.18);border-radius:10px;color:var(--text);padding:10px 12px;cursor:pointer}
+.shop-target-btn:hover{border-color:var(--accent);background:#13203a}
+.shop-target-meta{margin-left:auto;font-size:.7rem;color:var(--muted);white-space:nowrap}
 /* Config sous la barre rouge : caché en partie */
 #app-wrap:not(.in-lobby) #cfg-options-partie,
 #app-wrap:not(.in-lobby) #cfg-reset-row,
@@ -107,41 +146,43 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 /* ── LOBBY ── */
 #lobby{flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px}
 #lobby{position:relative;overflow:hidden;isolation:isolate}
-  .lobby-logo{font-size:3rem;font-weight:900;background:linear-gradient(135deg,var(--accent),var(--blue));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-.lobby-sub{color:var(--muted);font-size:.9rem}
+  .lobby-logo{font-size:3rem;font-weight:900;letter-spacing:.02em;background:linear-gradient(135deg,#ffffff 0%,var(--accent) 32%,var(--blue) 68%,var(--purple) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 18px rgba(124,140,255,.16)}
+.lobby-sub{color:#d8e4ff;font-size:.92rem;letter-spacing:.08em;text-transform:uppercase}
 .lobby-cards{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
-.lobby-card{background:var(--s1);border:1px solid var(--border);border-radius:var(--r);padding:24px 20px;width:200px;cursor:pointer;transition:.2s;text-align:center}
-.lobby-card:hover{border-color:var(--accent);transform:translateY(-3px);box-shadow:0 8px 24px rgba(34,197,94,.15)}
-.lobby-card-icon{font-size:2rem;margin-bottom:8px}
-.lobby-card-title{font-weight:700;margin-bottom:6px}
+.lobby-card{background:linear-gradient(180deg,rgba(10,17,36,.88),rgba(13,22,44,.72));border:1px solid rgba(149,168,255,.16);border-radius:var(--r);padding:24px 20px;width:200px;cursor:pointer;transition:.22s;text-align:center;box-shadow:0 18px 34px rgba(1,6,18,.26);backdrop-filter:blur(10px)}
+.lobby-card:hover{border-color:rgba(103,247,215,.52);transform:translateY(-4px) scale(1.01);box-shadow:0 18px 40px rgba(103,247,215,.12),0 0 0 1px rgba(124,140,255,.08)}
+.lobby-card-icon{font-size:2rem;margin-bottom:8px;filter:drop-shadow(0 0 10px rgba(124,140,255,.22))}
+.lobby-card-title{font-weight:800;margin-bottom:6px}
 .lobby-card-desc{font-size:.75rem;color:var(--muted);line-height:1.4}
 .lobby-version{font-size:.7rem;color:var(--muted)}
 
 /* ── AMBIENT VISUALS ── */
-.ambient-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0;opacity:.9}
+.ambient-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:0;opacity:1}
 .ambient-layer.hidden{display:none}
+.ambient-layer::before{content:'';position:absolute;inset:-12%;background:radial-gradient(circle at 18% 22%,rgba(103,247,215,.16) 0%,rgba(103,247,215,0) 34%),radial-gradient(circle at 82% 18%,rgba(211,107,255,.14) 0%,rgba(211,107,255,0) 30%),radial-gradient(circle at 50% 100%,rgba(255,209,102,.08) 0%,rgba(255,209,102,0) 28%);animation:auroraSweep 16s ease-in-out infinite}
 .ambient-content{position:absolute;inset:0}
+.ambient-content::after{content:'';position:absolute;inset:-10%;background:linear-gradient(115deg,transparent 0%,rgba(255,255,255,.03) 42%,transparent 60%);mix-blend-mode:screen;opacity:.7;animation:ambientSheen 18s linear infinite}
 .ambient-grid{
   position:absolute;
-  inset:-20%;
+  inset:-24%;
   background:
-    linear-gradient(90deg, transparent 49.2%, rgba(34,197,94,.08) 50%, transparent 50.8%),
-    linear-gradient(0deg, transparent 49.2%, rgba(59,130,246,.08) 50%, transparent 50.8%);
-  background-size:42px 42px;
-  transform:perspective(700px) rotateX(58deg) translateY(25%);
+    linear-gradient(90deg, transparent 48.8%, rgba(103,247,215,.12) 50%, transparent 51.2%),
+    linear-gradient(0deg, transparent 48.8%, rgba(138,161,255,.12) 50%, transparent 51.2%);
+  background-size:54px 54px;
+  transform:perspective(980px) rotateX(67deg) translateY(34%);
   transform-origin:center;
-  opacity:.28;
-  animation:gridDrift 16s linear infinite;
+  opacity:.2;
+  animation:gridDrift 18s linear infinite;
 }
-.ambient-blob{position:absolute;filter:blur(24px);border-radius:999px;mix-blend-mode:screen;opacity:.65;animation:blobFloat 16s ease-in-out infinite}
-.ambient-blob.b1{width:340px;height:340px;left:-70px;top:-80px;background:radial-gradient(circle,#22c55e 0%,rgba(34,197,94,0) 70%)}
-.ambient-blob.b2{width:300px;height:300px;right:-90px;bottom:-90px;background:radial-gradient(circle,#3b82f6 0%,rgba(59,130,246,0) 70%);animation-delay:-6s}
-.ambient-blob.b3{width:220px;height:220px;left:40%;bottom:-70px;background:radial-gradient(circle,#facc15 0%,rgba(250,204,21,0) 72%);animation-delay:-10s}
-.ambient-dots{position:absolute;inset:0;background-image:radial-gradient(rgba(229,231,235,.14) 1px, transparent 1px);background-size:24px 24px;opacity:.16;animation:dotsPulse 7s ease-in-out infinite}
+.ambient-blob{position:absolute;filter:blur(38px) saturate(1.2);border-radius:999px;mix-blend-mode:screen;opacity:.56;animation:blobFloat 18s ease-in-out infinite}
+.ambient-blob.b1{width:360px;height:360px;left:-90px;top:-90px;background:radial-gradient(circle,#67f7d7 0%,rgba(103,247,215,0) 72%)}
+.ambient-blob.b2{width:320px;height:320px;right:-100px;bottom:-100px;background:radial-gradient(circle,#8aa1ff 0%,rgba(138,161,255,0) 72%);animation-delay:-6s}
+.ambient-blob.b3{width:250px;height:250px;left:42%;bottom:-85px;background:radial-gradient(circle,#d36bff 0%,rgba(211,107,255,0) 74%);animation-delay:-10s}
+.ambient-dots{position:absolute;inset:0;background-image:radial-gradient(rgba(238,244,255,.2) .9px, transparent 1.8px);background-size:28px 28px;opacity:.12;animation:dotsPulse 9s ease-in-out infinite}
 .victory-stars{position:absolute;inset:0;pointer-events:none;z-index:0}
-.victory-star{position:absolute;color:rgba(255,230,140,.88);text-shadow:0 0 10px rgba(250,204,21,.42),0 0 20px rgba(255,255,255,.14);animation:starTwinkle calc(5.2s + var(--twinkle-offset,0s)) ease-in-out infinite;opacity:.2}
-.victory-star.s2{color:rgba(191,219,254,.8);text-shadow:0 0 10px rgba(59,130,246,.35)}
-.victory-star.s3{color:rgba(196,181,253,.8);text-shadow:0 0 10px rgba(168,85,247,.34)}
+.victory-star{position:absolute;color:rgba(255,230,140,.88);text-shadow:0 0 10px rgba(255,209,102,.42),0 0 20px rgba(255,255,255,.14);animation:starTwinkle calc(5.2s + var(--twinkle-offset,0s)) ease-in-out infinite;opacity:.2}
+.victory-star.s2{color:rgba(191,219,254,.8);text-shadow:0 0 10px rgba(138,161,255,.35)}
+.victory-star.s3{color:rgba(216,180,255,.82);text-shadow:0 0 10px rgba(211,107,255,.34)}
 .rank-emblem{position:absolute;right:4%;top:10%;font-size:clamp(88px,12vw,180px);font-weight:900;line-height:1;letter-spacing:.02em;opacity:var(--rank-opacity,.1);filter:drop-shadow(0 0 var(--rank-glow,18px) rgba(255,255,255,.14));transform:rotate(-10deg) scale(var(--rank-scale,1));transform-origin:center;animation:rankFloat 8.5s ease-in-out infinite;user-select:none}
 .re-unranked{color:#94a3b8}
 .re-bronze{color:#cd7f32}
@@ -155,24 +196,36 @@ html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:
 .rank-div-ii{--rank-scale:1;--rank-opacity:.13;--rank-glow:18px;letter-spacing:.04em}
 .rank-div-i{--rank-scale:1.12;--rank-opacity:.18;--rank-glow:26px;letter-spacing:.02em;text-shadow:0 0 22px rgba(255,255,255,.18)}
 .floating-titles{position:absolute;inset:0;pointer-events:none;z-index:0}
-.floating-title{position:absolute;font-size:.66rem;font-weight:800;padding:3px 8px;border-radius:999px;border:1px solid rgba(148,163,184,.28);background:rgba(10,18,34,.42);backdrop-filter:blur(1px);opacity:.26;white-space:nowrap;pointer-events:auto;animation:floatTitle var(--ft-dur,18s) linear infinite;animation-delay:var(--ft-delay,0s)}
+.floating-title{position:absolute;font-size:.66rem;font-weight:800;padding:3px 8px;border-radius:999px;border:1px solid rgba(149,168,255,.28);background:rgba(10,18,34,.48);backdrop-filter:blur(4px);opacity:.26;white-space:nowrap;pointer-events:auto;animation:floatTitle var(--ft-dur,18s) linear infinite;animation-delay:var(--ft-delay,0s)}
 .floating-title:hover{animation-play-state:paused;opacity:.55}
 .secret-cosmic .ambient-dots{opacity:.24;filter:hue-rotate(35deg) saturate(1.35)}
-.secret-cosmic .ambient-blob{filter:blur(28px) saturate(1.2)}
-.secret-arcade .lobby-logo,.secret-arcade .board-center-logo{animation:arcadePulse 2.4s ease-in-out infinite;text-shadow:0 0 14px rgba(59,130,246,.18)}
-.secret-aura #profile-card{box-shadow:0 0 0 1px rgba(250,204,21,.18),0 0 22px rgba(250,204,21,.08)}
-.secret-aura .rank-emblem{filter:drop-shadow(0 0 calc(var(--rank-glow,18px) + 8px) rgba(250,204,21,.22))}
+.secret-cosmic .ambient-blob{filter:blur(32px) saturate(1.25)}
+.secret-arcade .lobby-logo,.secret-arcade .board-center-logo{animation:arcadePulse 2.4s ease-in-out infinite;text-shadow:0 0 14px rgba(138,161,255,.22)}
+.secret-aura #profile-card{box-shadow:0 0 0 1px rgba(255,209,102,.18),0 0 22px rgba(255,209,102,.08)}
+.secret-aura .rank-emblem{filter:drop-shadow(0 0 calc(var(--rank-glow,18px) + 8px) rgba(255,209,102,.22))}
 .lobby-logo,.lobby-sub,.lobby-cards,.lobby-version{position:relative;z-index:1}
 .board-area{position:relative;isolation:isolate}
 .board{position:relative;z-index:1}
 
-@keyframes blobFloat{0%,100%{transform:translateY(0) translateX(0) scale(1)}33%{transform:translateY(-18px) translateX(10px) scale(1.06)}66%{transform:translateY(12px) translateX(-8px) scale(.95)}}
-@keyframes gridDrift{from{transform:perspective(700px) rotateX(58deg) translateY(25%) translateX(0)}to{transform:perspective(700px) rotateX(58deg) translateY(25%) translateX(-38px)}}
-@keyframes dotsPulse{0%,100%{opacity:.12}50%{opacity:.25}}
+@keyframes blobFloat{0%,100%{transform:translateY(0) translateX(0) scale(1)}33%{transform:translateY(-22px) translateX(12px) scale(1.05)}66%{transform:translateY(16px) translateX(-12px) scale(.96)}}
+@keyframes gridDrift{from{transform:perspective(980px) rotateX(67deg) translateY(34%) translateX(0)}to{transform:perspective(980px) rotateX(67deg) translateY(34%) translateX(-56px)}}
+@keyframes dotsPulse{0%,100%{opacity:.1}50%{opacity:.2}}
+@keyframes auroraSweep{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(1.5%,2%,0) scale(1.04)}}
+@keyframes ambientSheen{from{transform:translateX(-16%)}to{transform:translateX(16%)}}
 @keyframes rankFloat{0%,100%{transform:rotate(-10deg) translateY(0) scale(var(--rank-scale,1))}50%{transform:rotate(-8deg) translateY(-12px) scale(var(--rank-scale,1))}}
 @keyframes floatTitle{0%{transform:translate3d(-6vw,0,0) rotate(-3deg)}25%{transform:translate3d(4vw,-2vh,0) rotate(1deg)}50%{transform:translate3d(10vw,1vh,0) rotate(-1deg)}75%{transform:translate3d(2vw,3vh,0) rotate(2deg)}100%{transform:translate3d(-6vw,0,0) rotate(-3deg)}}
 @keyframes arcadePulse{0%,100%{transform:translateZ(0) scale(1)}50%{transform:translateZ(0) scale(1.03)}}
 @keyframes starTwinkle{0%,100%{opacity:.18;transform:scale(.82)}40%{opacity:.78;transform:scale(1)}60%{opacity:.4;transform:scale(.92)}}
+html[data-da-theme="arcade"] .ambient-grid{filter:hue-rotate(-40deg) saturate(1.4);opacity:.28}
+html[data-da-theme="arcade"] .ambient-blob{filter:blur(34px) saturate(1.35)}
+html[data-da-theme="arcade"] .lobby-logo,html[data-da-theme="arcade"] .board-center-logo{text-shadow:0 0 18px rgba(255,92,168,.2)}
+html[data-da-theme="royal"] .ambient-grid{filter:hue-rotate(125deg) saturate(.82);opacity:.16}
+html[data-da-theme="royal"] .ambient-blob.b1{background:radial-gradient(circle,#f6c453 0%,rgba(246,196,83,0) 72%)}
+html[data-da-theme="royal"] .ambient-blob.b2{background:radial-gradient(circle,#ffefb0 0%,rgba(255,239,176,0) 72%)}
+html[data-da-theme="royal"] .lobby-card,html[data-da-theme="royal"] .card{box-shadow:0 14px 32px rgba(18,13,7,.3)}
+html[data-da-theme="midnight"] .ambient-grid{filter:hue-rotate(18deg) saturate(1.05);opacity:.24}
+html[data-da-theme="midnight"] .ambient-content::after{opacity:.42}
+html[data-da-theme="midnight"] .board-area{background:radial-gradient(circle at top,rgba(75,163,255,.12),transparent 0 28%),radial-gradient(circle at bottom right,rgba(110,231,255,.1),transparent 0 26%),linear-gradient(180deg,#061927 0%,var(--bg) 100%)}
 
 /* Profil performances mobile (appareils modestes / reduced motion) */
 html.mobile-lowfx .ambient-grid,
@@ -209,7 +262,7 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 /* ═══════════════════════════════════════
    BOARD AREA
 ═══════════════════════════════════════ */
-.board-area{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;overflow:hidden;background:radial-gradient(ellipse at center, #0a1628 0%, var(--bg) 100%)}
+.board-area{flex:1;display:flex;align-items:center;justify-content:center;min-width:0;min-height:0;overflow:hidden;background:radial-gradient(circle at top,rgba(211,107,255,.12),transparent 0 28%),radial-gradient(circle at bottom right,rgba(103,247,215,.1),transparent 0 26%),linear-gradient(180deg,#081022 0%,var(--bg) 100%)}
 .board{
   --corner:72px;
   --cell:1fr;
@@ -218,11 +271,11 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   grid-template-rows:var(--corner) repeat(9,var(--cell)) var(--corner);
   gap:1px;
   padding:2px;
-  background:rgba(148,163,184,.12);
-  border:1.5px solid rgba(148,163,184,.18);
-  border-radius:14px;
+  background:linear-gradient(180deg,rgba(149,168,255,.16),rgba(149,168,255,.08));
+  border:1.5px solid rgba(149,168,255,.2);
+  border-radius:18px;
   overflow:hidden;
-  box-shadow:0 0 60px rgba(0,0,0,.7),0 0 0 1px rgba(34,197,94,.06);
+  box-shadow:0 24px 70px rgba(1,6,18,.55),0 0 0 1px rgba(103,247,215,.07),inset 0 1px 0 rgba(255,255,255,.05);
   --size:min(calc(100vh - 30px), calc(100vw - 320px));
   width:calc(var(--size) / var(--game-zoom-fit,1));
   height:calc(var(--size) / var(--game-zoom-fit,1));
@@ -248,9 +301,10 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   padding: clamp(6px, 1.2vw, 14px);
   text-align: center;
   overflow: hidden;
-  background: radial-gradient(ellipse at center, #05101f 0%, #030710 100%);
-  border: 1px dashed rgba(148,163,184,.1);
-  border-radius: 4px;
+  background: radial-gradient(circle at top, rgba(138,161,255,.14), rgba(5,8,22,.96) 70%), linear-gradient(180deg, rgba(10,17,36,.96), rgba(6,10,20,.98));
+  border: 1px solid rgba(149,168,255,.16);
+  border-radius: 10px;
+  box-shadow: inset 0 0 30px rgba(103,247,215,.04);
 }
 
 .board-center-logo {
@@ -258,7 +312,7 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   font-weight: 900;
   line-height: 1;
   max-width: 100%;
-  background: linear-gradient(135deg, var(--accent) 30%, var(--blue));
+  background: linear-gradient(135deg, #ffffff 0%, var(--accent) 32%, var(--blue) 70%, var(--purple) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -268,7 +322,7 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   font-size: .7rem;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 1.2px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -278,16 +332,17 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .board-center-info {
   font-size: .72rem;
   color: var(--accent);
-  font-weight: 600;
+  font-weight: 700;
   padding: 3px 12px;
-  background: rgba(34,197,94,.08);
-  border: 1px solid rgba(34,197,94,.2);
+  background: rgba(103,247,215,.1);
+  border: 1px solid rgba(103,247,215,.22);
   border-radius: 999px;
   margin-top: 4px;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  box-shadow:0 8px 18px rgba(5,11,24,.28);
 }
 
 .center-dice-row{
@@ -305,14 +360,14 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   width:min(100%, clamp(28px, calc(34px * var(--center-dice-scale,1)), 64px));
   aspect-ratio:1/1;
   height:auto;
-  border-radius:10px;
+  border-radius:12px;
   display:flex;
   align-items:center;
   justify-content:center;
   font-size:clamp(.92rem, calc(1.12rem * var(--center-dice-scale,1)), 1.72rem);
-  background:rgba(17,24,39,.86);
-  border:1px solid rgba(148,163,184,.25);
-  box-shadow:0 5px 16px rgba(0,0,0,.35);transition:transform .18s ease, box-shadow .18s ease;
+  background:rgba(15,23,42,.88);
+  border:1px solid rgba(149,168,255,.25);
+  box-shadow:0 10px 22px rgba(2,6,23,.32);transition:transform .18s ease, box-shadow .18s ease;
 }
 .center-die.rolling{animation:centerRoll .45s ease-in-out}
 .center-dsum{min-width:clamp(20px, 6vw, 32px);text-align:center;font-size:clamp(.8rem, 1.4vw, 1.02rem);font-weight:900;color:var(--accent)}
@@ -327,7 +382,7 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  background: #070d1a;
+  background: linear-gradient(180deg, #081021 0%, #0c1530 100%);
   cursor: pointer;
   overflow: visible;
   padding: calc(2px * var(--cell-upscale,1)) calc(1px * var(--cell-upscale,1));
@@ -337,7 +392,7 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   min-height: 0;
 }
 
-.cell:hover { background: #0d1b2e; z-index: 4; }
+.cell:hover { background: linear-gradient(180deg, #0d1833 0%, #142242 100%); z-index: 4; }
 .cell.selected {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
@@ -345,9 +400,9 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 }
 .cell.landed{animation:cellLand 1s ease}
 @keyframes cellLand{
-  0%{box-shadow:inset 0 0 0 0 rgba(34,197,94,.9),0 0 0 rgba(34,197,94,0);transform:scale(.98)}
-  45%{box-shadow:inset 0 0 0 2px rgba(34,197,94,.95),0 0 30px rgba(34,197,94,.45);transform:scale(1.03)}
-  100%{box-shadow:inset 0 0 0 0 rgba(34,197,94,0),0 0 0 rgba(34,197,94,0);transform:scale(1)}
+  0%{box-shadow:inset 0 0 0 0 rgba(103,247,215,.9),0 0 0 rgba(103,247,215,0);transform:scale(.98)}
+  45%{box-shadow:inset 0 0 0 2px rgba(103,247,215,.95),0 0 30px rgba(103,247,215,.42);transform:scale(1.03)}
+  100%{box-shadow:inset 0 0 0 0 rgba(103,247,215,0),0 0 0 rgba(103,247,215,0);transform:scale(1)}
 }
 
 /* ── Strip couleur ── */
@@ -1299,18 +1354,18 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .tab-pane.active{display:flex}
 
 /* ── CARDS ── */
-.card{background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:12px;flex-shrink:0;contain:layout paint style}
+.card{background:linear-gradient(180deg,rgba(16,26,51,.95),rgba(11,18,38,.94));border:1px solid var(--border);border-radius:var(--r2);padding:12px;flex-shrink:0;contain:layout paint style;box-shadow:0 10px 24px rgba(2,6,23,.12)}
 .card-title{font-size:.72rem;font-weight:700;color:var(--accent);margin-bottom:8px;text-transform:uppercase;letter-spacing:.05em}
 #players-list{scroll-behavior:smooth;overscroll-behavior:contain}
-.turn-hint{margin:8px 0 10px;padding:9px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(59,130,246,.16),rgba(34,197,94,.12));border:1px solid rgba(96,165,250,.24);color:#dbeafe;font-size:.74rem;line-height:1.4;font-weight:600}
+.turn-hint{margin:8px 0 10px;padding:9px 10px;border-radius:12px;background:linear-gradient(135deg,rgba(138,161,255,.16),rgba(103,247,215,.12));border:1px solid rgba(138,161,255,.24);color:#e7efff;font-size:.74rem;line-height:1.4;font-weight:600}
 
 /* ── PLAYER ROW ── */
 .player-row{
   display:flex;align-items:center;gap:8px;padding:8px 10px;
-  background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);
+  background:linear-gradient(180deg,rgba(16,26,51,.96),rgba(11,18,38,.92));border:1px solid var(--border);border-radius:var(--r2);
   transition:.2s;flex-shrink:0;scroll-margin:10px;
 }
-.player-row.active-player{border-color:var(--accent);background:rgba(34,197,94,.07)}
+.player-row.active-player{border-color:rgba(103,247,215,.58);background:rgba(103,247,215,.08);box-shadow:0 0 0 1px rgba(103,247,215,.08)}
 .player-row.bust-player{opacity:.45}
 .player-row:hover:not(.bust-player){background:var(--s3);border-color:rgba(255,255,255,.25);transform:translateX(2px)}
 @media (hover:none),(pointer:coarse){
@@ -1318,12 +1373,12 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 }
 /* ── READY SYSTEM ── */
 .ready-pill{font-size:.63rem;padding:2px 8px;border-radius:999px;font-weight:700;cursor:pointer;border:1px solid transparent;transition:.15s;white-space:nowrap;user-select:none;touch-action:manipulation}
-.ready-pill.rdy{background:#22c55e22;color:#22c55e;border-color:#22c55e55}
+.ready-pill.rdy{background:rgba(103,247,215,.14);color:var(--accent);border-color:rgba(103,247,215,.34)}
 .ready-pill.not-rdy{background:var(--s3);color:var(--muted);border-color:var(--border)}
 .ready-pill.not-rdy:hover{border-color:var(--accent);color:var(--text)}
 .access-badge{display:inline-flex;align-items:center;gap:4px;font-size:.52rem;padding:1px 6px;border-radius:999px;border:1px solid rgba(255,255,255,.08);font-weight:700;letter-spacing:.03em;vertical-align:middle;white-space:nowrap;backdrop-filter:blur(6px);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
-.access-badge.host-only{background:linear-gradient(180deg,rgba(59,130,246,.14),rgba(59,130,246,.06));color:#bfdbfe;border-color:rgba(59,130,246,.22)}
-.access-badge.admin-only{background:linear-gradient(180deg,rgba(245,158,11,.16),rgba(245,158,11,.07));color:#fde68a;border-color:rgba(245,158,11,.24)}
+.access-badge.host-only{background:linear-gradient(180deg,rgba(138,161,255,.16),rgba(138,161,255,.08));color:#d9e1ff;border-color:rgba(138,161,255,.24)}
+.access-badge.admin-only{background:linear-gradient(180deg,rgba(255,209,102,.16),rgba(255,209,102,.08));color:#ffe29a;border-color:rgba(255,209,102,.24)}
 .card-title .access-badge,.btn .access-badge{margin-left:6px;transform:translateY(-1px)}
 .btn .access-badge{font-size:.48rem;padding:1px 5px;opacity:.92}
 #ui-tooltip{position:fixed;left:0;top:0;z-index:9999;max-width:min(280px,72vw);padding:8px 10px;border-radius:10px;background:linear-gradient(180deg,rgba(15,23,42,.97),rgba(15,23,42,.93));border:1px solid rgba(148,163,184,.18);color:#e5eefc;font-size:.68rem;line-height:1.35;box-shadow:0 16px 34px rgba(2,6,23,.42);pointer-events:none;opacity:0;transform:translate3d(0,6px,0) scale(.985);transition:opacity .12s ease,transform .12s ease;backdrop-filter:blur(10px)}
@@ -1343,24 +1398,24 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .dsum{font-size:1.2rem;font-weight:900;color:var(--accent)}
 
 /* ── BUY BAR ── */
-.buy-bar{display:none;background:linear-gradient(160deg,rgba(34,197,94,.18),rgba(59,130,246,.12));border:1px solid rgba(34,197,94,.55);border-radius:12px;padding:12px;margin-bottom:10px;box-shadow:0 0 0 1px rgba(34,197,94,.2),0 10px 28px rgba(0,0,0,.35)}
+.buy-bar{display:none;background:linear-gradient(160deg,rgba(103,247,215,.16),rgba(138,161,255,.12));border:1px solid rgba(103,247,215,.38);border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:0 0 0 1px rgba(103,247,215,.12),0 14px 30px rgba(0,0,0,.32)}
 .buy-bar.open{display:block;animation:buyPulse 1.3s ease-in-out infinite alternate}
 .buy-info{font-size:.86rem;color:var(--text);margin-bottom:10px;line-height:1.45;font-weight:700}
 @keyframes buyPulse{from{transform:scale(1)}to{transform:scale(1.015)}}
 
 /* ── BUTTONS ── */
-.btn{padding:7px 14px;border:none;border-radius:8px;font-size:.78rem;font-weight:700;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;gap:4px;touch-action:manipulation}
+.btn{padding:7px 14px;border:none;border-radius:10px;font-size:.78rem;font-weight:700;cursor:pointer;transition:transform .15s ease,filter .15s ease,background .15s ease,border-color .15s ease,box-shadow .15s ease;display:inline-flex;align-items:center;gap:4px;touch-action:manipulation;box-shadow:0 10px 18px rgba(2,6,23,.16)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
-.btn-primary{background:var(--accent);color:#000}
-.btn-primary:hover:not(:disabled){background:#16a34a}
-.btn-secondary{background:var(--s3);color:var(--text);border:1px solid var(--border)}
-.btn-secondary:hover:not(:disabled){background:#1e2d45}
-.btn-blue{background:var(--blue);color:#fff}
-.btn-blue:hover:not(:disabled){background:#2563eb}
-.btn-yellow{background:var(--yellow);color:#000}
-.btn-yellow:hover:not(:disabled){background:#eab308}
-.btn-danger{background:var(--red);color:#fff}
-.btn-danger:hover:not(:disabled){background:#dc2626}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--blue));color:#041018}
+.btn-primary:hover:not(:disabled){filter:brightness(1.05);transform:translateY(-1px)}
+.btn-secondary{background:linear-gradient(180deg,rgba(22,35,66,.95),rgba(15,23,42,.92));color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover:not(:disabled){background:#1c2d52;transform:translateY(-1px)}
+.btn-blue{background:linear-gradient(135deg,var(--blue),var(--purple));color:#fff}
+.btn-blue:hover:not(:disabled){filter:brightness(1.06);transform:translateY(-1px)}
+.btn-yellow{background:linear-gradient(135deg,var(--yellow),#ffb86b);color:#1b1100}
+.btn-yellow:hover:not(:disabled){filter:brightness(1.04);transform:translateY(-1px)}
+.btn-danger{background:linear-gradient(135deg,var(--red),#ff4d8d);color:#fff}
+.btn-danger:hover:not(:disabled){filter:brightness(1.04);transform:translateY(-1px)}
 .btn-sm{padding:5px 10px;font-size:.72rem}
 .btn-xs{padding:3px 7px;font-size:.65rem}
 .btn-row{display:flex;gap:6px;flex-wrap:wrap}
@@ -1461,6 +1516,24 @@ body.streamer-mode #invite-link {
 .options-fgroup .opt-row{display:grid;grid-template-columns:18px minmax(0,1fr);column-gap:12px;align-items:start}
 .options-fgroup .opt-row>input[type=checkbox]{width:16px!important;height:16px!important;margin-top:2px!important;justify-self:start;align-self:start}
 .options-fgroup .opt-row>label{margin:0;line-height:1.25;text-align:left}
+.party-section-label{font-size:.64rem;color:#cbd5e1;font-weight:800;letter-spacing:.08em;text-transform:uppercase;margin-top:8px;padding-top:8px;border-top:1px dashed rgba(148,163,184,.18)}
+.party-mode-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}
+.party-mode-card{padding:9px;border-radius:12px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(17,24,39,.96),rgba(13,21,37,.94));transition:border-color .15s ease,transform .15s ease,box-shadow .15s ease}
+.party-mode-card[data-active="1"]{border-color:rgba(34,197,94,.42);box-shadow:0 0 0 1px rgba(34,197,94,.1),0 10px 24px rgba(34,197,94,.08);transform:translateY(-1px)}
+.party-mode-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+.party-mode-title{font-size:.74rem;font-weight:800;color:#f8fafc}
+.party-mode-desc{font-size:.64rem;color:var(--muted);line-height:1.35;margin-bottom:6px}
+.party-preview-box{margin-top:10px;padding:10px 11px;border-radius:12px;background:linear-gradient(135deg,rgba(34,197,94,.08),rgba(59,130,246,.08));border:1px solid rgba(59,130,246,.22)}
+.party-preview-title{font-size:.75rem;font-weight:800;color:#f8fafc}
+.party-preview-sub{font-size:.64rem;color:var(--muted);margin-top:3px}
+.party-preview-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.party-mini-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.16);font-size:.58rem;font-weight:700;color:#e5eefc}
+.party-mini-badge.mode{background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.24);color:#bfdbfe}
+.party-mini-badge.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.25);color:#fde68a}
+.party-mini-badge.reward{background:rgba(168,85,247,.12);border-color:rgba(168,85,247,.24);color:#e9d5ff}
+.party-mini-badge.info{background:rgba(45,212,191,.12);border-color:rgba(45,212,191,.24);color:#ccfbf1}
+.party-mini-badge.muted{color:var(--muted)}
+@media (max-width:720px){.party-mode-grid{grid-template-columns:1fr}}
 
 /* ── CELL EDITOR ── */
 .swatch-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
@@ -1666,7 +1739,7 @@ body.streamer-mode #invite-link {
       <div class="lobby-card-title">Partie rapide</div>
       <div class="lobby-card-desc">Lance instantanément une partie locale avec 1 bot</div>
     </div>
-    <div class="lobby-card" onclick="openModal('modal-create')">
+    <div class="lobby-card" onclick="openModal('modal-create')" data-tip="Crée un salon privé en ligne. Réservé aux comptes Google ; les invités gardent l’accès aux parties locales et rapides.">
       <div class="lobby-card-icon">🆕</div>
       <div class="lobby-card-title">Créer une partie</div>
       <div class="lobby-card-desc">Crée un salon privé et invite tes amis avec un code unique</div>
@@ -1681,6 +1754,12 @@ body.streamer-mode #invite-link {
       <div class="lobby-card-title">Partie locale</div>
       <div class="lobby-card-desc">Jusqu'à 6 joueurs en local sur le même écran, sans serveur</div>
     </div>
+  </div>
+  <div class="lobby-feature-ribbon">
+    <button class="feature-chip" type="button" onclick="openFirstPartyTutorial(true)" data-tip="Ouvre le guide interactif pour découvrir rapidement les bases de NeoPoly.">🧭 Tutoriel interactif</button>
+    <button class="feature-chip" type="button" onclick="openNewsPane()" data-tip="Affiche les nouveautés et les derniers ajouts intégrés au jeu.">🆕 Nouveautés live</button>
+    <button class="feature-chip" type="button" onclick="openHelpPane()" data-tip="Ouvre le centre d’aide et les raccourcis utiles.">❓ FAQ / Aide</button>
+    <button class="feature-chip" type="button" onclick="openMyPublicProfilePreview()" data-tip="Prévisualise puis partage ton profil public NeoPoly.">🔗 Profil public</button>
   </div>
   <div class="lobby-version">NeoPoly v5.0 — 2026<br><span style="font-size:.7rem"><a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent)">Politique de confidentialité</a> • <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent)">Conditions d'utilisation</a></span></div>
 </div>
@@ -1758,12 +1837,23 @@ body.streamer-mode #invite-link {
               <div style="font-size:.65rem;color:var(--muted);font-weight:600;margin-bottom:4px">🎖️ Titre affiché</div>
               <div id="title-selector"></div>
             </div>
+            <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px">
+              <div style="font-size:.65rem;color:var(--muted);font-weight:600;margin-bottom:4px">🔗 Profil public partageable</div>
+              <div style="font-size:.66rem;color:var(--muted);margin-bottom:8px">Copie ou prévisualise ton lien public directement depuis ta player card.</div>
+              <div class="btn-row" style="justify-content:flex-start;flex-wrap:wrap">
+                <button class="btn btn-blue btn-sm" type="button" onclick="copyPublicProfileLink()">📋 Copier le lien</button>
+                <button class="btn btn-secondary btn-sm" type="button" onclick="openMyPublicProfilePreview()">👁️ Aperçu</button>
+              </div>
+              <input id="public-profile-url" readonly placeholder="Ton lien public apparaîtra ici" style="margin-top:8px"/>
+            </div>
           </div>
         </div>
         <div class="lobby-tabs">
           <button class="lobby-tab active" data-ltab="profil-pane">👤 Profil</button>
           <button class="lobby-tab" data-ltab="amis-pane">👫 Amis</button>
           <button class="lobby-tab" data-ltab="social-pane">💬 Chat</button>
+          <button class="lobby-tab" data-ltab="news-pane">🆕 News</button>
+          <button class="lobby-tab" data-ltab="help-pane">❓ Aide</button>
         </div>
         <!-- PROFIL -->
         <div class="lobby-tab-pane active" id="profil-pane">
@@ -1927,6 +2017,32 @@ body.streamer-mode #invite-link {
             </div>
           </div>
         </div>
+        <div class="lobby-tab-pane" id="news-pane">
+          <div class="card" style="padding:10px">
+            <div class="card-title">🆕 Patch notes intégrées</div>
+            <div class="news-grid">
+              <div class="news-tile"><b>v5.0 • Party modes premium</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Draft de départ, événements mondiaux, survie, boss IA, brouillard et aperçu live dans les paramètres.</div></div>
+              <div class="news-tile"><b>Historique premium</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Nouveaux filtres sur le journal, les transactions et le résumé de fin de tour.</div></div>
+              <div class="news-tile"><b>UX & onboarding</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Tutoriel interactif, raccourcis clavier desktop, profil public partageable et aide intégrée.</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="lobby-tab-pane" id="help-pane">
+          <div class="card" style="padding:10px">
+            <div class="card-title">❓ Centre d’aide / FAQ</div>
+            <div class="faq-item"><b>Comment activer les équipes ?</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Va dans `⚙️ Personnaliser la partie` puis active `2v2` ou `2v2v2` si le nombre de joueurs correspond.</div></div>
+            <div class="faq-item" style="margin-top:8px"><b>À quoi servent les quêtes et saisons ?</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Elles débloquent des récompenses cosmétiques, des objets et de la progression de ligue.</div></div>
+            <div class="faq-item" style="margin-top:8px"><b>Comment ouvrir le tutoriel ?</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Clique sur `🧭 Tutoriel interactif` ou appuie sur <span class="kb-chip">F1</span> sur PC.</div></div>
+            <div class="shortcut-pills">
+              <span class="shortcut-pill"><span class="kb-chip">Entrée</span> lancer les dés</span>
+              <span class="shortcut-pill"><span class="kb-chip">E</span> fin du tour</span>
+              <span class="shortcut-pill"><span class="kb-chip">H</span> maisons</span>
+              <span class="shortcut-pill"><span class="kb-chip">T</span> échange</span>
+              <span class="shortcut-pill"><span class="kb-chip">S</span> shop</span>
+              <span class="shortcut-pill"><span class="kb-chip">M</span> hypothèque</span>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- ══ FIN LOBBY PANEL ══ -->
     <div class="tabs">
@@ -1982,6 +2098,10 @@ body.streamer-mode #invite-link {
           <button class="btn btn-secondary btn-sm" id="mortgage-btn" onclick="openMortgageModal()" data-tip="Hypothèque ou libère tes propriétés pour gérer ta trésorerie.">🏦 Hypo</button>
         </div>
       </div>
+      <div class="card" id="turn-summary-card" style="padding:10px;display:none">
+        <div class="card-title">📋 Résumé visuel du tour</div>
+        <div id="turn-summary-body" style="font-size:.72rem;color:var(--text)">Le résumé du dernier tour apparaîtra ici.</div>
+      </div>
       <div class="card" id="match-objective-card" style="padding:10px;display:none">
         <div class="card-title">🎯 Mission secrète</div>
         <div id="match-objective-body" style="font-size:.72rem;color:var(--text)">Lance une partie pour recevoir un objectif.</div>
@@ -2021,7 +2141,17 @@ body.streamer-mode #invite-link {
     <div class="tab-pane" id="txn-tab">
       <div class="card">
         <div class="card-title">💳 Transactions</div>
-        <div id="txn-sub" style="font-size:.65rem;color:var(--muted);margin-bottom:8px"></div>
+        <div class="filter-row">
+          <div id="txn-sub" style="font-size:.65rem;color:var(--muted)"></div>
+          <select id="txn-filter" onchange="setTxnFilter(this.value)">
+            <option value="all">Tous</option>
+            <option value="buy">Achats</option>
+            <option value="rent">Loyers / taxes</option>
+            <option value="jail">Prison</option>
+            <option value="trade">Échanges</option>
+            <option value="event">Events</option>
+          </select>
+        </div>
         <div id="txn-body"></div>
       </div>
     </div>
@@ -2029,11 +2159,37 @@ body.streamer-mode #invite-link {
     <!-- LOG -->
     <div class="tab-pane" id="log-tab">
       <div class="card" style="padding:10px">
-        <div class="card-title">⏱️ Historique lisible</div>
+        <div class="filter-row">
+          <div class="card-title" style="margin:0">⏱️ Historique lisible</div>
+          <select id="turn-history-filter" onchange="setHistoryFilter(this.value)">
+            <option value="all">Tout</option>
+            <option value="buy">Achats</option>
+            <option value="rent">Loyers / taxes</option>
+            <option value="jail">Prison</option>
+            <option value="trade">Échanges</option>
+            <option value="event">Events</option>
+            <option value="turn">Tours</option>
+          </select>
+        </div>
         <div id="turn-history-list" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
       <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0">
-        <div class="card-title">📋 Journal</div>
+        <div class="filter-row">
+          <div class="card-title" style="margin:0">📋 Journal</div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <select id="glog-filter" onchange="setGameLogFilter(this.value)">
+              <option value="all">Tous</option>
+              <option value="buy">Achats</option>
+              <option value="rent">Loyers / taxes</option>
+              <option value="jail">Prison</option>
+              <option value="trade">Échanges</option>
+              <option value="event">Events</option>
+              <option value="network">Réseau</option>
+              <option value="turn">Tours</option>
+            </select>
+            <span id="glog-meta" style="font-size:.64rem;color:var(--muted)">0 entrée</span>
+          </div>
+        </div>
         <div id="glog" style="flex:1;overflow-y:auto"></div>
       </div>
       <div class="card" id="ws-card">
@@ -2111,12 +2267,14 @@ body.streamer-mode #invite-link {
             <label for="music-chk">Musique d'ambiance (lobby + partie)</label>
           </div>
           <div class="opt-field">
-            <label>Playlist fond sonore</label>
+            <label>Source musicale</label>
             <select id="music-source" onchange="setMusicSource(this.value)">
-              <option value="default">NeoPoly (par défaut)</option>
-              <option value="asian-pack">Asian Empires (M4A dossier)</option>
-              <option value="imported-files">Musiques importées (navigateur)</option>
+              <option value="default">🎮 Musique du jeu NeoPoly</option>
+              <option value="external-player">🎵 Ma playlist externe (YouTube / Spotify)</option>
+              <option value="asian-pack">🏯 Pack Asian Empires</option>
+              <option value="imported-files">📁 Playlist importée dans le navigateur</option>
             </select>
+            <div style="font-size:.64rem;color:var(--muted);margin-top:4px">Choisis entre la musique intégrée du jeu et ta propre playlist. Les SFX restent actifs.</div>
           </div>
           <div class="btn-row" style="justify-content:flex-start">
             <button class="btn btn-sm btn-secondary" type="button" onclick="triggerUserMusicImport()">🎵 Importer tes musiques</button>
@@ -2129,6 +2287,25 @@ body.streamer-mode #invite-link {
           <div class="opt-row">
             <input type="checkbox" id="visual-fx-chk" checked onchange="setVisualFxEnabled(this.checked)"/>
             <label for="visual-fx-chk">Effets visuels animés</label>
+          </div>
+          <div class="opt-field">
+            <label>Direction artistique</label>
+            <select id="da-theme" onchange="setDaTheme(this.value)">
+              <option value="aurora">Aurora néon</option>
+              <option value="arcade">Arcade pop</option>
+              <option value="royal">Royal gold</option>
+              <option value="midnight">Midnight blue</option>
+            </select>
+          </div>
+          <div class="opt-field">
+            <label>Style musical NeoPoly</label>
+            <select id="music-theme-variant" onchange="setMusicThemeVariant(this.value)">
+              <option value="aurora">Aurora lounge</option>
+              <option value="arcade">Arcade pulse</option>
+              <option value="royal">Royal casino</option>
+              <option value="midnight">Night drive</option>
+            </select>
+            <div style="font-size:.64rem;color:var(--muted);margin-top:4px">Actif quand la playlist <b>NeoPoly</b> est sélectionnée.</div>
           </div>
           <div class="opt-field">
             <label>Volume musique</label>
@@ -2587,6 +2764,66 @@ body.streamer-mode #invite-link {
           <div class="opt-row" data-tip="Peut accorder un tour supplémentaire aléatoire à un joueur."><input type="checkbox" id="pw-bonus-turn-chk" onchange="setBonusTurnEnabled(this.checked)"/><label for="pw-bonus-turn-chk">Tours bonus aléatoires</label></div>
           <div class="opt-field" data-tip="Probabilité d’obtenir un tour bonus quand cette règle est activée."><label>Chance tour bonus (%)</label><input id="pw-bonus-turn-rate" type="number" min="0" max="100" value="12" onchange="setBonusTurnChance(this.value)"/></div>
           <div class="opt-row" data-tip="Envoie amendes et taxes sur Parking gratuit pour une grosse récompense."><input type="checkbox" id="pw-parking-pot-chk" onchange="setParkingPotEnabled(this.checked)"/><label for="pw-parking-pot-chk">Parking pot</label></div>
+
+          <div class="party-section-label">🎮 Modes spéciaux 1 à 8</div>
+          <div class="party-mode-grid">
+            <div class="party-mode-card" id="mode-card-draft" data-tip="Chaque joueur reçoit un bonus de départ aléatoire pour varier l’ouverture de partie.">
+              <div class="party-mode-head"><span class="party-mode-title">🎁 Draft de départ</span><span class="party-mini-badge muted">1</span></div>
+              <div class="party-mode-desc">Ajoute un bonus d’ouverture à chaque joueur.</div>
+              <div class="opt-field"><label>Mode</label><select id="pw-start-draft" onchange="setStartDraftMode(this.value)"><option value="off">Off</option><option value="light">Léger</option><option value="strategic">Tactique</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-world" data-tip="Déclenche des événements mondiaux qui modifient temporairement les loyers, le Départ ou les coûts de construction.">
+              <div class="party-mode-head"><span class="party-mode-title">🌩️ Événements mondiaux</span><span class="party-mini-badge muted">2</span></div>
+              <div class="party-mode-desc">Fait vivre le plateau avec des phases temporaires.</div>
+              <div class="opt-field"><label>Intensité</label><select id="pw-world-event-mode" onchange="setWorldEventMode(this.value)"><option value="off">Off</option><option value="normal">Normal</option><option value="wild">Furieux</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-survival" data-tip="Ajoute une pression économique régulière. Tous les joueurs paient un coût de survie à certains tours.">
+              <div class="party-mode-head"><span class="party-mode-title">☣️ Mode survie</span><span class="party-mini-badge muted">3</span></div>
+              <div class="party-mode-desc">La trésorerie s’érode au fil des tours.</div>
+              <div class="opt-field"><label>Niveau</label><select id="pw-survival-mode" onchange="setSurvivalMode(this.value)"><option value="off">Off</option><option value="soft">Soft</option><option value="hard">Hardcore</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-boss" data-tip="Transforme un bot en boss plus agressif, plus riche et avec une personnalité plus marquée.">
+              <div class="party-mode-head"><span class="party-mode-title">👑 Boss IA</span><span class="party-mini-badge muted">4</span></div>
+              <div class="party-mode-desc">Donne un vrai rival premium aux parties locales.</div>
+              <div class="opt-field"><label>Puissance</label><select id="pw-boss-mode" onchange="setBossBotMode(this.value)"><option value="off">Off</option><option value="standard">Boss</option><option value="nightmare">Boss+</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-powers" data-tip="Active davantage d’effets spéciaux, d’objets et de coups de théâtre déclenchés pendant la partie.">
+              <div class="party-mode-head"><span class="party-mode-title">✨ Pouvoirs du plateau</span><span class="party-mini-badge muted">5</span></div>
+              <div class="party-mode-desc">Rend les cases et cartes plus surprenantes.</div>
+              <div class="opt-field"><label>Mode</label><select id="pw-special-powers-mode" onchange="setSpecialPowersMode(this.value)"><option value="off">Off</option><option value="normal">Actif</option><option value="chaos">Chaos</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-rematch" data-tip="Définit comment la revanche se relance à la fin du match : standard, avec confirmation rapide ou instantanément.">
+              <div class="party-mode-head"><span class="party-mode-title">🔁 Revanche</span><span class="party-mini-badge muted">6</span></div>
+              <div class="party-mode-desc">Garde le lobby fluide entre deux parties.</div>
+              <div class="opt-field"><label>Flux</label><select id="pw-rematch-mode" onchange="setRematchMode(this.value)"><option value="standard">Standard</option><option value="vote">Vote express</option><option value="instant">Instantanée</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-quests" data-tip="Active les objectifs de match avec récompenses, soit cachés, soit visibles pour renforcer la rejouabilité.">
+              <div class="party-mode-head"><span class="party-mode-title">🎯 Succès en partie</span><span class="party-mini-badge muted">7</span></div>
+              <div class="party-mode-desc">Objectifs de match et récompenses en direct.</div>
+              <div class="opt-field"><label>Affichage</label><select id="pw-quest-mode" onchange="setMatchQuestMode(this.value)"><option value="off">Off</option><option value="secret">Secret</option><option value="open">Visible</option></select></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-fog" data-tip="Masque partiellement ou fortement les infos adverses pour un match plus tactique et moins lisible.">
+              <div class="party-mode-head"><span class="party-mode-title">🌫️ Mode brouillard</span><span class="party-mini-badge muted">8</span></div>
+              <div class="party-mode-desc">Cache les infos ennemies pour plus de tension.</div>
+              <div class="opt-field"><label>Niveau</label><select id="pw-fog-mode" onchange="setFogMode(this.value)"><option value="off">Off</option><option value="soft">Léger</option><option value="hard">Dense</option></select></div>
+            </div>
+          </div>
+
+          <div class="party-section-label">✨ Clarté & confort</div>
+          <div class="party-mode-grid">
+            <div class="party-mode-card" id="mode-card-coach" data-tip="Affiche des aides contextuelles pendant la partie pour mieux guider les nouveaux joueurs.">
+              <div class="party-mode-head"><span class="party-mode-title">🧭 Coach visuel</span><span class="party-mini-badge muted">UX</span></div>
+              <div class="party-mode-desc">Tutoriel contextuel et guidance pendant les tours.</div>
+              <div class="opt-row"><input type="checkbox" id="pw-tutorial-hints-chk" onchange="setTutorialHintsEnabled(this.checked)"/><label for="pw-tutorial-hints-chk">Aide contextuelle</label></div>
+            </div>
+            <div class="party-mode-card" id="mode-card-summary" data-tip="Ajoute un résumé visuel de fin de tour dans l’historique pour suivre les actions importantes.">
+              <div class="party-mode-head"><span class="party-mode-title">📋 Résumé fin de tour</span><span class="party-mini-badge muted">UX</span></div>
+              <div class="party-mode-desc">Historique enrichi pour mieux relire la partie.</div>
+              <div class="opt-row"><input type="checkbox" id="pw-end-summary-chk" onchange="setEndTurnSummaryEnabled(this.checked)"/><label for="pw-end-summary-chk">Activer les résumés</label></div>
+            </div>
+          </div>
+
+          <div id="party-mode-preview" class="party-preview-box" data-tip="Aperçu en direct de l’ambiance et des modes actifs pour cette configuration."></div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn btn-sm btn-secondary" onclick="applyPartyPreset('classic')" data-tip="Applique les règles standard de NeoPoly, équilibrées et sans surprise.">Classique</button>
@@ -2688,13 +2925,15 @@ body.streamer-mode #invite-link {
           <div class="opt-field"><label>Taille des pions (%)</label><div style="display:flex;align-items:center;gap:8px"><input id="lb-pawn-size" type="range" value="60" min="60" max="130" step="5" oninput="setPawnScale(this.value)" style="flex:1"/><span id="lb-pawn-size-val" style="min-width:46px;text-align:right;font-size:.72rem;color:var(--accent);font-weight:800">60%</span></div></div>
           <div class="opt-row"><input type="checkbox" id="lb-pawn-glow-chk" checked onchange="setPawnGlow(this.checked)"/><label for="lb-pawn-glow-chk">Glow des pions</label></div>
           <div class="opt-row"><input type="checkbox" id="lb-visual-fx-chk" checked onchange="setVisualFxEnabled(this.checked)"/><label for="lb-visual-fx-chk">Effets visuels animés</label></div>
+          <div class="opt-field"><label>Direction artistique</label><select id="lb-da-theme" onchange="setDaTheme(this.value)"><option value="aurora">Aurora néon</option><option value="arcade">Arcade pop</option><option value="royal">Royal gold</option><option value="midnight">Midnight blue</option></select></div>
         </div>
       </div>
       <div class="card" style="padding:10px;grid-column:1 / span 2">
         <div class="card-title">🔊 Audio</div>
         <div class="fgroup options-fgroup" style="margin-bottom:0;gap:8px">
           <div class="opt-row"><input type="checkbox" id="lb-music-chk" checked onchange="setMusicEnabled(this.checked)"/><label for="lb-music-chk">Musique d'ambiance (lobby + partie)</label></div>
-          <div class="opt-field"><label>Playlist fond sonore</label><select id="lb-music-source" onchange="setMusicSource(this.value)"><option value="default">NeoPoly (par défaut)</option><option value="asian-pack">Asian Empires (M4A dossier)</option><option value="imported-files">Musiques importées (navigateur)</option></select></div>
+          <div class="opt-field"><label>Source musicale</label><select id="lb-music-source" onchange="setMusicSource(this.value)"><option value="default">🎮 Musique du jeu NeoPoly</option><option value="external-player">🎵 Ma playlist externe (YouTube / Spotify)</option><option value="asian-pack">🏯 Pack Asian Empires</option><option value="imported-files">📁 Playlist importée dans le navigateur</option></select><div style="font-size:.64rem;color:var(--muted);margin-top:4px">Choisis entre la musique du jeu ou ta playlist perso. Les SFX restent actifs.</div></div>
+          <div class="opt-field"><label>Style musical NeoPoly</label><select id="lb-music-theme-variant" onchange="setMusicThemeVariant(this.value)"><option value="aurora">Aurora lounge</option><option value="arcade">Arcade pulse</option><option value="royal">Royal casino</option><option value="midnight">Night drive</option></select></div>
           <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-sm btn-secondary" type="button" onclick="triggerUserMusicImport()">🎵 Importer tes musiques</button></div>
           <div id="lb-music-import-info" style="font-size:.66rem;color:var(--muted)">Aucune musique importée.</div>
           <div class="opt-row"><input type="checkbox" id="lb-sound-mute-chk" onchange="setSoundMuted(this.checked)"/><label for="lb-sound-mute-chk">Muet</label></div>
@@ -2706,6 +2945,36 @@ body.streamer-mode #invite-link {
           <div class="btn-row" style="justify-content:flex-start"><button class="btn btn-xs btn-secondary" onclick="testSingleSfx('dice')">🎲 Dés</button><button class="btn btn-xs btn-secondary" onclick="testSingleSfx('buy')">🏠 Achat</button><button class="btn btn-xs btn-secondary" onclick="testSingleSfx('jail')">🚔 Prison</button><button class="btn btn-xs btn-secondary" onclick="testSingleSfx('victory')">🏆 Victoire</button></div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-tutorial">
+  <div class="modal" style="max-width:520px;width:min(95vw,520px)">
+    <button class="modal-close" onclick="closeModal('modal-tutorial')">✕</button>
+    <div class="modal-title">🧭 Tutoriel interactif</div>
+    <div class="modal-sub">Découvre rapidement les bases, les raccourcis et les nouveaux panneaux premium de NeoPoly.</div>
+    <div id="tutorial-step-meta" style="font-size:.66rem;color:var(--accent);font-weight:800;margin-top:10px">Étape 1 / 5</div>
+    <div style="margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--s2)">
+      <div id="tutorial-step-title" style="font-weight:800;margin-bottom:6px">Bienvenue</div>
+      <div id="tutorial-step-body" style="font-size:.72rem;color:var(--text)">Le guide interactif s'affichera ici.</div>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-secondary btn-sm" id="tutorial-prev-btn" onclick="stepTutorial(-1)">⬅️ Précédent</button>
+      <button class="btn btn-primary btn-sm" id="tutorial-next-btn" onclick="stepTutorial(1)">Suivant</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-public-profile">
+  <div class="modal" style="max-width:560px;width:min(96vw,560px)">
+    <button class="modal-close" onclick="closeModal('modal-public-profile')">✕</button>
+    <div class="modal-title" id="public-profile-preview-title">🔗 Profil public</div>
+    <div class="modal-sub">Partage une fiche légère et sans donnée sensible pour montrer ton niveau NeoPoly.</div>
+    <div id="public-profile-preview-body" style="margin-top:12px"></div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-blue btn-sm" type="button" onclick="copyPublicProfileLink()">📋 Copier le lien</button>
+      <button class="btn btn-secondary btn-sm" type="button" onclick="closeModal('modal-public-profile')">Fermer</button>
     </div>
   </div>
 </div>

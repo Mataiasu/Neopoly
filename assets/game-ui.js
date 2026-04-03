@@ -4,6 +4,7 @@ function renderStats(){
   const el=document.getElementById('stats-body');if(!el)return;
   const summaries=G.players.map(p=>({player:p,props:0,assetValue:0,ownedCells:[]}));
   const byId=new Map(summaries.map(entry=>[entry.player.id,entry]));
+  const fogMode=(typeof normalizeFogMode==='function')?normalizeFogMode(G.fogMode):'off';
   G.board.forEach(cell=>{
     const ownerEntry=byId.get(cell.owner);
     if(!ownerEntry)return;
@@ -17,8 +18,12 @@ function renderStats(){
     ${sorted.map(entry=>{
       const p=entry.player;
       const net=p.money+entry.assetValue;
+      const controlled=typeof isProfileControlledPlayer==='function'?!!isProfileControlledPlayer(p):false;
+      const reveal=!G.started||fogMode==='off'||controlled||p.id===G.players[G.cur]?.id||p.bust;
+      const moneyLabel=reveal?(p.money+'$'):(fogMode==='soft'?('≈'+Math.max(0,Math.round((p.money||0)/100)*100)+'$'):'???');
+      const netLabel=reveal?(net+'$'):(fogMode==='soft'?('≈'+Math.max(0,Math.round(net/100)*100)+'$'):'???');
       return`<tr><td><span style="color:${p.color}">${p.emoji} ${p.name}</span>${p.bust?' 💀':''}</td>
-        <td>${p.money}$</td><td>${entry.props}</td><td>${net}$</td></tr>`;
+        <td>${moneyLabel}</td><td>${entry.props}</td><td>${netLabel}</td></tr>`;
     }).join('')}</table>`;
 
   const gh=document.getElementById('gh-turn');if(!gh)return;
@@ -45,9 +50,17 @@ function renderStats(){
 function renderTxns(){
   const el=document.getElementById('txn-body');
   if(!el)return;
+  const filterEl=document.getElementById('txn-filter');
+  const filter=String((filterEl&&filterEl.value)||G.txnFilter||'all');
+  G.txnFilter=filter;
+  const source=Array.isArray(G.txns)?G.txns:[];
+  const entries=(filter==='all'?source:source.filter(t=>getActivityCategory((t&&t.desc)||'',(t&&t.amount)>0?'a':'i')===filter)).slice(0,30);
+  const sig=filter+'|'+entries.map(t=>(t.name||'')+'::'+(t.desc||'')+'::'+(t.amount||0)).join('|');
+  if(G.txnRenderSig===sig)return;
+  G.txnRenderSig=sig;
   const sub=document.getElementById('txn-sub');
-  if(sub)sub.textContent=G.txns.length+' transactions';
-  el.innerHTML=G.txns.slice(0,30).map(t=>`
+  if(sub)sub.textContent=entries.length+' / '+source.length+' transactions';
+  el.innerHTML=entries.map(t=>`
     <div class="txn-item">
       <span><span style="color:${t.color}">${t.name}</span> - ${t.desc}</span>
       <span class="${t.amount>0?'txn-pos':'txn-neg'}">${t.amount>0?'+':''}${t.amount}$</span>
@@ -59,6 +72,10 @@ function switchTab(name){
   document.querySelectorAll('.tab-pane').forEach(p=>p.classList.toggle('active',p.id===name));
   if(name==='stats-tab')renderStats();
   if(name==='txn-tab')renderTxns();
+  if(name==='log-tab'){
+    if(typeof renderGameLog==='function')renderGameLog();
+    if(typeof renderWsLog==='function')renderWsLog();
+  }
 }
 
 function renderPlayers(){
@@ -67,7 +84,9 @@ function renderPlayers(){
   const playerSignature=JSON.stringify({
     cur:G.cur,
     started:!!G.started,
-    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',matchItems:p.matchItems||{}}))
+    fogMode:G.fogMode,
+    tutorialHintsEnabled:!!G.tutorialHintsEnabled,
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{}}))
   });
   if(G.playerPanelSignature!==playerSignature){
     list.innerHTML='';
@@ -86,12 +105,19 @@ function renderPlayers(){
       avatarHtml = `<span class="player-avatar" style="background:${p.color}22;border:2px solid ${p.color}">${p.emoji}</span>`;
     }
     const mi=p.matchItems||{};
+    const fogMode=(typeof normalizeFogMode==='function')?normalizeFogMode(G.fogMode):'off';
+    const isControlled=typeof isProfileControlledPlayer==='function'?!!isProfileControlledPlayer(p):false;
+    const canReveal=!G.started||fogMode==='off'||isControlled||i===G.cur||p.bust;
+    const displayedPos=canReveal?(cell?cell.ico+' '+cell.n:'?'):(fogMode==='soft'?'🌫️ Position masquée':'🌫️ Infos masquées');
+    const displayedMoney=canReveal?(p.money+' $'):(fogMode==='soft'?('≈'+Math.max(0,Math.round((p.money||0)/100)*100)+' $'):'🌫️ ???');
     const _pBadges=[];
+    if(p.isBossBot)_pBadges.push('👑 Boss IA');
     if(p.teamId&&typeof getTeamLabel==='function')_pBadges.push('🤝 '+getTeamLabel(p.teamId));
     if(p.bot&&typeof getBotPersonaConfig==='function'){
       const persona=getBotPersonaConfig(p);
       _pBadges.push(persona.icon+' '+persona.label);
     }
+    if(p.openingBonusLabel)_pBadges.push(p.openingBonusLabel);
     if((mi.diceBoost||0)>0)_pBadges.push('⚡×'+mi.diceBoost);
     if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
     if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
@@ -100,10 +126,10 @@ function renderPlayers(){
         ${avatarHtml}
         <div style="flex:1;min-width:0">
           <div class="player-name" style="color:${p.color}">${p.name}${p.bust?' 💀':''}${p.jailed?' ⛓️':''}</div>
-          <div class="player-pos">${cell?cell.ico+' '+cell.n:'?'}</div>
+          <div class="player-pos">${displayedPos}</div>
           ${badgesHtml}
         </div>
-        <div class="player-money">${p.money} $ </div>`;
+        <div class="player-money">${displayedMoney}</div>`;
       frag.appendChild(row);
     });
     list.appendChild(frag);
@@ -143,15 +169,23 @@ function renderPlayers(){
   }
   const hintEl=document.getElementById('turn-hint');
   if(hintEl){
-    const hintText=!G.started
-      ?'💡 Ajoute les joueurs puis lance la partie.'
-      :(!isProfileControlledPlayer(cur)
+    const coach=G.tutorialHintsEnabled!==false;
+    let hintText='Prêt à jouer.';
+    if(!G.started){
+      hintText=coach?'💡 Ajoute les joueurs puis lance la partie.':'Prêt à jouer.';
+    }else if(!isProfileControlledPlayer(cur)){
+      hintText=coach
         ?('👀 Tour de '+(cur?.name||'un joueur')+' — observe en direct.')
-        :(G.pendingBuy
-          ?'🛒 Achat dispo : choisis Acheter ou Passer.'
-          :((cur&&cur.jailed&&!G.rolled)
-            ?'🔓 Tu es en prison : lance les dés ou paie l’amende.'
-            :(!G.rolled?'🎲 Lance les dés pour continuer.':'➡️ Gère tes actions puis termine le tour.'))));
+        :('Tour de '+(cur?.name||'un joueur'));
+    }else if(G.pendingBuy){
+      hintText=coach?'🛒 Achat dispo : choisis Acheter ou Passer.':'Achat en attente.';
+    }else if(cur&&cur.jailed&&!G.rolled){
+      hintText=coach?'🔓 Tu es en prison : lance les dés ou paie l’amende.':'Prison : agis pour sortir.';
+    }else if(!G.rolled){
+      hintText=coach?'🎲 Lance les dés pour continuer.':'À toi de lancer.';
+    }else{
+      hintText=coach?'➡️ Gère tes actions puis termine le tour.':'Finis tes actions.';
+    }
     if(hintEl.dataset.lastHint!==hintText){
       hintEl.dataset.lastHint=hintText;
       hintEl.textContent=hintText;
@@ -161,6 +195,7 @@ function renderPlayers(){
   renderMatchItemsUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   if(typeof renderTurnHistory==='function')renderTurnHistory();
+  if(typeof renderTurnSummaryUi==='function')renderTurnSummaryUi();
   if(typeof renderBoardEventUi==='function')renderBoardEventUi();
   if(typeof renderAlliancePanel==='function')renderAlliancePanel();
   scheduleBotTurn();
@@ -577,6 +612,9 @@ function doStart(){
   G.pendingRollBoostFor=null;
   G.secretObjective=null;
   G.turnHistory=[];
+  G.inGameChatEntries=[];
+  G.gameLogEntries=[];
+  G.lastTurnSummary=null;
   G.boardEvent=null;
   G.lastBoardEventTurn=0;
   clearTeamMode?.();
@@ -590,8 +628,13 @@ function doStart(){
     p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;
     p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};p.ghostPass=0;
     p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
+    p.turnStartMoney=p.money;
+    p.isBossBot=false;
+    p.openingBonusLabel='';
     if(p.bot)ensureBotPersona(p);
   });
+  if(typeof applyStartingDraftBonuses==='function')applyStartingDraftBonuses();
+  if(typeof assignBossBotLeader==='function')assignBossBotLeader();
   setupTeamMode?.();
   document.getElementById('winner-overlay').classList.remove('open');
   const _ol=document.getElementById('online-lobby');if(_ol)_ol.style.display='none';
@@ -604,18 +647,24 @@ function doStart(){
   ensureMatchObjectiveExists(true);
   renderMatchObjectiveUi();
   renderTurnHistory();
+  renderTurnSummaryUi?.();
   renderBoardEventUi?.();
   renderAlliancePanel?.();
+  maybeOpenFirstPartyTutorial?.();
   toast(G.pendingRematch?'🔁 Revanche prête !':'🚀 Partie démarrée !','a');
   if(G.mode==='online') document.getElementById('chat-card').style.display='block';
   if(G.timerEnabled)startTimer();
   startGlobalTimer();
   updateMusicForContext();
-  P.stats.gamesPlayed++;
-  saveProfileData();
-  syncDailyChallengesProgress(true);
-  syncWeeklyMissionsProgress(true);
-  addSeasonProgress(8,'participation');
+  if(typeof canTrackProfileStatsInCurrentMatch==='function'&&canTrackProfileStatsInCurrentMatch()){
+    P.stats.gamesPlayed++;
+    saveProfileData();
+    syncDailyChallengesProgress(true);
+    syncWeeklyMissionsProgress(true);
+    addSeasonProgress(8,'participation');
+  }else{
+    toast('ℹ️ Partie locale / rapide : aucune stat, défi ou ligue n’est comptée.','i');
+  }
   renderLobbyProfileTab();
   G.pendingRematch=false;
 }
@@ -629,10 +678,15 @@ function doReset(){
   enforceUniquePlayerColors();
   G.board=clone(DEF);
   G.players.forEach(p=>{
-    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};
+    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;p.ghostPass=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};
     p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
+    p.turnStartMoney=p.money;
+    p.isBossBot=false;
+    p.openingBonusLabel='';
     if(p.bot)ensureBotPersona(p);
   });
+  if(typeof applyStartingDraftBonuses==='function')applyStartingDraftBonuses();
+  if(typeof assignBossBotLeader==='function')assignBossBotLeader();
   G.cur=0;G.rolled=false;G.doublesCount=0;G.txns=[];G.undoStack=[];
   G.turnCount=1;
   G.parkingPot=0;
@@ -640,6 +694,9 @@ function doReset(){
   G.pendingRollBoostFor=null;
   G.secretObjective=null;
   G.turnHistory=[];
+  G.inGameChatEntries=[];
+  G.gameLogEntries=[];
+  G.lastTurnSummary=null;
   G.boardEvent=null;
   G.lastBoardEventTurn=0;
   clearTeamMode?.();
@@ -653,6 +710,7 @@ function doReset(){
   ensureMatchObjectiveExists(true);
   renderMatchObjectiveUi();
   renderTurnHistory();
+  renderTurnSummaryUi?.();
   renderBoardEventUi?.();
   renderAlliancePanel?.();
   toast('🔄 Partie réinitialisée.','i');
@@ -684,6 +742,9 @@ function backToLobby(){
   G.bonusTurns={};
   G.secretObjective=null;
   G.turnHistory=[];
+  G.inGameChatEntries=[];
+  G.gameLogEntries=[];
+  G.lastTurnSummary=null;
   G.boardEvent=null;
   G.lastBoardEventTurn=0;
   clearTeamMode?.();
@@ -716,12 +777,38 @@ function backToLobby(){
 // ═══════════════════════════════════════
 //  ONLINE / WEBSOCKET
 // ═══════════════════════════════════════
-function wsLog(msg){
+let wsLogRenderQueued=false;
+function renderWsLog(){
   const el=document.getElementById('ws-log');
-  const d=document.createElement('div');
-  d.style.cssText='font-size:.65rem;color:var(--muted);padding:1px 0';
-  d.textContent=new Date().toLocaleTimeString()+' '+msg;
-  el.prepend(d);if(el.children.length>30)el.lastChild.remove();
+  if(!el)return;
+  const entries=(Array.isArray(G.wsLogEntries)?G.wsLogEntries:[]).slice(0,40);
+  const sig=entries.map(entry=>(entry.ts||0)+'::'+entry.msg).join('|');
+  if(G.wsLogRenderSig===sig)return;
+  G.wsLogRenderSig=sig;
+  el.innerHTML='';
+  const frag=document.createDocumentFragment();
+  entries.forEach(entry=>{
+    const d=document.createElement('div');
+    d.style.cssText='font-size:.65rem;color:var(--muted);padding:1px 0';
+    d.textContent=entry.label;
+    frag.appendChild(d);
+  });
+  el.appendChild(frag);
+}
+function queueWsLogRender(){
+  if(wsLogRenderQueued)return;
+  wsLogRenderQueued=true;
+  requestAnimationFrame(()=>{
+    wsLogRenderQueued=false;
+    renderWsLog();
+  });
+}
+function wsLog(msg){
+  if(!Array.isArray(G.wsLogEntries))G.wsLogEntries=[];
+  const ts=Date.now();
+  G.wsLogEntries.unshift({ts,msg:String(msg||''),label:new Date(ts).toLocaleTimeString()+' '+String(msg||'')});
+  if(G.wsLogEntries.length>80)G.wsLogEntries.length=80;
+  queueWsLogRender();
 }
 
 function connectWs(url,room,onOpen){
@@ -877,6 +964,11 @@ function disconnectWs(){
 }
 
 function createOnlineRoom(){
+  if(typeof isInviteOnlyAccount==='function'&&isInviteOnlyAccount()){
+    if(typeof showInviteAccountLock==='function')showInviteAccountLock('La création de partie en ligne');
+    else toast('🔒 La création de partie en ligne est réservée aux comptes Google.','w');
+    return;
+  }
   const identity=resolvePlayerIdentity('cr-name','cr-emoji','Joueur','🐱');
   const emojiInput=document.getElementById('cr-emoji');
   const name=identity.name;
@@ -997,6 +1089,43 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
 // ═══════════════════════════════════════
 //  CHAT
 // ═══════════════════════════════════════
+let inGameChatRenderQueued=false;
+function renderInGameChat(){
+  const log=document.getElementById('chat-log');
+  if(!log)return;
+  const entries=(Array.isArray(G.inGameChatEntries)?G.inGameChatEntries:[]).slice(-50);
+  const sig=entries.map(entry=>(entry.ts||0)+'::'+entry.name+'::'+entry.text).join('|');
+  if(G.inGameChatRenderSig===sig)return;
+  G.inGameChatRenderSig=sig;
+  log.innerHTML='';
+  const frag=document.createDocumentFragment();
+  entries.forEach(entry=>{
+    const uid=normalizeProfileUid(entry.uid);
+    const muted=isLocallyMutedUid(uid);
+    const blocked=isLocallyBlockedUid(uid);
+    const el=document.createElement('div');
+    el.style.cssText='font-size:.7rem;padding:2px 0;border-bottom:1px solid rgba(148,163,184,.06)';
+    const sp=document.createElement('span');
+    sp.style.cssText='color:'+safeCssColor(entry.color,'#22c55e')+';font-weight:700';
+    sp.textContent=(entry.admin?'👑 ':'')+String(entry.name||'Joueur')+':';
+    sp.classList.add('chat-user-link');
+    sp.title='Cliquer pour ouvrir le profil';
+    sp.addEventListener('click',ev=>openChatUserMenu(ev,entry.meta||{}));
+    el.appendChild(sp);
+    el.appendChild(document.createTextNode(' '+(blocked?'🚫 message masqué':(muted?'🔇 message masqué':String(entry.text||'')))));
+    frag.appendChild(el);
+  });
+  log.appendChild(frag);
+  log.scrollTop=log.scrollHeight;
+}
+function queueInGameChatRender(){
+  if(inGameChatRenderQueued)return;
+  inGameChatRenderQueued=true;
+  requestAnimationFrame(()=>{
+    inGameChatRenderQueued=false;
+    renderInGameChat();
+  });
+}
 function sendChat(){
   const input=document.getElementById('chat-input');
   const text=(input?.value||'').trim();if(!text)return;
@@ -1024,43 +1153,39 @@ function sendChat(){
 }
 
 function addChatMsg(name,color,text,meta){
-  const log=document.getElementById('chat-log');
-  if(!log)return;
   const extra=meta&&typeof meta==='object'?meta:{};
   const uid=normalizeProfileUid(extra.uid);
-  const muted=isLocallyMutedUid(uid);
-  const blocked=isLocallyBlockedUid(uid);
-  const el=document.createElement('div');
-  el.style.cssText='font-size:.7rem;padding:2px 0;border-bottom:1px solid rgba(148,163,184,.06)';
-  const sp=document.createElement('span');
-  sp.style.cssText='color:'+safeCssColor(color,'#22c55e')+';font-weight:700';
-  sp.textContent=(extra.admin?'👑 ':'')+String(name||'Joueur')+':';
-  sp.classList.add('chat-user-link');
-  sp.title='Cliquer pour ouvrir le profil';
-  sp.addEventListener('click',ev=>openChatUserMenu(ev,{
-    uid,
+  if(!Array.isArray(G.inGameChatEntries))G.inGameChatEntries=[];
+  G.inGameChatEntries.push({
+    ts:Date.now(),
     name:name||'Joueur',
     color,
+    text:String(text||''),
+    uid,
     admin:!!extra.admin,
-    emoji:extra.emoji||'',
-    avatarImg:extra.avatarImg||null,
-    elo:extra.elo,
-    rankLabel:extra.rankLabel||'',
-    rankClass:extra.rankClass||'',
-    titleLabel:extra.titleLabel||'',
-    gamesWon:extra.gamesWon,
-    gamesPlayed:extra.gamesPlayed,
-    gamesLost:extra.gamesLost,
-    propertiesBought:extra.propertiesBought,
-    moneyEarned:extra.moneyEarned,
-    titlesCount:extra.titlesCount,
-    emojiCount:extra.emojiCount,
-    profilePrivate:!!extra.profilePrivate
-  }));
-  el.appendChild(sp);
-  el.appendChild(document.createTextNode(' '+(blocked?'🚫 message masqué':(muted?'🔇 message masqué':String(text||'')))));
-  log.appendChild(el);
-  log.scrollTop=log.scrollHeight;
+    meta:{
+      uid,
+      name:name||'Joueur',
+      color,
+      admin:!!extra.admin,
+      emoji:extra.emoji||'',
+      avatarImg:extra.avatarImg||null,
+      elo:extra.elo,
+      rankLabel:extra.rankLabel||'',
+      rankClass:extra.rankClass||'',
+      titleLabel:extra.titleLabel||'',
+      gamesWon:extra.gamesWon,
+      gamesPlayed:extra.gamesPlayed,
+      gamesLost:extra.gamesLost,
+      propertiesBought:extra.propertiesBought,
+      moneyEarned:extra.moneyEarned,
+      titlesCount:extra.titlesCount,
+      emojiCount:extra.emojiCount,
+      profilePrivate:!!extra.profilePrivate
+    }
+  });
+  if(G.inGameChatEntries.length>160)G.inGameChatEntries=G.inGameChatEntries.slice(-160);
+  queueInGameChatRender();
 }
 
 // ═══════════════════════════════════════
