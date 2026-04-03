@@ -1,6 +1,7 @@
 const fs = require('fs');
 const http = require('http');
 const https = require('https');
+const crypto = require('crypto');
 const path = require('path');
 const { URL } = require('url');
 const WebSocket = require('ws');
@@ -65,7 +66,13 @@ function getProfileStorageKey(uid, googleSub) {
   return 'uid:' + String(uid || '').trim().slice(0, 128);
 }
 
-const DEFAULT_ADMIN_EMAILS = ['matthprizee55@gmail.com'];
+function getGoogleBoundUid(sub) {
+  const raw = sanitizeStr(sub, 128);
+  if (!raw) return '';
+  return 'npg_' + raw.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 72);
+}
+
+const DEFAULT_ADMIN_EMAILS = [];
 const ADMIN_EMAILS = new Set(
   DEFAULT_ADMIN_EMAILS
     .concat(String(process.env.ADMIN_EMAILS || '').split(','))
@@ -139,7 +146,7 @@ function updateModerationState(identity, patch, actor) {
     banned: patch && patch.banned === undefined ? current.banned : !!(patch && patch.banned),
     reason: sanitizeStr(patch && patch.reason !== undefined ? patch.reason : current.reason, 160),
     updatedAt: Date.now(),
-    updatedBy: normalizeEmail(actor && actor.email) || sanitizeStr(actor && actor.uid, 128) || 'admin',
+    updatedBy: sanitizeStr(actor && actor.uid, 128) || 'admin',
   };
   const db = loadModerationDb();
   keys.forEach((key) => {
@@ -163,6 +170,87 @@ function loadGoogleClientIdFromFile() {
 }
 
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || loadGoogleClientIdFromFile() || '').trim();
+const SESSION_SECRET = String(process.env.SESSION_SECRET || GOOGLE_CLIENT_SECRET || crypto.randomBytes(32).toString('hex')).trim();
+const SESSION_TTL_MS = Math.max(15 * 60 * 1000, Number(process.env.SESSION_TTL_MS || 7 * 24 * 60 * 60 * 1000));
+const STATIC_PUBLIC_ROOT_FILES = new Set(['/test1.html', '/privacy.html', '/terms.html', '/favicon.ico']);
+const STATIC_PUBLIC_PREFIXES = ['assets/', 'addons/'];
+const STATIC_PRIVATE_PATTERNS = [
+  /^\/data\//i,
+  /^\/tools\//i,
+  /^\/memories\//i,
+  /^\/\.git(?:\/|$)/i,
+  /^\/\.env/i,
+  /^\/server\.js$/i,
+  /^\/package(?:-lock)?\.json$/i,
+  /^\/render\.yaml$/i,
+  /^\/todo-neopoly\.md$/i,
+];
+
+function toBase64Url(value) {
+  return Buffer.from(String(value || ''), 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const pad = normalized.length % 4 ? '='.repeat(4 - (normalized.length % 4)) : '';
+  return Buffer.from(normalized + pad, 'base64').toString('utf8');
+}
+
+function signSessionValue(value) {
+  return crypto.createHmac('sha256', SESSION_SECRET)
+    .update(String(value || ''))
+    .digest('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function createSessionToken(profile) {
+  const now = Date.now();
+  const payload = {
+    sub: sanitizeStr(profile && profile.sub, 128),
+    email: normalizeEmail(profile && profile.email),
+    iat: now,
+    exp: now + SESSION_TTL_MS,
+  };
+  const encoded = toBase64Url(JSON.stringify(payload));
+  return `${encoded}.${signSessionValue(encoded)}`;
+}
+
+function verifySessionToken(token) {
+  const raw = String(token || '').trim();
+  if (!raw || raw.indexOf('.') === -1) return null;
+  const parts = raw.split('.');
+  if (parts.length !== 2) return null;
+  const encoded = parts[0];
+  const signature = parts[1];
+  const expected = signSessionValue(encoded);
+  const left = Buffer.from(signature);
+  const right = Buffer.from(expected);
+  if (left.length !== right.length || !crypto.timingSafeEqual(left, right)) return null;
+  try {
+    const payload = JSON.parse(fromBase64Url(encoded));
+    if (!payload || typeof payload !== 'object') return null;
+    const exp = Number(payload.exp || 0);
+    if (!exp || exp < Date.now()) return null;
+    return {
+      sub: sanitizeStr(payload.sub, 128),
+      email: normalizeEmail(payload.email),
+      iat: Number(payload.iat || 0),
+      exp,
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+function getTrustedSession(body) {
+  return verifySessionToken(body && (body.sessionToken || body.googleSessionToken));
+}
 
 const rooms = {};
 const roomAddons = {};
@@ -400,19 +488,62 @@ const socialChatAutoClearTimer = setInterval(() => {
 }, SOCIAL_CHAT_AUTO_CLEAR_MS);
 if (typeof socialChatAutoClearTimer.unref === 'function') socialChatAutoClearTimer.unref();
 
+function buildRequestOrigin(req) {
+  const host = String(req && req.headers && req.headers.host || '').trim();
+  if (!host) return '';
+  const proto = String(req && req.headers && req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
+  return proto + '://' + host;
+}
+
 function getCorsOrigin(req) {
-  const origin = req.headers.origin;
-  return origin && origin !== 'null' ? origin : '*';
+  const origin = String(req && req.headers && req.headers.origin || '').trim();
+  if (!origin || origin === 'null') return '*';
+  const allowed = new Set([
+    buildRequestOrigin(req),
+    'http://localhost:' + PORT,
+    'http://127.0.0.1:' + PORT,
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ].filter(Boolean));
+  String(process.env.ALLOWED_ORIGINS || '')
+    .split(',')
+    .map((entry) => String(entry || '').trim())
+    .filter(Boolean)
+    .forEach((entry) => allowed.add(entry));
+  return allowed.has(origin) ? origin : 'null';
 }
 
 function writeCorsHeaders(req, res) {
   res.setHeader('Access-Control-Allow-Origin', getCorsOrigin(req));
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Vary', 'Origin');
+}
+
+function applySecurityHeaders(req, res) {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=()');
+  res.setHeader('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://accounts.google.com https://apis.google.com",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    "connect-src 'self' https://accounts.google.com https://oauth2.googleapis.com https://www.googleapis.com https://api64.ipify.org ws: wss:",
+    "frame-src https://accounts.google.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self' https://accounts.google.com"
+  ].join('; '));
 }
 
 function sendApiJson(req, res, statusCode, payload) {
   writeCorsHeaders(req, res);
+  applySecurityHeaders(req, res);
   res.writeHead(statusCode, {
     'Cache-Control': 'no-store',
     'Content-Type': 'application/json; charset=utf-8',
@@ -581,28 +712,46 @@ async function exchangeGoogleCode(code, redirectUri) {
   throw new Error('invalid_google_exchange_payload');
 }
 
+function isAllowedPublicPath(decodedPath) {
+  const normalized = '/' + String(decodedPath || '')
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '');
+  if (STATIC_PRIVATE_PATTERNS.some((pattern) => pattern.test(normalized))) return false;
+  if (STATIC_PUBLIC_ROOT_FILES.has(normalized)) return true;
+  return STATIC_PUBLIC_PREFIXES.some((prefix) => normalized.startsWith('/' + prefix));
+}
+
 function serveStatic(req, res, pathname) {
   const relativePath = pathname === '/' ? '/test1.html' : pathname;
   const decoded = decodeURIComponent(relativePath);
+  if (!isAllowedPublicPath(decoded)) {
+    applySecurityHeaders(req, res);
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end('Forbidden');
+    return;
+  }
   const safePath = path.normalize(path.join(ROOT_DIR, decoded));
   if (!safePath.startsWith(ROOT_DIR)) {
-    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+    applySecurityHeaders(req, res);
+    res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end('Forbidden');
     return;
   }
 
   fs.stat(safePath, (statErr, stats) => {
     if (statErr || !stats.isFile()) {
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      applySecurityHeaders(req, res);
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
       res.end('Not Found');
       return;
     }
 
     const ext = path.extname(safePath).toLowerCase();
     const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
+    applySecurityHeaders(req, res);
     res.writeHead(200, {
       'Content-Type': mimeType,
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=300',
+      'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=300',
     });
     fs.createReadStream(safePath).pipe(res);
   });
@@ -620,8 +769,9 @@ async function handleApi(req, res, pathname) {
     try {
       const body = await readJsonBody(req);
       const profile = await verifyGoogleAccessToken(body && body.accessToken);
+      const sessionToken = createSessionToken(profile);
       recordGoogleAuthAttempt('verify_access_token', true, 'ok');
-      sendApiJson(req, res, 200, { ok: true, profile });
+      sendApiJson(req, res, 200, { ok: true, profile, sessionToken, sessionExpiresAt: Date.now() + SESSION_TTL_MS });
     } catch (err) {
       const errorMessage = err && err.message ? err.message : 'google_verify_failed';
       recordGoogleAuthAttempt('verify_access_token', false, errorMessage);
@@ -637,8 +787,9 @@ async function handleApi(req, res, pathname) {
     try {
       const body = await readJsonBody(req);
       const profile = await verifyGoogleIdToken(body && body.idToken);
+      const sessionToken = createSessionToken(profile);
       recordGoogleAuthAttempt('verify_id_token', true, 'ok');
-      sendApiJson(req, res, 200, { ok: true, profile });
+      sendApiJson(req, res, 200, { ok: true, profile, sessionToken, sessionExpiresAt: Date.now() + SESSION_TTL_MS });
     } catch (err) {
       const errorMessage = err && err.message ? err.message : 'google_verify_id_failed';
       recordGoogleAuthAttempt('verify_id_token', false, errorMessage);
@@ -654,8 +805,9 @@ async function handleApi(req, res, pathname) {
     try {
       const body = await readJsonBody(req);
       const profile = await exchangeGoogleCode(body && body.code, body && body.redirectUri);
+      const sessionToken = createSessionToken(profile);
       recordGoogleAuthAttempt('exchange_code', true, 'ok');
-      sendApiJson(req, res, 200, { ok: true, profile });
+      sendApiJson(req, res, 200, { ok: true, profile, sessionToken, sessionExpiresAt: Date.now() + SESSION_TTL_MS });
     } catch (err) {
       const errorMessage = err && err.message ? err.message : 'google_exchange_failed';
       recordGoogleAuthAttempt('exchange_code', false, errorMessage);
@@ -674,8 +826,8 @@ async function handleApi(req, res, pathname) {
       oneTapEnabled: true,
       redirectEnabled: !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET),
       hasGoogleClientId: !!GOOGLE_CLIENT_ID,
-      hasGoogleClientSecret: !!GOOGLE_CLIENT_SECRET,
       exchangeCodeEndpoint: '/api/google/exchange-code',
+      sessionEnabled: true,
       recommendation: GOOGLE_CLIENT_SECRET
         ? 'popup_or_redirect'
         : 'popup_or_idtoken_only',
@@ -684,24 +836,15 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === '/api/google/status' && req.method === 'GET') {
-    const host = String(req.headers.host || 'localhost:' + PORT);
-    const proto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() || 'http';
-    const origin = proto + '://' + host;
+    const origin = buildRequestOrigin(req) || ('http://localhost:' + PORT);
     sendApiJson(req, res, 200, {
       ok: true,
       server: 'neopoly',
       hasGoogleClientId: !!GOOGLE_CLIENT_ID,
-      hasGoogleClientSecret: !!GOOGLE_CLIENT_SECRET,
-      expectedClientId: GOOGLE_CLIENT_ID || null,
-      recommendedOrigins: [
-        origin,
-        'http://localhost:' + PORT,
-        'http://127.0.0.1:' + PORT,
-      ],
       verifyEndpoint: origin + '/api/google/verify',
       modeEndpoint: origin + '/api/google/mode',
       exchangeCodeEndpoint: origin + '/api/google/exchange-code',
-      recentAuthAttempts: GOOGLE_RECENT_AUTH_ATTEMPTS,
+      sessionEnabled: true,
     });
     return true;
   }
@@ -714,11 +857,14 @@ async function handleApi(req, res, pathname) {
   if (pathname === '/api/profile/get' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
-      const uid = sanitizeStr(body && body.uid, 128);
-      const googleSub = sanitizeStr(body && body.googleSub, 128);
-      if (!uid && !googleSub) { sendApiJson(req, res, 400, { ok: false, error: 'missing_uid' }); return true; }
+      const session = getTrustedSession(body);
+      if (!session || !session.sub) {
+        sendApiJson(req, res, 401, { ok: false, error: 'session_required' });
+        return true;
+      }
+      const uid = sanitizeStr(body && body.uid, 128) || getGoogleBoundUid(session.sub);
       const db = loadProfilesDb();
-      const key = getProfileStorageKey(uid, googleSub);
+      const key = getProfileStorageKey(uid, session.sub);
       const entry = db[key];
       if (!entry) { sendApiJson(req, res, 200, { ok: true, profile: null, updatedAt: 0 }); return true; }
       sendApiJson(req, res, 200, { ok: true, profile: entry.profile, updatedAt: entry.updatedAt || 0 });
@@ -729,16 +875,18 @@ async function handleApi(req, res, pathname) {
   if (pathname === '/api/profile/upsert' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
-      const uid = sanitizeStr(body && body.uid, 128);
-      const googleSub = sanitizeStr(body && body.googleSub, 128);
-      if (!uid && !googleSub) { sendApiJson(req, res, 400, { ok: false, error: 'missing_uid' }); return true; }
+      const session = getTrustedSession(body);
+      if (!session || !session.sub) {
+        sendApiJson(req, res, 401, { ok: false, error: 'session_required' });
+        return true;
+      }
+      const uid = sanitizeStr(body && body.uid, 128) || getGoogleBoundUid(session.sub);
       const sanitized = sanitizeProfilePayload(body && body.profile);
       const db = loadProfilesDb();
-      const key = getProfileStorageKey(uid, googleSub);
+      const key = getProfileStorageKey(uid, session.sub);
       const existing = db[key];
       const clientUpdatedAt = parseInt(body && body.clientUpdatedAt, 10) || 0;
       const serverUpdatedAt = (existing && existing.updatedAt) || 0;
-      // If server is strictly newer and client did not prefer server, keep server copy
       let merged;
       if (existing && serverUpdatedAt > clientUpdatedAt && !body.preferServer) {
         merged = existing.profile;
@@ -756,14 +904,15 @@ async function handleApi(req, res, pathname) {
   if (pathname === '/api/mod/status' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
+      const session = getTrustedSession(body);
       const state = getModerationState({
         uid: body && body.uid,
-        googleSub: body && body.googleSub,
-        email: body && body.email,
+        googleSub: session ? session.sub : '',
+        email: session ? session.email : '',
       });
       sendApiJson(req, res, 200, {
         ok: true,
-        isAdmin: !!state.isAdmin,
+        isAdmin: !!(session && state.isAdmin),
         moderation: {
           muted: !!state.muted,
           banned: !!state.banned,
@@ -780,10 +929,15 @@ async function handleApi(req, res, pathname) {
   if (pathname === '/api/mod/action' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
+      const session = getTrustedSession(body);
+      if (!session || !session.email) {
+        sendApiJson(req, res, 401, { ok: false, error: 'session_required' });
+        return true;
+      }
       const adminState = getModerationState({
         uid: body && body.adminUid,
-        googleSub: body && body.adminGoogleSub,
-        email: body && body.adminEmail,
+        googleSub: session.sub,
+        email: session.email,
       });
       if (!adminState.isAdmin) {
         sendApiJson(req, res, 403, { ok: false, error: 'admin_required' });
@@ -808,7 +962,6 @@ async function handleApi(req, res, pathname) {
 
       const moderation = updateModerationState(target, patch, {
         uid: body && body.adminUid,
-        email: body && body.adminEmail,
       });
       if (!moderation) {
         sendApiJson(req, res, 400, { ok: false, error: 'missing_target' });
@@ -843,6 +996,12 @@ const server = http.createServer(async (req, res) => {
 const wss = new WebSocket.Server({ noServer: true });
 
 server.on('upgrade', (req, socket, head) => {
+  const origin = String(req && req.headers && req.headers.origin || '').trim();
+  if (origin && getCorsOrigin(req) === 'null') {
+    try { socket.write('HTTP/1.1 403 Forbidden\r\n\r\n'); } catch (_) {}
+    try { socket.destroy(); } catch (_) {}
+    return;
+  }
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit('connection', ws, req);
   });
@@ -882,10 +1041,11 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      const senderSession = getTrustedSession(msg);
       const senderMod = getModerationState({
         uid: msg.uid || msg.playerId || msg.userId || msg.sender,
-        googleSub: msg.googleSub,
-        email: msg.email || msg.googleEmail,
+        googleSub: senderSession ? senderSession.sub : '',
+        email: senderSession ? senderSession.email : '',
       });
       const isChatMessage = msg.type === 'social_join' || msg.type === 'social_chat' || msg.type === 'chat';
       const isOnlineAction = msg.type === 'create_room' || msg.type === 'ready' || msg.type === 'state';

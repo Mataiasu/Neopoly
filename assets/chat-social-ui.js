@@ -876,14 +876,14 @@ async function refreshModerationStatus(silent=true){
     const r=await fetch(base+'/api/mod/status',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({uid:P.uid,googleSub:P.googleSub||'',email:P.googleEmail||''}),
+      body:JSON.stringify({uid:P.uid,sessionToken:P.googleSessionToken||''}),
     });
     const data=await r.json();
     if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');
-    P.isAdmin=!!data.isAdmin||isKnownAdminEmail(P.googleEmail);
+    P.isAdmin=!!data.isAdmin;
     P.moderation=Object.assign(getDefaultModerationState(),data.moderation||{});
   }catch(_){
-    P.isAdmin=isKnownAdminEmail(P.googleEmail);
+    P.isAdmin=false;
     if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
   }
   syncSocialAdminUi();
@@ -912,9 +912,8 @@ async function moderateTarget(action,targetUid,targetName){
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         action,
-        adminEmail:P.googleEmail||'',
         adminUid:P.uid,
-        adminGoogleSub:P.googleSub||'',
+        sessionToken:P.googleSessionToken||'',
         targetUid:uid,
         reason,
       }),
@@ -938,7 +937,7 @@ function sendSocialChat(){
   const chatProfile=getSharedChatProfilePayload();
   addSocialMsg(P.name,P.color,text,true,chatProfile);
   if(socialWs&&socialWsOk){
-    try{socialWs.send(JSON.stringify(Object.assign({type:'social_chat',room:SOCIAL_ROOM_ID,text},chatProfile)));}
+    try{socialWs.send(JSON.stringify(Object.assign({type:'social_chat',room:SOCIAL_ROOM_ID,text,sessionToken:P.googleSessionToken||''},chatProfile)));}
     catch(e){}
   }
 }
@@ -951,8 +950,7 @@ function requestSocialChatClear(){
         type:'social_clear_request',
         room:SOCIAL_ROOM_ID,
         uid:P.uid,
-        googleSub:P.googleSub||'',
-        email:P.googleEmail||'',
+        sessionToken:P.googleSessionToken||'',
         name:P.name||'Admin'
       }));
       return;
@@ -1006,7 +1004,7 @@ function connectSocialWs(auto=false){
         if(socialWsReconnectTimer){clearTimeout(socialWsReconnectTimer);socialWsReconnectTimer=null;}
         updateSocialWsStatus('✅ Connecté à '+url);
         document.getElementById('social-ws-btn').textContent='⛔';
-        socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID},getSharedChatProfilePayload())));
+        socialWs.send(JSON.stringify(Object.assign({type:'social_join',room:SOCIAL_ROOM_ID,sessionToken:P.googleSessionToken||''},getSharedChatProfilePayload())));
       };
       socialWs.onmessage=e=>{
         try{

@@ -2,23 +2,30 @@
 // ═══════════════════════════════════════
 function renderStats(){
   const el=document.getElementById('stats-body');if(!el)return;
-  const sorted=[...G.players].sort((a,b)=>
-    (b.money+G.board.filter(c=>c.owner===b.id).reduce((s,c)=>s+c.p,0))-
-    (a.money+G.board.filter(c=>c.owner===a.id).reduce((s,c)=>s+c.p,0))
-  );
+  const summaries=G.players.map(p=>({player:p,props:0,assetValue:0,ownedCells:[]}));
+  const byId=new Map(summaries.map(entry=>[entry.player.id,entry]));
+  G.board.forEach(cell=>{
+    const ownerEntry=byId.get(cell.owner);
+    if(!ownerEntry)return;
+    ownerEntry.props+=1;
+    ownerEntry.assetValue+=Number(cell.p||0);
+    ownerEntry.ownedCells.push(cell);
+  });
+  const sorted=[...summaries].sort((a,b)=>(b.player.money+b.assetValue)-(a.player.money+a.assetValue));
   el.innerHTML=`<table class="stats-table">
     <tr><th>Joueur</th><th>Argent</th><th>Props</th><th>Net</th></tr>
-    ${sorted.map(p=>{
-      const props=G.board.filter(c=>c.owner===p.id).length;
-      const net=p.money+G.board.filter(c=>c.owner===p.id).reduce((s,c)=>s+c.p,0);
+    ${sorted.map(entry=>{
+      const p=entry.player;
+      const net=p.money+entry.assetValue;
       return`<tr><td><span style="color:${p.color}">${p.emoji} ${p.name}</span>${p.bust?' 💀':''}</td>
-        <td>${p.money}$</td><td>${props}</td><td>${net}$</td></tr>`;
+        <td>${p.money}$</td><td>${entry.props}</td><td>${net}$</td></tr>`;
     }).join('')}</table>`;
 
   const gh=document.getElementById('gh-turn');if(!gh)return;
+  const eco=(typeof getBoardEconomySnapshot==='function')?getBoardEconomySnapshot():null;
   gh.innerHTML='';
   G.players.forEach(p=>{
-    const props=G.board.filter(c=>c.owner===p.id);if(!props.length)return;
+    const props=(byId.get(p.id)?.ownedCells)||[];if(!props.length)return;
     const sec=document.createElement('div');sec.style.marginBottom='10px';
     sec.innerHTML=`<div style="font-size:.72rem;font-weight:700;color:${p.color};margin-bottom:4px">${p.emoji} ${p.name}</div>`;
     props.forEach(c=>{
@@ -28,7 +35,7 @@ function renderStats(){
         <span style="width:7px;height:7px;border-radius:999px;background:${c.c};flex-shrink:0;display:inline-block"></span>
         ${c.ico} ${c.n}${c.mortgaged?' <span style="color:#f97316;font-size:.6rem">HYPO</span>':''}
         ${(c.houses||0)>0?'<span>'+(c.houses>=5?'🏨':'🏠'.repeat(c.houses))+'</span>':''}
-        <span style="margin-left:auto;color:var(--muted)">${calcRent(c)}$</span>`;
+        <span style="margin-left:auto;color:var(--muted)">${calcRent(c,eco)}$</span>`;
       sec.appendChild(row);
     });
     gh.appendChild(sec);
@@ -56,9 +63,17 @@ function switchTab(name){
 
 function renderPlayers(){
   const list=document.getElementById('players-list');
-  list.innerHTML='';
-  G.players.forEach((p,i)=>{
-    const row=document.createElement('div');
+  if(!list)return;
+  const playerSignature=JSON.stringify({
+    cur:G.cur,
+    started:!!G.started,
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,matchItems:p.matchItems||{}}))
+  });
+  if(G.playerPanelSignature!==playerSignature){
+    list.innerHTML='';
+    const frag=document.createDocumentFragment();
+    G.players.forEach((p,i)=>{
+      const row=document.createElement('div');
     row.className='player-row'+(i===G.cur&&!p.bust?' active-player':'')+(p.bust?' bust-player':'');
     row.style.cursor='pointer';
     row.title='Voir les stats de '+p.name;
@@ -76,22 +91,35 @@ function renderPlayers(){
     if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
     if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
     const badgesHtml=_pBadges.length?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">${_pBadges.map(b=>`<span style="font-size:.55rem;background:rgba(255,255,255,.08);border-radius:3px;padding:0 3px;line-height:1.5">${b}</span>`).join('')}</div>`:'';
-    row.innerHTML=`
-      ${avatarHtml}
-      <div style="flex:1;min-width:0">
-        <div class="player-name" style="color:${p.color}">${p.name}${p.bust?' 💀':''}${p.jailed?' ⛓️':''}</div>
-        <div class="player-pos">${cell?cell.ico+' '+cell.n:'?'}</div>
-        ${badgesHtml}
-      </div>
-      <div class="player-money">${p.money} $ </div>`;
-    list.appendChild(row);
-  });
+      row.innerHTML=`
+        ${avatarHtml}
+        <div style="flex:1;min-width:0">
+          <div class="player-name" style="color:${p.color}">${p.name}${p.bust?' 💀':''}${p.jailed?' ⛓️':''}</div>
+          <div class="player-pos">${cell?cell.ico+' '+cell.n:'?'}</div>
+          ${badgesHtml}
+        </div>
+        <div class="player-money">${p.money} $ </div>`;
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+    G.playerPanelSignature=playerSignature;
+    const activeId=G.players[G.cur]?.id||'';
+    if(activeId&&G.lastActivePlayerId!==activeId){
+      G.lastActivePlayerId=activeId;
+      const activeRow=list.querySelector('.active-player');
+      if(activeRow&&typeof activeRow.scrollIntoView==='function'){
+        try{activeRow.scrollIntoView({block:'nearest',behavior:(window.DEVICE==='mobile'?'smooth':'auto')});}catch(_){ }
+      }
+    }
+  }
   refreshPawns();
   refreshOwners();
   // Affichage du pion du joueur courant dans le centre du plateau
-  const centerInfoEl=document.getElementById('center-info');
+  const centerInfoEl=G.centerInfoEl||document.getElementById('center-info');
   if(!centerInfoEl)return;
   let cur = G.players[G.cur];
+  let nextCenterInfo='Prêt à jouer';
+  let nextCenterHtml='Prêt à jouer';
   if(G.started && cur){
     let info = '';
     if(cur.img){
@@ -100,9 +128,29 @@ function renderPlayers(){
       info = cur.emoji+' ';
     }
     const gt=(G.globalTimerSec>0)?(' • ⏰ '+Math.floor((G.globalTimerLeft||0)/60).toString().padStart(2,'0')+':'+String((G.globalTimerLeft||0)%60).padStart(2,'0')):'';
-    centerInfoEl.innerHTML = info + cur.name + ' (tour)' + gt;
-  }else{
-    centerInfoEl.textContent = 'Prêt à jouer';
+    nextCenterInfo=[cur.name,cur.color,cur.img||'',cur.emoji||'',gt].join('|');
+    nextCenterHtml=info + cur.name + ' (tour)' + gt;
+  }
+  if(G.centerInfoSignature!==nextCenterInfo){
+    G.centerInfoSignature=nextCenterInfo;
+    if(G.started && cur)centerInfoEl.innerHTML = nextCenterHtml;
+    else centerInfoEl.textContent = 'Prêt à jouer';
+  }
+  const hintEl=document.getElementById('turn-hint');
+  if(hintEl){
+    const hintText=!G.started
+      ?'💡 Ajoute les joueurs puis lance la partie.'
+      :(!isProfileControlledPlayer(cur)
+        ?('👀 Tour de '+(cur?.name||'un joueur')+' — observe en direct.')
+        :(G.pendingBuy
+          ?'🛒 Achat dispo : choisis Acheter ou Passer.'
+          :((cur&&cur.jailed&&!G.rolled)
+            ?'🔓 Tu es en prison : lance les dés ou paie l’amende.'
+            :(!G.rolled?'🎲 Lance les dés pour continuer.':'➡️ Gère tes actions puis termine le tour.'))));
+    if(hintEl.dataset.lastHint!==hintText){
+      hintEl.dataset.lastHint=hintText;
+      hintEl.textContent=hintText;
+    }
   }
   renderInventoryUi();
   renderMatchItemsUi();
@@ -115,14 +163,71 @@ function isCurrentPlayerBot(){
   return !!(G.started&&p&&p.bot&&!p.bust&&(G.mode==='local'||hostOnline));
 }
 
+function getBotPurchaseScore(p,cell){
+  if(!p||!cell)return 0;
+  let score=0;
+  if(cell.t==='property'){
+    const group=G.board.filter(c=>c.t==='property'&&c.c===cell.c);
+    const ownedByBot=group.filter(c=>c.owner===p.id).length;
+    const blockedByOther=group.some(c=>c.owner!=null&&c.owner!==p.id);
+    score+=ownedByBot*55;
+    if(group.length>1&&ownedByBot===group.length-1)score+=140;
+    if(blockedByOther)score-=25;
+  }else if(cell.t==='railroad'){
+    const ownedRails=G.board.filter(c=>c.t==='railroad'&&c.owner===p.id).length;
+    score+=ownedRails*45;
+    if(ownedRails>=3)score+=60;
+  }else if(cell.t==='utility'){
+    const ownedUtils=G.board.filter(c=>c.t==='utility'&&c.owner===p.id).length;
+    score+=ownedUtils?50:20;
+  }
+  return score;
+}
+
 function botBuyDecision(p,cell){
-  if(!p||!cell)return false;
+  if(!p||!cell||cell.owner!=null||!(cell.p>0))return false;
   const lvl=p.botLevel||'easy';
   const cash=p.money||0;
   const price=cell.p||0;
-  if(lvl==='easy')return cash>price+300&&Math.random()>.35;
-  if(lvl==='medium')return cash>price+220&&Math.random()>.2;
-  return cash>price+120;
+  const score=getBotPurchaseScore(p,cell);
+  const reserveBase=lvl==='easy'?320:(lvl==='medium'?220:140);
+  const reserve=Math.max(80,reserveBase-Math.round(Math.max(0,score)/2));
+  if(cash<price+reserve)return false;
+  const chance=lvl==='easy'?0.55:(lvl==='medium'?0.74:0.9);
+  return Math.random()<Math.min(0.97,chance+(score/250));
+}
+
+function tryBotEconomicAction(p){
+  if(!p||p.bust||p._lastBotEconomyTurn===G.turnCount)return false;
+  const lvl=p.botLevel||'easy';
+  const eco=(typeof getBoardEconomySnapshot==='function')?getBoardEconomySnapshot():null;
+  const reserve=lvl==='easy'?420:(lvl==='medium'?310:220);
+  const buildChance=lvl==='easy'?0.2:(lvl==='medium'?0.45:0.72);
+  const monopolyProps=G.board.filter(cell=>{
+    if(!cell||cell.t!=='property'||cell.owner!==p.id||cell.mortgaged||(cell.houses||0)>=3)return false;
+    const total=eco?.propertyGroupTotals?.get(cell.c)||0;
+    const owned=eco?.propertyGroupOwned?.get(cell.c)?.get(p.id)||0;
+    return total>1&&owned===total;
+  }).sort((a,b)=>calcRent(b,eco)-calcRent(a,eco));
+  const buildTarget=monopolyProps.find(cell=>p.money>=Math.floor((cell.p||0)*0.5)+reserve);
+  if(buildTarget&&Math.random()<buildChance){
+    p._lastBotEconomyTurn=G.turnCount;
+    buyHouse(G.board.indexOf(buildTarget));
+    glog('🤖 '+p.name+' investit sur '+buildTarget.n+'.','a');
+    scheduleBotTurn();
+    return true;
+  }
+  const unmortgageChance=lvl==='hard'?0.62:(lvl==='medium'?0.35:0.15);
+  const mortgaged=G.board.filter(cell=>cell&&cell.owner===p.id&&cell.mortgaged).sort((a,b)=>(a.p||0)-(b.p||0));
+  const unmortgageTarget=mortgaged.find(cell=>p.money>=Math.floor((cell.p||0)*0.55)+reserve+40);
+  if(unmortgageTarget&&Math.random()<unmortgageChance){
+    p._lastBotEconomyTurn=G.turnCount;
+    unmortgageProp(G.board.indexOf(unmortgageTarget));
+    glog('🤖 '+p.name+' relève une hypothèque sur '+unmortgageTarget.n+'.','i');
+    scheduleBotTurn();
+    return true;
+  }
+  return false;
 }
 
 function scheduleBotTurn(){
@@ -139,11 +244,24 @@ function scheduleBotTurn(){
 function runBotTurn(){
   if(!isCurrentPlayerBot())return;
   const p=G.players[G.cur];
+  if(!p)return;
   if(G.pendingBuy&&G.pendingBuy.cell){
     if(botBuyDecision(p,G.pendingBuy.cell))confirmBuy();else declineBuy();
     return;
   }
-  if(!G.rolled){doRoll();return;}
+  if(!G.rolled){
+    if(tryBotEconomicAction(p))return;
+    const mi=ensurePlayerMatchItems(p);
+    const shouldBoost=(mi.diceBoost||0)>0&&((p.botLevel==='hard'&&Math.random()<0.55)||(p.botLevel==='medium'&&Math.random()<0.28));
+    if(shouldBoost&&!G.pendingRollBoostFor){
+      mi.diceBoost--;
+      G.pendingRollBoostFor=p.id;
+      glog('🤖 '+p.name+' prépare un booster de dé.','i');
+      renderMatchItemsUi();
+    }
+    doRoll();
+    return;
+  }
   doNextTurn();
 }
 
@@ -253,22 +371,28 @@ document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>
 // ═══════════════════════════════════════
 function renderLocalPlayerList(){
   const list=document.getElementById('local-player-list');if(!list)return;
-  list.innerHTML='';
-  G.players.forEach((p,i)=>{
-    if(p.bot)p.ready=true;
-    const row=document.createElement('div');
+  const signature=JSON.stringify(G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,bot:!!p.bot,botLevel:p.botLevel||'easy',ready:!!p.ready})));
+  if(G.localPlayerListSignature!==signature){
+    list.innerHTML='';
+    const frag=document.createDocumentFragment();
+    G.players.forEach((p,i)=>{
+      if(p.bot)p.ready=true;
+      const row=document.createElement('div');
     const bdrColor=p.ready?'#22c55e66':'var(--border)';
     row.style.cssText=`display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(13,21,37,.8);border-radius:10px;border:1px solid ${bdrColor};transition:.2s`;
     const avatarHtml=p.img
       ?`<img src="${p.img}" style="width:28px;height:28px;border-radius:999px;object-fit:cover;border:2px solid ${p.color}">`
       :`<div style="width:28px;height:28px;border-radius:999px;background:${p.color}33;border:2px solid ${p.color};display:flex;align-items:center;justify-content:center">${p.emoji}</div>`;
-    row.innerHTML=`
-      ${avatarHtml}
-      <span style="flex:1;font-size:.78rem;font-weight:700;color:${p.color}">${p.name}${p.bot?(' 🤖 '+(p.botLevel||'easy')):''}</span>
-      ${p.bot?'<span class="ready-pill rdy" style="cursor:default">✅ Prêt</span>':`<button class="ready-pill ${p.ready?'rdy':'not-rdy'}" onclick="toggleLocalReady(${i})">${p.ready?'\u2705 Pr\u00eat':'\u23f3 Pr\u00eat ?'}</button>`}
-      <button class="btn btn-danger btn-xs" onclick="removeLocalPlayer(${i})">\u2715</button>`;
-    list.appendChild(row);
-  });
+      row.innerHTML=`
+        ${avatarHtml}
+        <span style="flex:1;font-size:.78rem;font-weight:700;color:${p.color}">${p.name}${p.bot?(' 🤖 '+(p.botLevel||'easy')):''}</span>
+        ${p.bot?'<span class="ready-pill rdy" style="cursor:default">✅ Prêt</span>':`<button class="ready-pill ${p.ready?'rdy':'not-rdy'}" onclick="toggleLocalReady(${i})">${p.ready?'\u2705 Pr\u00eat':'\u23f3 Pr\u00eat ?'}</button>`}
+        <button class="btn btn-danger btn-xs" onclick="removeLocalPlayer(${i})">\u2715</button>`;
+      frag.appendChild(row);
+    });
+    list.appendChild(frag);
+    G.localPlayerListSignature=signature;
+  }
   const allReady=G.players.length>=2&&G.players.every(p=>p.ready);
   const btn=document.getElementById('start-btn');
   btn.disabled=!allReady;
@@ -377,13 +501,24 @@ function renderOnlineLobby(){
   if(!lobby)return;
   const show=G.mode==='online'&&!G.started;
   lobby.style.display=show?'block':'none';
-  if(!show)return;
-  pl.innerHTML=G.players.length?G.players.map(p=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
-      ${p.img?`<img src="${p.img}" style="width:22px;height:22px;border-radius:999px;object-fit:cover;border:2px solid ${p.color}">`:`<span style="font-size:.9rem">${p.emoji||'👤'}</span>`}
-      <span style="flex:1;font-size:.75rem;font-weight:700;color:${p.color}">${p.name}${p.id===G.myId?' <span style="color:var(--muted);font-weight:400">(moi)</span>':''}</span>
-      <span class="ready-pill ${p.ready?'rdy':'not-rdy'}" style="cursor:default">${p.ready?'✅ Prêt':'⏳ Attente'}</span>
-    </div>`).join(''):'<div style="font-size:.72rem;color:var(--muted)">En attente de joueurs…</div>';
+  if(!show){
+    G.onlineLobbySignature='';
+    return;
+  }
+  const lobbySignature=JSON.stringify({
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:p.img,ready:!!p.ready})),
+    myId:G.myId,
+    myReady:!!G.myReady
+  });
+  if(pl&&G.onlineLobbySignature!==lobbySignature){
+    pl.innerHTML=G.players.length?G.players.map(p=>`
+      <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
+        ${p.img?`<img src="${p.img}" style="width:22px;height:22px;border-radius:999px;object-fit:cover;border:2px solid ${p.color}">`:`<span style="font-size:.9rem">${p.emoji||'👤'}</span>`}
+        <span style="flex:1;font-size:.75rem;font-weight:700;color:${p.color}">${p.name}${p.id===G.myId?' <span style="color:var(--muted);font-weight:400">(moi)</span>':''}</span>
+        <span class="ready-pill ${p.ready?'rdy':'not-rdy'}" style="cursor:default">${p.ready?'✅ Prêt':'⏳ Attente'}</span>
+      </div>`).join(''):'<div style="font-size:.72rem;color:var(--muted)">En attente de joueurs…</div>';
+    G.onlineLobbySignature=lobbySignature;
+  }
   const allReady=G.players.length>=2&&G.players.every(p=>p.ready);
   const isHost=G.myId&&G.myId.startsWith('h-');
   if(hostBtn){hostBtn.style.display=isHost?'inline-flex':'none';hostBtn.disabled=!allReady;}
@@ -399,7 +534,7 @@ function toggleOnlineReady(){
   if(me)me.ready=G.myReady;
   renderOnlineLobby();renderPlayers();
   if(G.ws&&G.wsOk){
-    try{G.ws.send(JSON.stringify({type:'ready',room:G.room,sender:G.myId,playerId:G.myId,name:me?.name,emoji:me?.emoji,color:me?.color,ready:G.myReady}));}
+    try{sendWsMessage({type:'ready',room:G.room,sender:G.myId,playerId:G.myId,name:me?.name,emoji:me?.emoji,color:me?.color,ready:G.myReady});}
     catch(e){wsLog('Erreur envoi prêt: '+e);}
   }
 }
@@ -455,18 +590,50 @@ function doReset(){
   toast('🔄 Partie réinitialisée.','i');
 }
 
-function confirmLeave(){
-  if(confirm('Retourner au lobby ?'))backToLobby();
+function handleLeaveButtonClick(ev){
+  if(ev&&typeof ev.stopPropagation==='function')ev.stopPropagation();
+  confirmLeave();
+  return false;
+}
+
+function confirmLeave(skipPrompt){
+  if(skipPrompt===true||confirm('Quitter ce lobby et revenir au menu principal ?'))backToLobby();
 }
 
 function backToLobby(){
   G.started=false;stopTimer();stopGlobalTimer();
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.pendingRollBoostFor=null;
+  G.pendingBuy=null;
+  G.myReady=false;
+  G.room='';
+  G.mode='local';
+  G.rolled=false;
+  G.cur=0;
+  G.turnCount=1;
+  G.jailTurns={};
+  G.bonusTurns={};
+  G.pendingPartyBots=[];
+  G.onlineLobbySignature='';
+  G.playerPanelSignature='';
   setBoardEditingLocked(false);
   updateCenterActionsPopup();
   disconnectWs();
-  document.getElementById('winner-overlay').classList.remove('open');
+  G.board=clone(DEF);
+  G.players=[];
+  hideBuyBar();
+  const winnerOverlay=document.getElementById('winner-overlay');
+  if(winnerOverlay)winnerOverlay.classList.remove('open');
+  const roomInfo=document.getElementById('room-info');
+  if(roomInfo)roomInfo.textContent='Non connecté';
+  const chatCard=document.getElementById('chat-card');
+  if(chatCard)chatCard.style.display='none';
+  const onlineLobby=document.getElementById('online-lobby');
+  if(onlineLobby)onlineLobby.style.display='none';
+  renderOnlineLobby();
+  renderLocalPlayerList();
+  renderPlayers();
+  updBtns();
   showScreen('lobby');
   updateMusicForContext();
 }
@@ -619,7 +786,19 @@ function broadcast(){
 }
 
 function disconnectWs(){
-  if(G.ws){G.ws.close();G.ws=null;G.wsOk=false;}
+  const ws=G.ws;
+  G.ws=null;
+  G.wsOk=false;
+  if(ws){
+    try{ws.onopen=null;ws.onmessage=null;ws.onerror=null;ws.onclose=null;}catch(_e){}
+    try{if(ws.readyState<=WebSocket.OPEN)ws.close();}catch(_e){}
+  }
+  const wsDot=document.getElementById('ws-dot');
+  if(wsDot)wsDot.style.background='#6b7280';
+  const wsLabel=document.getElementById('ws-label');
+  if(wsLabel)wsLabel.textContent=G.room?'Hors ligne':'Local';
+  const discBtn=document.getElementById('disc-btn');
+  if(discBtn)discBtn.disabled=true;
 }
 
 function createOnlineRoom(){
@@ -764,7 +943,7 @@ function sendChat(){
   });
   addChatMsg(p.name,p.color,text,chatProfile);
   if(G.ws&&G.wsOk){
-    try{G.ws.send(JSON.stringify(Object.assign({type:'chat',room:G.room,sender:G.myId,text},chatProfile)));}
+    try{sendWsMessage(Object.assign({type:'chat',room:G.room,sender:G.myId,text},chatProfile));}
     catch(e){}
   }
 }

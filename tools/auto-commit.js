@@ -3,11 +3,33 @@ const path = require('path');
 const fs = require('fs');
 
 const repoRoot = path.resolve(__dirname, '..');
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const runOnce = args.has('--once');
+const untilArg = rawArgs.find((arg) => arg.startsWith('--until='));
 const autoPush = !args.has('--no-push') && !['0', 'false', 'no'].includes(String(process.env.AUTO_PUSH || 'true').toLowerCase());
-const intervalMinutes = Math.max(1, Number(process.env.AUTO_COMMIT_INTERVAL_MINUTES || 10));
+const intervalMinutes = Math.max(1, Number(process.env.AUTO_COMMIT_INTERVAL_MINUTES || 20));
 const intervalMs = intervalMinutes * 60 * 1000;
+const untilValue = String(untilArg ? untilArg.split('=').slice(1).join('=') : (process.env.AUTO_COMMIT_UNTIL || '')).trim();
+
+function parseUntilTime(value) {
+  const match = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(value || '').trim());
+  if (!match) return null;
+  const now = new Date();
+  const target = new Date(now);
+  target.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+  return {
+    label: `${String(match[1]).padStart(2, '0')}:${match[2]}`,
+    time: target.getTime(),
+  };
+}
+
+const stopAt = parseUntilTime(untilValue);
+
+function shouldStopWatcher() {
+  return !!(stopAt && Date.now() >= stopAt.time);
+}
 
 function nowLabel() {
   return new Date().toLocaleString('fr-FR', {
@@ -54,6 +76,11 @@ function buildCommitMessage() {
 
 function tick() {
   try {
+    if (shouldStopWatcher()) {
+      console.log(`[${nowLabel()}] Stop time reached (${stopAt.label}), auto-commit watcher stopped.`);
+      if (typeof process !== 'undefined' && typeof process.exit === 'function') process.exit(0);
+      return;
+    }
     if (hasGitLock()) {
       console.log(`[${nowLabel()}] Git busy, auto-commit skipped.`);
       return;
@@ -98,8 +125,15 @@ function tick() {
   }
 }
 
-console.log(`[${nowLabel()}] Auto-commit watcher active every ${intervalMinutes} minute(s)${autoPush ? ' with auto-push' : ''}.`);
+console.log(`[${nowLabel()}] Auto-commit watcher active every ${intervalMinutes} minute(s)${autoPush ? ' with auto-push' : ''}${stopAt ? ` until ${stopAt.label}` : ''}.`);
 tick();
 if (!runOnce) {
-  setInterval(tick, intervalMs);
+  const timer = setInterval(() => {
+    if (shouldStopWatcher()) {
+      console.log(`[${nowLabel()}] Stop time reached (${stopAt.label}), auto-commit watcher stopped.`);
+      clearInterval(timer);
+      return;
+    }
+    tick();
+  }, intervalMs);
 }
