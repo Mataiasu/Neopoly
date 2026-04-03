@@ -4,6 +4,13 @@
 <meta charset="UTF-8"/>
 <title>NeoPoly v5.0</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="description" content="NeoPoly, un Monopoly personnalisable et multijoueur optimisé pour mobile et navigateur."/>
+<meta name="theme-color" content="#080c18"/>
+<meta name="color-scheme" content="dark"/>
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no"/>
+<link rel="preconnect" href="https://accounts.google.com" crossorigin/>
+<link rel="preconnect" href="https://apis.google.com" crossorigin/>
+<link rel="preconnect" href="https://www.googleapis.com" crossorigin/>
 <style>
 :root{
   --bg:#080c18;--s1:#0d1525;--s2:#111827;--s3:#1a2235;
@@ -16,7 +23,7 @@
   --r:14px;--r2:10px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+html,body{height:100%;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);text-rendering:optimizeLegibility;-webkit-font-smoothing:antialiased}
 
 /* ── SCREENS ── */
 #app-wrap{display:flex;height:var(--app-vh);overflow:hidden}
@@ -629,6 +636,8 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .sidebar,.tab-pane,.lobby-tab-pane,#glog,#ws-log,#social-chat-log,#chat-log{
   -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
+  content-visibility:auto;
+  contain-intrinsic-size:280px;
 }
 
 
@@ -1736,6 +1745,13 @@ body.streamer-mode #invite-link {
           </div>
           <div class="card" style="padding:10px">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+              <div class="card-title" style="margin:0">🎯 Défis du jour</div>
+              <div id="daily-challenges-meta" style="font-size:.66rem;color:var(--muted);font-weight:700">Rotation quotidienne</div>
+            </div>
+            <div id="daily-challenges-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
               <div class="card-title" style="margin:0">🧩 Collection d'emojis</div>
               <div id="emoji-collection-count" style="font-size:.68rem;color:var(--muted);font-weight:700">0 / 0</div>
             </div>
@@ -1921,6 +1937,11 @@ body.streamer-mode #invite-link {
           <button class="btn btn-secondary btn-sm" id="mortgage-btn" onclick="openMortgageModal()">🏦 Hypo</button>
         </div>
       </div>
+      <div class="card" id="match-objective-card" style="padding:10px;display:none">
+        <div class="card-title">🎯 Mission secrète</div>
+        <div id="match-objective-body" style="font-size:.72rem;color:var(--text)">Lance une partie pour recevoir un objectif.</div>
+        <div id="turn-history-mini" style="display:flex;flex-direction:column;gap:5px;margin-top:8px"></div>
+      </div>
       <div class="card" id="chat-card" style="display:none">
         <div class="card-title">💬 Chat</div>
         <div id="chat-log" style="max-height:100px;overflow-y:auto;margin-bottom:6px;overscroll-behavior:contain;-webkit-overflow-scrolling:touch"></div>
@@ -1954,6 +1975,10 @@ body.streamer-mode #invite-link {
 
     <!-- LOG -->
     <div class="tab-pane" id="log-tab">
+      <div class="card" style="padding:10px">
+        <div class="card-title">⏱️ Historique lisible</div>
+        <div id="turn-history-list" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
       <div class="card" style="flex:1;display:flex;flex-direction:column;min-height:0">
         <div class="card-title">📋 Journal</div>
         <div id="glog" style="flex:1;overflow-y:auto"></div>
@@ -2165,7 +2190,7 @@ body.streamer-mode #invite-link {
   <div class="ws-grid" id="p-count"></div>
   <div class="btn-row">
     <button class="btn btn-primary" onclick="backToLobby()">🏠 Lobby</button>
-    <button class="btn btn-blue" onclick="doStart()">🔄 Rejouer</button>
+    <button class="btn btn-blue" onclick="startRematch()">🔁 Revanche</button>
   </div>
 </div>
 

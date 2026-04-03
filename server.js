@@ -2,6 +2,7 @@ const fs = require('fs');
 const http = require('http');
 const https = require('https');
 const crypto = require('crypto');
+const zlib = require('zlib');
 const path = require('path');
 const { URL } = require('url');
 const WebSocket = require('ws');
@@ -721,6 +722,72 @@ function isAllowedPublicPath(decodedPath) {
   return STATIC_PUBLIC_PREFIXES.some((prefix) => normalized.startsWith('/' + prefix));
 }
 
+function isCompressibleMimeType(mimeType) {
+  return /^text\//.test(String(mimeType || '')) || /(javascript|json|xml|svg)/i.test(String(mimeType || ''));
+}
+
+function getStaticEtag(stats) {
+  return `W/"${Number(stats.size || 0).toString(16)}-${Math.floor(Number(stats.mtimeMs || 0)).toString(16)}"`;
+}
+
+function getPreferredEncoding(req, mimeType) {
+  if (!isCompressibleMimeType(mimeType)) return '';
+  const accepted = String(req.headers['accept-encoding'] || '');
+  if (/\bbr\b/i.test(accepted)) return 'br';
+  if (/\bgzip\b/i.test(accepted)) return 'gzip';
+  return '';
+}
+
+function pipeStaticFile(req, res, safePath, stats, mimeType) {
+  const etag = getStaticEtag(stats);
+  const lastModified = stats.mtime.toUTCString();
+  const ifNoneMatch = String(req.headers['if-none-match'] || '').trim();
+  const ifModifiedSince = Date.parse(String(req.headers['if-modified-since'] || ''));
+  if (ifNoneMatch === etag || (Number.isFinite(ifModifiedSince) && ifModifiedSince >= (stats.mtimeMs - 1000))) {
+    applySecurityHeaders(req, res);
+    res.writeHead(304, {
+      'Cache-Control': path.extname(safePath).toLowerCase() === '.html' ? 'no-store' : 'public, max-age=300',
+      'ETag': etag,
+      'Last-Modified': lastModified,
+    });
+    res.end();
+    return;
+  }
+
+  const encoding = getPreferredEncoding(req, mimeType);
+  const headers = {
+    'Content-Type': mimeType,
+    'Cache-Control': path.extname(safePath).toLowerCase() === '.html' ? 'no-store' : 'public, max-age=300',
+    'ETag': etag,
+    'Last-Modified': lastModified,
+  };
+  if (!encoding) headers['Content-Length'] = stats.size;
+  if (encoding === 'br') headers['Content-Encoding'] = 'br';
+  if (encoding === 'gzip') headers['Content-Encoding'] = 'gzip';
+
+  applySecurityHeaders(req, res);
+  res.writeHead(200, headers);
+
+  let stream = fs.createReadStream(safePath);
+  stream.on('error', () => {
+    if (!res.headersSent) {
+      applySecurityHeaders(req, res);
+      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+    }
+    res.end('Server Error');
+  });
+
+  if (encoding === 'br') {
+    stream = stream.pipe(zlib.createBrotliCompress({
+      params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 },
+    }));
+  } else if (encoding === 'gzip') {
+    stream = stream.pipe(zlib.createGzip({ level: 6 }));
+  }
+
+  stream.pipe(res);
+}
+
 function serveStatic(req, res, pathname) {
   const relativePath = pathname === '/' ? '/test1.html' : pathname;
   const decoded = decodeURIComponent(relativePath);
@@ -748,12 +815,7 @@ function serveStatic(req, res, pathname) {
 
     const ext = path.extname(safePath).toLowerCase();
     const mimeType = MIME_TYPES[ext] || 'application/octet-stream';
-    applySecurityHeaders(req, res);
-    res.writeHead(200, {
-      'Content-Type': mimeType,
-      'Cache-Control': ext === '.html' ? 'no-store' : 'public, max-age=300',
-    });
-    fs.createReadStream(safePath).pipe(res);
+    pipeStaticFile(req, res, safePath, stats, mimeType);
   });
 }
 

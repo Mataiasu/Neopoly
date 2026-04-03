@@ -399,6 +399,8 @@ function renderLobbyProfileTab(){
   ensureEmojiUnlocks(false);
   renderPartyEmojiPickers();
   renderEmojiCollection();
+  if(typeof renderDailyChallengesUi==='function')renderDailyChallengesUi();
+  if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   const av=document.getElementById('pc-avatar');
   if(av){
     if(P.avatarImg){av.innerHTML=`<img src="${P.avatarImg}" alt="avatar">`;}
@@ -538,6 +540,7 @@ function debugResetStats(){
   P.secretUnlocks={};
   P.emojiUnlocks={};
   P.selectedTitle=null;
+  P.dailyChallenges={dateKey:'',streak:0,lastCompletedDate:'',items:[]};
   saveProfileData();
   renderLobbyProfileTab();
   toast('🧹 Reset total: stats, ELO, titres, dates et secrets','i');

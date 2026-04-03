@@ -120,13 +120,16 @@ function ensurePreferredRenderOrigin(force=false){
 function getGoogleApiBase(){
   const configured=(window.NEOPOLY_API_BASE||'').trim();
   if(configured)return configured.replace(/\/$/, '');
-  const renderOrigin=getCanonicalRenderOrigin();
-  if(renderOrigin)return renderOrigin;
+  const origin=(window.location.origin&&window.location.origin!=='null')?window.location.origin.replace(/\/$/,''):'';
   const p=String(window.location.port||'');
-  if((p==='5500'||p==='5173')&&window.location.protocol==='http:'){
+  const isLocalPreview=(p==='5500'||p==='5173');
+  if(origin&&!isLocalPreview)return origin;
+  if(isLocalPreview&&window.location.protocol==='http:'){
     return ('http://'+window.location.hostname+':3000').replace(/\/$/,'');
   }
-  return window.location.origin&&window.location.origin!=='null'?window.location.origin:'';
+  const renderOrigin=getCanonicalRenderOrigin();
+  if(renderOrigin)return renderOrigin;
+  return origin;
 }
 
 function getGoogleVerifyUrl(){
@@ -1343,6 +1346,12 @@ const G={
   centerActions:false,
   centerActionsPos:null,
   centerActionsScale:100,
+  secretObjective:null,
+  turnHistory:[],
+  pendingRematch:false,
+  rematchStarterIndex:0,
+  rematchCount:0,
+  lastWinnerId:null,
 };
 const NET_TRADE={
   outgoing:{},
@@ -1389,6 +1398,7 @@ let P={
   emojiUnlocks:{},
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+  dailyChallenges:{dateKey:'',streak:0,lastCompletedDate:'',items:[]},
   mutedUsers:[],
   blockedUsers:[],
   chatProfilePrivate:false,
@@ -1443,6 +1453,7 @@ function loadProfile(opts){
   if(!Array.isArray(P.friends))P.friends=[];
   if(!Array.isArray(P.mutedUsers))P.mutedUsers=[];
   if(!Array.isArray(P.blockedUsers))P.blockedUsers=[];
+  if(!P.dailyChallenges||typeof P.dailyChallenges!=='object')P.dailyChallenges={dateKey:'',streak:0,lastCompletedDate:'',items:[]};
   if(typeof P.chatProfilePrivate!=='boolean')P.chatProfilePrivate=!!P.chatProfilePrivate;
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
@@ -1451,6 +1462,7 @@ function loadProfile(opts){
   if(!P.uid){P.uid='np_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);changed=true;}
   if(syncUidWithGoogleIdentity(true))changed=true;
   if(changed&&!options.skipPersist)saveProfileData();
+  if(typeof ensureDailyChallenges==='function')ensureDailyChallenges(false);
   checkWinTitles();
   checkSecretTitles(false);
   ensureEmojiUnlocks(false);
@@ -1465,6 +1477,333 @@ function saveProfileData(){
   if(PROFILE_SYNC_BUS){
     try{PROFILE_SYNC_BUS.postMessage({type:'profile_updated',at:Date.now()});}catch(_){ }
   }
+}
+
+const DAILY_CHALLENGE_POOL=[
+  {id:'play_1',label:'Lancer 1 partie',stat:'gamesPlayed',amount:1,reward:{type:'diceBoost',qty:1}},
+  {id:'buy_4',label:'Acheter 4 propriétés',stat:'propertiesBought',amount:4,reward:{type:'antiJail',qty:1}},
+  {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'elo',qty:15}},
+  {id:'win_1',label:'Gagner 1 partie',stat:'gamesWon',amount:1,reward:{type:'diceBoost',qty:2}},
+  {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'mortgageDiscount',qty:1}},
+];
+
+const MATCH_OBJECTIVE_POOL=[
+  {id:'collector',title:'Collection discrète',desc:'Achète 3 propriétés pendant cette partie.',target:3,reward:{type:'diceBoost',qty:1}},
+  {id:'builder',title:'Architecte du quartier',desc:'Construis 2 maisons ou hôtels.',target:2,reward:{type:'elo',qty:20}},
+  {id:'voyager',title:'Tour express',desc:'Passe 2 fois par Départ.',target:2,reward:{type:'antiJail',qty:1}},
+  {id:'rentier',title:'Cash-flow caché',desc:'Encaisse 250$ de loyers.',target:250,reward:{type:'mortgageDiscount',qty:1}},
+  {id:'railmaster',title:'Baron du rail',desc:'Contrôle 2 gares en même temps.',target:2,reward:{type:'diceBoost',qty:1}},
+];
+
+const BOT_PERSONALITY_DEFS={
+  balanced:{key:'balanced',label:'Polyvalent',icon:'🎯',buyBias:0,reserveDelta:0,propertyBias:10,railroadBias:10,utilityBias:5,setBias:20,buildBias:0.05,unmortgageBias:0.05,boostBias:0.05},
+  tycoon:{key:'tycoon',label:'Magnat',icon:'💼',buyBias:0.05,reserveDelta:-35,propertyBias:28,railroadBias:12,utilityBias:8,setBias:45,buildBias:0.08,unmortgageBias:0.02,boostBias:0.04},
+  builder:{key:'builder',label:'Bâtisseur',icon:'🏗️',buyBias:0.02,reserveDelta:-10,propertyBias:22,railroadBias:4,utilityBias:6,setBias:30,buildBias:0.16,unmortgageBias:0.06,boostBias:0.03},
+  shark:{key:'shark',label:'Requin',icon:'🦈',buyBias:0.04,reserveDelta:-20,propertyBias:8,railroadBias:32,utilityBias:24,setBias:18,buildBias:0.04,unmortgageBias:0.03,boostBias:0.08},
+  cautious:{key:'cautious',label:'Prudent',icon:'🛡️',buyBias:-0.06,reserveDelta:85,propertyBias:6,railroadBias:8,utilityBias:10,setBias:14,buildBias:-0.08,unmortgageBias:0.16,boostBias:-0.03},
+  sprinter:{key:'sprinter',label:'Rush',icon:'⚡',buyBias:0.07,reserveDelta:-45,propertyBias:16,railroadBias:16,utilityBias:12,setBias:24,buildBias:0.03,unmortgageBias:0.01,boostBias:0.15},
+};
+
+function escapeUiText(str){
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function getTodayKey(){
+  const now=new Date();
+  return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+}
+
+function readProfileStatValue(statKey){
+  return Math.max(0,parseInt(P?.stats?.[statKey],10)||0);
+}
+
+function pickRandomEntries(list,count){
+  const copy=Array.isArray(list)?list.slice():[];
+  for(let i=copy.length-1;i>0;i--){
+    const j=Math.floor(Math.random()*(i+1));
+    [copy[i],copy[j]]=[copy[j],copy[i]];
+  }
+  return copy.slice(0,Math.max(0,count||0));
+}
+
+function getRewardText(reward){
+  const qty=Math.max(1,parseInt(reward?.qty,10)||1);
+  switch(reward?.type){
+    case 'diceBoost':return '⚡ +'+qty+' booster'+(qty>1?'s':'');
+    case 'antiJail':return '🛡️ +'+qty+' anti-prison';
+    case 'mortgageDiscount':return '🏦 +'+qty+' remise hypo';
+    case 'elo':return '📈 +'+qty+' ELO';
+    default:return 'Bonus surprise';
+  }
+}
+
+function grantProfileReward(reward){
+  if(!reward||!reward.type)return false;
+  const qty=Math.max(1,parseInt(reward.qty,10)||1);
+  if(reward.type==='elo'){
+    P.elo=Math.max(0,Math.min(9999,(parseInt(P.elo,10)||0)+qty));
+    if(typeof checkSecretTitles==='function')checkSecretTitles(false);
+    return true;
+  }
+  if(!P.inventory||typeof P.inventory!=='object')P.inventory={diceBoost:0,antiJail:0,mortgageDiscount:0};
+  if(!(reward.type in P.inventory))return false;
+  P.inventory[reward.type]=Math.max(0,(parseInt(P.inventory[reward.type],10)||0)+qty);
+  return true;
+}
+
+function ensureDailyChallenges(forceNew=false){
+  if(!P.dailyChallenges||typeof P.dailyChallenges!=='object')P.dailyChallenges={dateKey:'',streak:0,lastCompletedDate:'',items:[]};
+  const pack=P.dailyChallenges;
+  const today=getTodayKey();
+  let changed=false;
+  if(forceNew||pack.dateKey!==today||!Array.isArray(pack.items)||pack.items.length<3){
+    if(pack.dateKey&&pack.dateKey!==today){
+      const previousDone=(pack.items||[]).length>0&&(pack.items||[]).every(item=>item&&item.done);
+      pack.streak=previousDone?(Math.max(0,parseInt(pack.streak,10)||0)+1):0;
+      if(previousDone)pack.lastCompletedDate=pack.dateKey;
+    }
+    pack.dateKey=today;
+    pack.items=pickRandomEntries(DAILY_CHALLENGE_POOL,3).map(def=>(
+      {id:def.id,label:def.label,stat:def.stat,amount:def.amount,reward:def.reward,base:readProfileStatValue(def.stat),progress:0,done:false,rewarded:false}
+    ));
+    changed=true;
+  }
+  if(syncDailyChallengesProgress(false))changed=true;
+  if(changed)saveProfileData();
+  return pack;
+}
+
+function syncDailyChallengesProgress(shouldPersist=true){
+  if(!P.dailyChallenges||typeof P.dailyChallenges!=='object')return false;
+  let changed=false;
+  let unlockedReward=false;
+  (P.dailyChallenges.items||[]).forEach(item=>{
+    if(!item||!item.stat)return;
+    const target=Math.max(1,parseInt(item.amount,10)||1);
+    const base=Math.max(0,parseInt(item.base,10)||0);
+    const progress=Math.max(0,Math.min(target,readProfileStatValue(item.stat)-base));
+    if(item.progress!==progress){item.progress=progress;changed=true;}
+    if(progress>=target&&!item.done){item.done=true;changed=true;}
+    if(item.done&&!item.rewarded){
+      item.rewarded=true;
+      grantProfileReward(item.reward);
+      unlockedReward=true;
+      changed=true;
+      toast('✅ Défi du jour complété : '+item.label+' • '+getRewardText(item.reward),'a');
+    }
+  });
+  if(unlockedReward){
+    if(typeof renderInventoryUi==='function')renderInventoryUi();
+    if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  }
+  if(changed&&shouldPersist)saveProfileData();
+  return changed;
+}
+
+function renderDailyChallengesUi(){
+  const list=document.getElementById('daily-challenges-list');
+  const meta=document.getElementById('daily-challenges-meta');
+  if(!list)return;
+  const pack=ensureDailyChallenges(false);
+  const items=Array.isArray(pack?.items)?pack.items:[];
+  const todayTxt=(pack?.dateKey||getTodayKey()).split('-').reverse().join('/');
+  const streak=Math.max(0,parseInt(pack?.streak,10)||0);
+  const completed=items.filter(item=>item&&item.done).length;
+  if(meta)meta.textContent=''+todayTxt+' • série '+streak+' • '+completed+'/'+items.length;
+  if(!items.length){
+    list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Les défis arrivent bientôt.</div>';
+    return;
+  }
+  list.innerHTML=items.map(item=>{
+    const target=Math.max(1,parseInt(item.amount,10)||1);
+    const progress=Math.max(0,Math.min(target,parseInt(item.progress,10)||0));
+    const pct=Math.max(8,Math.round((progress/target)*100));
+    const done=!!item.done;
+    return '<div style="padding:8px 9px;border:1px solid '+(done?'rgba(34,197,94,.45)':'var(--border)')+';border-radius:10px;background:'+(done?'rgba(34,197,94,.09)':'var(--s2)')+'">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+        '<div style="font-size:.72rem;font-weight:700">'+(done?'✅ ':'🎯 ')+escapeUiText(item.label)+'</div>'+
+        '<div style="font-size:.62rem;color:'+(done?'#22c55e':'var(--muted)')+'">'+progress+'/'+target+'</div>'+
+      '</div>'+
+      '<div style="height:7px;margin-top:6px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(done?'linear-gradient(90deg,#22c55e,#4ade80)':'linear-gradient(90deg,var(--accent),var(--blue))')+'"></div></div>'+
+      '<div style="font-size:.64rem;color:var(--muted);margin-top:5px">Récompense : '+escapeUiText(getRewardText(item.reward))+'</div>'+
+    '</div>';
+  }).join('');
+}
+
+function ensurePlayerMatchStats(player){
+  if(!player)return {propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
+  if(!player.matchStats||typeof player.matchStats!=='object')player.matchStats={};
+  ['propertiesBought','housesBuilt','passedGo','rentCollected','rentPaid','turnsPlayed'].forEach(key=>{
+    player.matchStats[key]=Math.max(0,parseInt(player.matchStats[key],10)||0);
+  });
+  return player.matchStats;
+}
+
+function getControlledMatchPlayer(){
+  const players=Array.isArray(G.players)?G.players:[];
+  const direct=players.find(player=>player&&isProfileControlledPlayer(player)&&!player.bust)||players.find(player=>player&&isProfileControlledPlayer(player));
+  const fallback=players[G.cur]||players[0]||null;
+  const player=direct||fallback;
+  if(player)ensurePlayerMatchStats(player);
+  return player;
+}
+
+function pickRandomBotPersona(preferredKey){
+  if(preferredKey&&BOT_PERSONALITY_DEFS[preferredKey])return preferredKey;
+  const keys=Object.keys(BOT_PERSONALITY_DEFS);
+  return keys[Math.floor(Math.random()*keys.length)]||'balanced';
+}
+
+function getBotPersonaConfig(playerOrKey){
+  const key=typeof playerOrKey==='string'
+    ?playerOrKey
+    :(playerOrKey?.botPersona||'balanced');
+  return BOT_PERSONALITY_DEFS[key]||BOT_PERSONALITY_DEFS.balanced;
+}
+
+function ensureBotPersona(player,preferredKey){
+  if(!player||!player.bot)return BOT_PERSONALITY_DEFS.balanced;
+  if(preferredKey&&BOT_PERSONALITY_DEFS[preferredKey])player.botPersona=preferredKey;
+  if(!player.botPersona||!BOT_PERSONALITY_DEFS[player.botPersona])player.botPersona=pickRandomBotPersona();
+  return getBotPersonaConfig(player);
+}
+
+function ensureMatchObjectiveExists(forceNew=false){
+  if(!G.started){G.secretObjective=null;return null;}
+  const player=getControlledMatchPlayer();
+  if(player)ensurePlayerMatchStats(player);
+  if(forceNew||!G.secretObjective||G.secretObjective.playerId!==(player?.id||null)){
+    const def=MATCH_OBJECTIVE_POOL[Math.floor(Math.random()*MATCH_OBJECTIVE_POOL.length)]||MATCH_OBJECTIVE_POOL[0];
+    G.secretObjective={
+      id:def.id,
+      title:def.title,
+      desc:def.desc,
+      target:Math.max(1,parseInt(def.target,10)||1),
+      reward:def.reward,
+      playerId:player?.id||null,
+      progress:0,
+      done:false,
+      rewarded:false,
+      assignedAt:Date.now(),
+    };
+  }
+  return G.secretObjective;
+}
+
+function getMatchObjectiveProgress(objective,player){
+  if(!objective||!player)return 0;
+  const stats=ensurePlayerMatchStats(player);
+  switch(objective.id){
+    case 'collector':return stats.propertiesBought||0;
+    case 'builder':return stats.housesBuilt||0;
+    case 'voyager':return stats.passedGo||0;
+    case 'rentier':return stats.rentCollected||0;
+    case 'railmaster':return G.board.filter(cell=>cell&&cell.t==='railroad'&&cell.owner===player.id).length;
+    default:return 0;
+  }
+}
+
+function updateSecretObjectiveProgress(){
+  if(!G.started){renderMatchObjectiveUi();return false;}
+  const objective=ensureMatchObjectiveExists(false);
+  const player=(G.players||[]).find(entry=>entry&&entry.id===objective?.playerId)||getControlledMatchPlayer();
+  if(!objective||!player){renderMatchObjectiveUi();return false;}
+  const target=Math.max(1,parseInt(objective.target,10)||1);
+  const progress=Math.max(0,Math.min(target,getMatchObjectiveProgress(objective,player)));
+  let changed=false;
+  if(objective.progress!==progress){objective.progress=progress;changed=true;}
+  if(progress>=target&&!objective.done){
+    objective.done=true;
+    changed=true;
+  }
+  if(objective.done&&!objective.rewarded){
+    objective.rewarded=true;
+    grantProfileReward(objective.reward);
+    toast('🎯 Mission secrète réussie : '+objective.title+' • '+getRewardText(objective.reward),'a');
+    saveProfileData();
+    if(typeof renderInventoryUi==='function')renderInventoryUi();
+  }
+  renderMatchObjectiveUi();
+  return changed;
+}
+
+function renderMatchObjectiveUi(){
+  const card=document.getElementById('match-objective-card');
+  const body=document.getElementById('match-objective-body');
+  if(!card||!body)return;
+  if(!G.started){
+    card.style.display='none';
+    body.innerHTML='';
+    return;
+  }
+  card.style.display='block';
+  const objective=ensureMatchObjectiveExists(false);
+  const player=(G.players||[]).find(entry=>entry&&entry.id===objective?.playerId)||getControlledMatchPlayer();
+  if(!objective||!player){
+    body.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Mission en préparation…</div>';
+    return;
+  }
+  const target=Math.max(1,parseInt(objective.target,10)||1);
+  const progress=Math.max(0,Math.min(target,parseInt(objective.progress,10)||0));
+  const pct=Math.max(8,Math.round((progress/target)*100));
+  body.innerHTML=''+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+      '<div style="font-size:.8rem;font-weight:800">'+(objective.done?'✅ ':'🕵️ ')+escapeUiText(objective.title)+'</div>'+
+      '<div style="font-size:.63rem;color:'+(objective.done?'#22c55e':'var(--muted)')+'">'+progress+'/'+target+'</div>'+
+    '</div>'+
+    '<div style="font-size:.67rem;color:var(--muted);margin-top:4px">'+escapeUiText(objective.desc)+'</div>'+
+    '<div style="height:7px;margin-top:7px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:'+(objective.done?'linear-gradient(90deg,#22c55e,#4ade80)':'linear-gradient(90deg,#a855f7,#3b82f6)')+'"></div></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:.64rem;color:var(--muted);margin-top:6px">'+
+      '<span>Joueur : <b style="color:'+escapeUiText(player.color||'#fff')+'">'+escapeUiText(player.name||'Joueur')+'</b></span>'+
+      '<span>Récompense : '+escapeUiText(getRewardText(objective.reward))+'</span>'+
+    '</div>';
+}
+
+function pushTurnHistory(msg,type='i'){
+  const text=String(msg||'').trim();
+  if(!text)return;
+  const prev=G.turnHistory?.[0];
+  if(prev&&prev.msg===text&&prev.type===type)return;
+  if(!Array.isArray(G.turnHistory))G.turnHistory=[];
+  G.turnHistory.unshift({msg:text,type,turn:Math.max(1,parseInt(G.turnCount,10)||1),ts:Date.now()});
+  if(G.turnHistory.length>24)G.turnHistory.length=24;
+  renderTurnHistory();
+}
+
+function renderTurnHistory(){
+  const full=document.getElementById('turn-history-list');
+  const mini=document.getElementById('turn-history-mini');
+  const entries=Array.isArray(G.turnHistory)?G.turnHistory.slice(0,8):[];
+  const renderList=(list,compact)=>{
+    if(!list)return;
+    if(!entries.length){
+      list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Les derniers moments clés de la partie apparaîtront ici.</div>';
+      return;
+    }
+    list.innerHTML=entries.slice(0,compact?4:8).map(entry=>{
+      const color=entry.type==='a'?'#22c55e':(entry.type==='d'?'#f87171':(entry.type==='w'?'#fbbf24':'#93c5fd'));
+      return '<div style="display:flex;align-items:flex-start;gap:7px;padding:'+(compact?'5px 6px':'7px 8px')+';border:1px solid var(--border);border-radius:9px;background:var(--s2)">'+
+        '<span style="width:8px;height:8px;border-radius:999px;background:'+color+';margin-top:5px;flex-shrink:0"></span>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:'+ (compact?'.64rem':'.68rem') +';color:var(--muted);margin-bottom:2px">Tour '+(entry.turn||1)+'</div>'+
+          '<div style="font-size:'+ (compact?'.69rem':'.74rem') +';line-height:1.35">'+escapeUiText(entry.msg)+'</div>'+
+        '</div>'+
+      '</div>';
+    }).join('');
+  };
+  renderList(full,false);
+  renderList(mini,true);
+}
+
+function startRematch(){
+  if(!Array.isArray(G.players)||G.players.length<2){toast('Ajoute au moins 2 joueurs pour une revanche.','w');return;}
+  const canStart=G.mode==='local'||(G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-'));
+  if(!canStart){toast('Seul l’hôte peut lancer la revanche.','w');return;}
+  G.pendingRematch=true;
+  G.rematchCount=Math.max(0,parseInt(G.rematchCount,10)||0)+1;
+  if(!(G.rematchStarterIndex>=0))G.rematchStarterIndex=0;
+  toast('🔁 Revanche instantanée lancée !','a');
+  doStart();
 }
 
 // Keep profile UI synchronized across tabs/pages on the same origin.
@@ -2480,7 +2819,7 @@ function applyGoogleIdentity(email,name,avatarUrl,googleSub,isVerified,sessionTo
   syncUidWithGoogleIdentity(false);
   saveProfileData();renderLobbyProfileTab();renderSocialChat();
   syncSocialAdminUi();
-  refreshModerationStatus(true);
+  refreshModerationStatus(false);
   unlockConnectionZone('google');
   closeModal('modal-google');
   toast(isVerified?'🔗 Compte Google verifie !':'Profil local lie sans verification Google','a');
@@ -2721,6 +3060,10 @@ function enforceUniquePlayerColors(){
 function recordTxn(p,amount,desc){
   G.txns.unshift({name:p.name,color:p.color,amount,desc});
   if(G.txns.length>100)G.txns.pop();
+  if(p&&amount>0&&typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p)){
+    P.stats.moneyEarned=Math.max(0,(parseInt(P.stats.moneyEarned,10)||0)+Math.round(amount));
+    syncDailyChallengesProgress(false);
+  }
 }
 
 function saveUndo(){
@@ -3594,6 +3937,7 @@ function movePlayer(p,steps){
   const old=p.pos;
   p.pos=(old+steps)%40;
   if(old+steps>=40){
+    ensurePlayerMatchStats(p).passedGo=(ensurePlayerMatchStats(p).passedGo||0)+1;
     p.money+=G.passGoBonus;recordTxn(p,G.passGoBonus,'Passage Départ');
     glog(p.name+' passe par Départ → +'+G.passGoBonus+'$.','a');toast('🚦 +'+G.passGoBonus+'$ !','a');
     if(Math.random()<0.12)grantRandomMatchItem(p,'passage départ');
@@ -3603,6 +3947,7 @@ function movePlayer(p,steps){
   glog(p.name+' → '+cell.n+'.');
   toast('📍 '+p.name+' arrive sur '+cell.n,'i');
   resolveCell(p,cell);
+  updateSecretObjectiveProgress();
 }
 
 // ═══════════════════════════════════════
@@ -3711,6 +4056,10 @@ function handleProp(p,cell){
       return;
     }
     const rent=calcRent(cell);if(rent<=0)return;
+    const payerStats=ensurePlayerMatchStats(p);
+    const ownerStats=ensurePlayerMatchStats(owner);
+    payerStats.rentPaid=Math.max(0,(parseInt(payerStats.rentPaid,10)||0)+rent);
+    ownerStats.rentCollected=Math.max(0,(parseInt(ownerStats.rentCollected,10)||0)+rent);
     p.money-=rent;owner.money+=rent;
     recordTxn(p,-rent,'Loyer: '+cell.n);
     recordTxn(owner,rent,'Loyer reçu: '+cell.n);
@@ -3726,6 +4075,7 @@ function confirmBuy(){
   const p=G.players[G.cur];if(!G.pendingBuy||!p)return;
   const cell=G.pendingBuy.cell;
   if(p.money<cell.p){toast("Pas assez d'argent !",'d');return;}
+  ensurePlayerMatchStats(p).propertiesBought=(ensurePlayerMatchStats(p).propertiesBought||0)+1;
   p.money-=cell.p;recordTxn(p,-cell.p,'Achat: '+cell.n);
   cell.owner=p.id;cell.houses=0;cell.mortgaged=false;
   playSfx('buy');
@@ -3736,6 +4086,8 @@ function confirmBuy(){
     setTimeout(()=>doNextTurn(),450);
   }
   if(p.id===G.myId){P.stats.propertiesBought++;saveProfileData();}
+  syncDailyChallengesProgress(true);
+  updateSecretObjectiveProgress();
 }
 
 function declineBuy(){
@@ -3824,11 +4176,13 @@ function buyHouse(idx){
   const cost=status.cost;
   if(!status.ok){toast(status.reasons[0]||'Construction verrouillée.','w');return;}
   saveUndo();
+  ensurePlayerMatchStats(p).housesBuilt=(ensurePlayerMatchStats(p).housesBuilt||0)+1;
   p.money-=cost;recordTxn(p,-cost,'Maison: '+cell.n);
   cell.houses=(cell.houses||0)+1;
   glog(p.name+' construit '+(cell.houses>=5?'un hôtel':'une maison')+' sur '+cell.n+'.','a');
   toast((cell.houses>=5?'🏨 Hôtel':'🏠 Maison')+' sur '+cell.n,'a');
   refreshHouses();renderPlayers();broadcast();
+  updateSecretObjectiveProgress();
 }
 
 function sellHouse(idx){
@@ -4271,6 +4625,11 @@ function checkBust(p){
 
 function endGame(winner){
   G.started=false;stopTimer();stopGlobalTimer();
+  G.lastWinnerId=winner?.id||null;
+  if(Array.isArray(G.players)&&G.players.length){
+    const winIndex=winner?G.players.findIndex(p=>p&&p.id===winner.id):-1;
+    G.rematchStarterIndex=winIndex>=0?((winIndex+1)%G.players.length):((Math.max(0,parseInt(G.rematchStarterIndex,10)||0)+1)%G.players.length);
+  }
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.pendingRollBoostFor=null;
   playSfx('victory');
@@ -4282,6 +4641,8 @@ function endGame(winner){
     (winner?winner.emoji+' '+winner.name:'Égalité')+' gagne !';
     if(winner&&winner.id===G.myId){P.stats.gamesWon++;P.elo=Math.min(9999,(P.elo||1000)+30);checkWinTitles();checkSecretTitles();saveProfileData();renderLobbyProfileTab();}
     else if(winner&&G.players.some(p=>!p.bot&&isProfileControlledPlayer(p))){P.stats.gamesLost=(P.stats.gamesLost||0)+1;P.elo=Math.max(0,(P.elo||1000)-20);saveProfileData();}
+    syncDailyChallengesProgress(true);
+    renderLobbyProfileTab();
     if(winner&&!winner.bot&&isProfileControlledPlayer(winner)){
       grantRandomItem('victoire');
     }
@@ -4289,6 +4650,7 @@ function endGame(winner){
   G.board.forEach(c=>{
     if(c&&c.owner!=null)scoreById.set(c.owner,(scoreById.get(c.owner)||0)+Number(c.p||0));
   });
+  renderMatchObjectiveUi();
   const grid=document.getElementById('p-count');grid.innerHTML='';
   const sorted=[...G.players].sort((a,b)=>((b.money+(scoreById.get(b.id)||0))-(a.money+(scoreById.get(a.id)||0))));
   const frag=document.createDocumentFragment();
@@ -4351,6 +4713,10 @@ function checkPartyObjectives(){
 function doNextTurn(){
   if(!G.started||!G.rolled||G.pendingBuy)return;
   const curP=G.players[G.cur];
+  if(curP){
+    const matchStats=ensurePlayerMatchStats(curP);
+    matchStats.turnsPlayed=(matchStats.turnsPlayed||0)+1;
+  }
   if(curP&&G.bonusTurns[curP.id]>0){
     G.bonusTurns[curP.id]--;
     G.rolled=false;G.doublesCount=0;
@@ -4377,7 +4743,10 @@ function doNextTurn(){
   renderPlayers();updBtns();broadcast();
   startTimer();
   glog('--- Tour de '+G.players[G.cur].name+' ---','i');
-  P.stats.totalTurns++;saveProfileData();
+  P.stats.totalTurns++;
+  saveProfileData();
+  syncDailyChallengesProgress(true);
+  updateSecretObjectiveProgress();
 }
 
 // ═══════════════════════════════════════
@@ -4433,6 +4802,7 @@ function glog(msg,type=''){
   el.textContent=msg;
   log.prepend(el);
   if(log.children.length>80)log.lastChild.remove();
+  pushTurnHistory(msg,type||'i');
 }
 
 // ═══════════════════════════════════════
@@ -5855,9 +6225,10 @@ function refreshPartyBotUi(){
   }
   list.innerHTML='';
   bots.forEach((b,i)=>{
+    const persona=ensureBotPersona(b);
     const row=document.createElement('div');
     row.style.cssText='display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border);border-radius:8px;background:var(--s2);font-size:.72rem';
-    row.innerHTML=`<span style="font-size:.95rem">${b.emoji||'🤖'}</span><span style="flex:1;color:${b.color||'#9ca3af'};font-weight:700">${b.name||('Bot '+(i+1))}</span><span style="font-size:.65rem;color:var(--muted)">${b.botLevel||'easy'}</span><button class="btn btn-xs btn-danger" type="button" onclick="removeBotFromPartyWheel(${i})">✕</button>`;
+    row.innerHTML=`<span style="font-size:.95rem">${b.emoji||'🤖'}</span><span style="flex:1;color:${b.color||'#9ca3af'};font-weight:700">${b.name||('Bot '+(i+1))}</span><span style="font-size:.65rem;color:var(--muted)">${b.botLevel||'easy'} • ${persona.icon} ${persona.label}</span><button class="btn btn-xs btn-danger" type="button" onclick="removeBotFromPartyWheel(${i})">✕</button>`;
     list.appendChild(row);
   });
 }
@@ -5875,7 +6246,7 @@ function addBotFromPartyWheel(){
   const name=botIdentity.name||('Bot '+idx);
   const id='bot-'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
   const color=pickUniquePlayerColor(COLORS[(G.players.length+idx)%COLORS.length],id);
-  const botObj={id,name,emoji:botIdentity.emoji,color,img:null,bot:true,botLevel:lvl,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:true};
+  const botObj={id,name,emoji:botIdentity.emoji,color,img:null,bot:true,botLevel:lvl,botPersona:pickRandomBotPersona(),matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:true};
   if(ctx==='online'){
     G.pendingPartyBots.push(botObj);
   }else{

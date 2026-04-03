@@ -871,12 +871,12 @@ function syncSocialAdminUi(){
 
 async function refreshModerationStatus(silent=true){
   try{
-    const base=getGoogleApiBase();
-    if(!base)throw new Error('missing_api_base');
+    const base=(getGoogleApiBase()||'').replace(/\/$/,'');
     const r=await fetch(base+'/api/mod/status',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
       body:JSON.stringify({uid:P.uid,sessionToken:P.googleSessionToken||''}),
+      cache:'no-store',
     });
     const data=await r.json();
     if(!r.ok||!data||!data.ok)throw new Error(data&&data.error||'mod_status_failed');

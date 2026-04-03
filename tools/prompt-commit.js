@@ -45,8 +45,9 @@ function writeState(state) {
 
 function buildCommitMessage() {
   if (messageArg) return messageArg;
-  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
-  return `chore: auto commit après 3 prompts (${stamp})`;
+  if (process.env.COMMIT_MESSAGE) return String(process.env.COMMIT_MESSAGE).trim();
+  if (process.env.COMMIT_TITLE) return String(process.env.COMMIT_TITLE).trim();
+  return 'feat: sortie de la maj majeure NeoPoly';
 }
 
 function printUsage() {

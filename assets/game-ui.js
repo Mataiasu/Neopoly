@@ -87,6 +87,10 @@ function renderPlayers(){
     }
     const mi=p.matchItems||{};
     const _pBadges=[];
+    if(p.bot&&typeof getBotPersonaConfig==='function'){
+      const persona=getBotPersonaConfig(p);
+      _pBadges.push(persona.icon+' '+persona.label);
+    }
     if((mi.diceBoost||0)>0)_pBadges.push('⚡×'+mi.diceBoost);
     if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
     if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
@@ -154,6 +158,8 @@ function renderPlayers(){
   }
   renderInventoryUi();
   renderMatchItemsUi();
+  if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
+  if(typeof renderTurnHistory==='function')renderTurnHistory();
   scheduleBotTurn();
 }
 
@@ -165,44 +171,50 @@ function isCurrentPlayerBot(){
 
 function getBotPurchaseScore(p,cell){
   if(!p||!cell)return 0;
+  const persona=(typeof getBotPersonaConfig==='function')?getBotPersonaConfig(p):{key:'balanced',propertyBias:10,railroadBias:10,utilityBias:5,setBias:20};
   let score=0;
   if(cell.t==='property'){
     const group=G.board.filter(c=>c.t==='property'&&c.c===cell.c);
     const ownedByBot=group.filter(c=>c.owner===p.id).length;
     const blockedByOther=group.some(c=>c.owner!=null&&c.owner!==p.id);
     score+=ownedByBot*55;
-    if(group.length>1&&ownedByBot===group.length-1)score+=140;
+    score+=persona.propertyBias||0;
+    if(group.length>1&&ownedByBot===group.length-1)score+=140+(persona.setBias||0);
+    if((persona.key||'')==='sprinter'&&(G.turnCount||1)<=6)score+=26;
     if(blockedByOther)score-=25;
   }else if(cell.t==='railroad'){
     const ownedRails=G.board.filter(c=>c.t==='railroad'&&c.owner===p.id).length;
-    score+=ownedRails*45;
+    score+=ownedRails*45+(persona.railroadBias||0);
     if(ownedRails>=3)score+=60;
   }else if(cell.t==='utility'){
     const ownedUtils=G.board.filter(c=>c.t==='utility'&&c.owner===p.id).length;
-    score+=ownedUtils?50:20;
+    score+=(ownedUtils?50:20)+(persona.utilityBias||0);
   }
+  if((p.money||0)>(G.startingMoney||1500)*1.4)score+=10;
   return score;
 }
 
 function botBuyDecision(p,cell){
   if(!p||!cell||cell.owner!=null||!(cell.p>0))return false;
   const lvl=p.botLevel||'easy';
+  const persona=(typeof getBotPersonaConfig==='function')?getBotPersonaConfig(p):{buyBias:0,reserveDelta:0};
   const cash=p.money||0;
   const price=cell.p||0;
   const score=getBotPurchaseScore(p,cell);
   const reserveBase=lvl==='easy'?320:(lvl==='medium'?220:140);
-  const reserve=Math.max(80,reserveBase-Math.round(Math.max(0,score)/2));
+  const reserve=Math.max(70,reserveBase+(persona.reserveDelta||0)-Math.round(Math.max(0,score)/2));
   if(cash<price+reserve)return false;
-  const chance=lvl==='easy'?0.55:(lvl==='medium'?0.74:0.9);
-  return Math.random()<Math.min(0.97,chance+(score/250));
+  const chanceBase=lvl==='easy'?0.55:(lvl==='medium'?0.74:0.9);
+  return Math.random()<Math.min(0.98,Math.max(0.18,chanceBase+(persona.buyBias||0)+(score/250)));
 }
 
 function tryBotEconomicAction(p){
   if(!p||p.bust||p._lastBotEconomyTurn===G.turnCount)return false;
   const lvl=p.botLevel||'easy';
+  const persona=(typeof getBotPersonaConfig==='function')?getBotPersonaConfig(p):{reserveDelta:0,buildBias:0,unmortgageBias:0};
   const eco=(typeof getBoardEconomySnapshot==='function')?getBoardEconomySnapshot():null;
-  const reserve=lvl==='easy'?420:(lvl==='medium'?310:220);
-  const buildChance=lvl==='easy'?0.2:(lvl==='medium'?0.45:0.72);
+  const reserve=Math.max(120,(lvl==='easy'?420:(lvl==='medium'?310:220))+(persona.reserveDelta||0));
+  const buildChance=Math.min(0.92,Math.max(0.08,(lvl==='easy'?0.2:(lvl==='medium'?0.45:0.72))+(persona.buildBias||0)));
   const monopolyProps=G.board.filter(cell=>{
     if(!cell||cell.t!=='property'||cell.owner!==p.id||cell.mortgaged||(cell.houses||0)>=3)return false;
     const total=eco?.propertyGroupTotals?.get(cell.c)||0;
@@ -217,7 +229,7 @@ function tryBotEconomicAction(p){
     scheduleBotTurn();
     return true;
   }
-  const unmortgageChance=lvl==='hard'?0.62:(lvl==='medium'?0.35:0.15);
+  const unmortgageChance=Math.min(0.95,Math.max(0.05,(lvl==='hard'?0.62:(lvl==='medium'?0.35:0.15))+(persona.unmortgageBias||0)));
   const mortgaged=G.board.filter(cell=>cell&&cell.owner===p.id&&cell.mortgaged).sort((a,b)=>(a.p||0)-(b.p||0));
   const unmortgageTarget=mortgaged.find(cell=>p.money>=Math.floor((cell.p||0)*0.55)+reserve+40);
   if(unmortgageTarget&&Math.random()<unmortgageChance){
@@ -252,7 +264,8 @@ function runBotTurn(){
   if(!G.rolled){
     if(tryBotEconomicAction(p))return;
     const mi=ensurePlayerMatchItems(p);
-    const shouldBoost=(mi.diceBoost||0)>0&&((p.botLevel==='hard'&&Math.random()<0.55)||(p.botLevel==='medium'&&Math.random()<0.28));
+    const persona=(typeof getBotPersonaConfig==='function')?getBotPersonaConfig(p):{boostBias:0};
+    const shouldBoost=(mi.diceBoost||0)>0&&((p.botLevel==='hard'&&Math.random()<Math.min(0.9,0.55+(persona.boostBias||0)))||(p.botLevel==='medium'&&Math.random()<Math.min(0.7,0.28+(persona.boostBias||0))));
     if(shouldBoost&&!G.pendingRollBoostFor){
       mi.diceBoost--;
       G.pendingRollBoostFor=p.id;
@@ -383,9 +396,10 @@ function renderLocalPlayerList(){
     const avatarHtml=p.img
       ?`<img src="${p.img}" style="width:28px;height:28px;border-radius:999px;object-fit:cover;border:2px solid ${p.color}">`
       :`<div style="width:28px;height:28px;border-radius:999px;background:${p.color}33;border:2px solid ${p.color};display:flex;align-items:center;justify-content:center">${p.emoji}</div>`;
+      const personaLabel=p.bot&&typeof getBotPersonaConfig==='function'?(' • '+getBotPersonaConfig(p).icon+' '+getBotPersonaConfig(p).label):'';
       row.innerHTML=`
         ${avatarHtml}
-        <span style="flex:1;font-size:.78rem;font-weight:700;color:${p.color}">${p.name}${p.bot?(' 🤖 '+(p.botLevel||'easy')):''}</span>
+        <span style="flex:1;font-size:.78rem;font-weight:700;color:${p.color}">${p.name}${p.bot?(' 🤖 '+(p.botLevel||'easy')+personaLabel):''}</span>
         ${p.bot?'<span class="ready-pill rdy" style="cursor:default">✅ Prêt</span>':`<button class="ready-pill ${p.ready?'rdy':'not-rdy'}" onclick="toggleLocalReady(${i})">${p.ready?'\u2705 Pr\u00eat':'\u23f3 Pr\u00eat ?'}</button>`}
         <button class="btn btn-danger btn-xs" onclick="removeLocalPlayer(${i})">\u2715</button>`;
       frag.appendChild(row);
@@ -425,6 +439,7 @@ function startQuickGame(){
     img:null,
     bot:true,
     botLevel:'easy',
+    botPersona:pickRandomBotPersona(),
     matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},
     money:G.startingMoney,
     pos:0,
@@ -456,7 +471,7 @@ function confirmAddLocal(){
   G.players.push({
     id:'p'+Date.now()+Math.random(),
     name,emoji,color,img,
-    bot,botLevel,
+    bot,botLevel,botPersona:bot?pickRandomBotPersona():null,
     matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},
     money:G.startingMoney,pos:0,
     jailed:false,bust:false,jailCards:0,ready:bot,
@@ -543,50 +558,76 @@ function doStart(){
   if(G.players.length<2){toast('Il faut au moins 2 joueurs !','w');return;}
   enforceUniquePlayerColors();
   G.board=clone(DEF);
-  G.cur=0;G.rolled=false;G.doublesCount=0;
+  const starterIndex=(G.pendingRematch&&G.players.length)
+    ?Math.max(0,Math.min(G.players.length-1,parseInt(G.rematchStarterIndex,10)||0))
+    :0;
+  G.cur=starterIndex;G.rolled=false;G.doublesCount=0;
   G.turnCount=1;
   G.parkingPot=0;
   G.bonusTurns={};
   G.pendingRollBoostFor=null;
+  G.secretObjective=null;
+  G.turnHistory=[];
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.txns=[];G.undoStack=[];G.jailTurns={};
   G.pendingBuy=null;G.started=true;G.myReady=false;
   // Mobil defaults
   if(window.DEVICE==='mobile'){G.autoEnd=true;G.centerActions=true;}
   setBoardEditingLocked(true);
-  G.players.forEach(p=>{p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};p.ghostPass=0;});
+  G.players.forEach(p=>{
+    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;
+    p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};p.ghostPass=0;
+    p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
+    if(p.bot)ensureBotPersona(p);
+  });
   document.getElementById('winner-overlay').classList.remove('open');
   const _ol=document.getElementById('online-lobby');if(_ol)_ol.style.display='none';
   closeModal('modal-local');
   showScreen('game');
   toggleMobileSidebar(true);
   buildBoard();renderPlayers();updBtns();
-  glog('--- Partie démarrée ! ---','a');
-  glog('--- Tour de '+G.players[0].name+' ---','i');
-  toast('🚀 Partie démarrée !','a');
+  glog(G.pendingRematch?'--- Revanche instantanée ! ---':'--- Partie démarrée ! ---','a');
+  glog('--- Tour de '+G.players[G.cur].name+' ---','i');
+  ensureMatchObjectiveExists(true);
+  renderMatchObjectiveUi();
+  renderTurnHistory();
+  toast(G.pendingRematch?'🔁 Revanche prête !':'🚀 Partie démarrée !','a');
   if(G.mode==='online') document.getElementById('chat-card').style.display='block';
   if(G.timerEnabled)startTimer();
   startGlobalTimer();
   updateMusicForContext();
-  P.stats.gamesPlayed++;saveProfileData();renderLobbyProfileTab();
+  P.stats.gamesPlayed++;
+  saveProfileData();
+  syncDailyChallengesProgress(true);
+  renderLobbyProfileTab();
+  G.pendingRematch=false;
 }
 
 function doReset(){
   if(!confirm('Réinitialiser la partie ?'))return;
   enforceUniquePlayerColors();
   G.board=clone(DEF);
-  G.players.forEach(p=>{p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};});
+  G.players.forEach(p=>{
+    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};
+    p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
+    if(p.bot)ensureBotPersona(p);
+  });
   G.cur=0;G.rolled=false;G.doublesCount=0;G.txns=[];G.undoStack=[];
   G.turnCount=1;
   G.parkingPot=0;
   G.bonusTurns={};
   G.pendingRollBoostFor=null;
+  G.secretObjective=null;
+  G.turnHistory=[];
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.pendingBuy=null;G.jailTurns={};
   stopGlobalTimer();
   startGlobalTimer();
   updateMusicForContext();
   hideBuyBar();buildBoard();renderPlayers();updBtns();
+  ensureMatchObjectiveExists(true);
+  renderMatchObjectiveUi();
+  renderTurnHistory();
   toast('🔄 Partie réinitialisée.','i');
 }
 
@@ -613,6 +654,9 @@ function backToLobby(){
   G.turnCount=1;
   G.jailTurns={};
   G.bonusTurns={};
+  G.secretObjective=null;
+  G.turnHistory=[];
+  G.pendingRematch=false;
   G.pendingPartyBots=[];
   G.onlineLobbySignature='';
   G.playerPanelSignature='';
@@ -826,7 +870,7 @@ function createOnlineRoom(){
     name:botIdentity.name||('Bot '+(ix+1)),
     emoji:b.emoji||botIdentity.emoji,
     color:pickUniquePlayerColor(b.color||COLORS[(ix+1)%COLORS.length],b.id),
-    img:null,bot:true,botLevel:b.botLevel||'easy',
+    img:null,bot:true,botLevel:b.botLevel||'easy',botPersona:b.botPersona||pickRandomBotPersona(),
     matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:true,
   };});
   G.players=[host,...bots];
