@@ -1481,7 +1481,7 @@ const NET_TRADE={
 };
 
 const ROULETTE_SPIN_COST=8;
-const ROULETTE_LOBBY_STARTING_BALANCE=12;
+const ROULETTE_LOBBY_STARTING_BALANCE=0;
 const CASINO_SHOP_ITEMS=[
   {id:'boost_crate',icon:'⚡',name:'Pack Turbo',price:14,desc:'2 boosters de dé persistants.',reward:{type:'diceBoost',qty:2}},
   {id:'escape_pass',icon:'🛡️',name:'Pack Évasion',price:16,desc:'2 anti-prison permanents.',reward:{type:'antiJail',qty:2}},
@@ -1753,19 +1753,19 @@ function triggerRouletteSecretCelebration(reward){
 
 function buildRouletteRewardPool(){
   return [
-    {icon:'🪙',label:'+4 jetons casino',type:'rouletteCoins',qty:4,weight:24},
-    {icon:'💰',label:'+7 jetons casino',type:'rouletteCoins',qty:7,weight:16},
-    {icon:'💎',label:'Jackpot +14 jetons',type:'rouletteCoins',qty:14,weight:7},
-    {icon:'🪐',label:'+70 XP saison',type:'seasonXp',qty:70,weight:7},
-    {icon:'⚡',label:'Booster de dé',type:'diceBoost',qty:1,weight:12},
-    {icon:'🛡️',label:'Anti-prison',type:'antiJail',qty:1,weight:9},
-    {icon:'🏦',label:'Remise hypothèque',type:'mortgageDiscount',qty:1,weight:9},
-    {icon:'🌠',label:'Relique astrale',type:'rareReward',key:'starlight_chip',weight:2,fallback:{type:'rouletteCoins',qty:14}},
-    {icon:'🍀',label:'Emoji Trèfle chanceux',type:'unlockEmoji',key:'roulette_clover',weight:5,fallback:{type:'rouletteCoins',qty:6}},
-    {icon:'🃏',label:'Emoji Joker VIP',type:'unlockEmoji',key:'roulette_joker',weight:3,fallback:{type:'rouletteCoins',qty:8}},
-    {icon:'🎖️',label:'Titre Favori du casino',type:'unlockTitle',key:'casino_lucky',weight:4,fallback:{type:'rouletteCoins',qty:9}},
-    {icon:'👑',label:'Titre High Roller',type:'unlockTitle',key:'casino_highroller',weight:2,fallback:{type:'rouletteCoins',qty:12}},
-    {icon:'❔',label:'Récompense secrète aléatoire',type:'secretRandom',weight:1}
+    {icon:'🪙',label:'+4 jetons casino',type:'rouletteCoins',qty:4,weight:24,legendKey:'coins',legendLabel:'🟡 Jetons',colorA:'#ffd84f',colorB:'#f2b400',badgeBg:'radial-gradient(circle at 30% 30%,#fff4c6 0%,#ffd84f 52%,#8d5200 100%)',badgeBorder:'rgba(255,216,79,.72)',badgeColor:'#3a2200'},
+    {icon:'💰',label:'+7 jetons casino',type:'rouletteCoins',qty:7,weight:16,legendKey:'coins',legendLabel:'🟡 Jetons',colorA:'#ffd84f',colorB:'#f2b400',badgeBg:'radial-gradient(circle at 30% 30%,#fff4c6 0%,#ffd84f 52%,#8d5200 100%)',badgeBorder:'rgba(255,216,79,.72)',badgeColor:'#3a2200'},
+    {icon:'💎',label:'Jackpot +14 jetons',type:'rouletteCoins',qty:14,weight:7,legendKey:'coins',legendLabel:'🟡 Jetons',colorA:'#ffd84f',colorB:'#f2b400',badgeBg:'radial-gradient(circle at 30% 30%,#fff4c6 0%,#ffd84f 52%,#8d5200 100%)',badgeBorder:'rgba(255,216,79,.72)',badgeColor:'#3a2200'},
+    {icon:'🪐',label:'+70 XP saison',type:'seasonXp',qty:70,weight:7,legendKey:'secret',legendLabel:'🟣 Saison / secrets',colorA:'#a986ff',colorB:'#7758ff',badgeBg:'radial-gradient(circle at 30% 30%,#f1eaff 0%,#b18cff 48%,#32208f 100%)',badgeBorder:'rgba(177,140,255,.68)',badgeColor:'#fffaff'},
+    {icon:'⚡',label:'Booster de dé',type:'diceBoost',qty:1,weight:12,legendKey:'boost',legendLabel:'🟠 Boosts / titres',colorA:'#ffb06a',colorB:'#ff7b24',badgeBg:'radial-gradient(circle at 30% 30%,#fff1db 0%,#ffbf69 50%,#914407 100%)',badgeBorder:'rgba(255,191,105,.7)',badgeColor:'#391c03'},
+    {icon:'🛡️',label:'Anti-prison',type:'antiJail',qty:1,weight:9,legendKey:'shield',legendLabel:'🔵 Protection / banque',colorA:'#78dcff',colorB:'#3a82ff',badgeBg:'radial-gradient(circle at 30% 30%,#ebf9ff 0%,#79dbff 48%,#163f92 100%)',badgeBorder:'rgba(121,219,255,.7)',badgeColor:'#f8fcff'},
+    {icon:'🏦',label:'Remise hypothèque',type:'mortgageDiscount',qty:1,weight:9,legendKey:'shield',legendLabel:'🔵 Protection / banque',colorA:'#78dcff',colorB:'#3a82ff',badgeBg:'radial-gradient(circle at 30% 30%,#ebf9ff 0%,#79dbff 48%,#163f92 100%)',badgeBorder:'rgba(121,219,255,.7)',badgeColor:'#f8fcff'},
+    {icon:'🌠',label:'Relique astrale',type:'rareReward',key:'starlight_chip',weight:2,fallback:{type:'rouletteCoins',qty:14},legendKey:'secret',legendLabel:'🟣 Saison / secrets',colorA:'#a986ff',colorB:'#7758ff',badgeBg:'radial-gradient(circle at 30% 30%,#f2f7ff 0%,#8bc3ff 35%,#7b4dff 100%)',badgeBorder:'rgba(160,92,255,.74)',badgeColor:'#ffffff'},
+    {icon:'🍀',label:'Emoji Trèfle chanceux',type:'unlockEmoji',key:'roulette_clover',weight:5,fallback:{type:'rouletteCoins',qty:6},legendKey:'luck',legendLabel:'🟢 Chance / emoji',colorA:'#b9ef6d',colorB:'#49c96f',badgeBg:'radial-gradient(circle at 30% 30%,#f3ffe5 0%,#b5f06b 50%,#28784a 100%)',badgeBorder:'rgba(181,240,107,.72)',badgeColor:'#103221'},
+    {icon:'🃏',label:'Emoji Joker VIP',type:'unlockEmoji',key:'roulette_joker',weight:3,fallback:{type:'rouletteCoins',qty:8},legendKey:'secret',legendLabel:'🟣 Saison / secrets',colorA:'#a986ff',colorB:'#7758ff',badgeBg:'radial-gradient(circle at 30% 30%,#ffeaff 0%,#ff93d8 42%,#6b27a1 100%)',badgeBorder:'rgba(255,147,216,.74)',badgeColor:'#fffaff'},
+    {icon:'🎖️',label:'Titre Favori du casino',type:'unlockTitle',key:'casino_lucky',weight:4,fallback:{type:'rouletteCoins',qty:9},legendKey:'boost',legendLabel:'🟠 Boosts / titres',colorA:'#ffb06a',colorB:'#ff7b24',badgeBg:'radial-gradient(circle at 30% 30%,#fff0e2 0%,#ffb47e 46%,#ad4532 100%)',badgeBorder:'rgba(255,180,126,.72)',badgeColor:'#381207'},
+    {icon:'👑',label:'Titre High Roller',type:'unlockTitle',key:'casino_highroller',weight:2,fallback:{type:'rouletteCoins',qty:12},legendKey:'boost',legendLabel:'🟠 Boosts / titres',colorA:'#ffb06a',colorB:'#ff7b24',badgeBg:'radial-gradient(circle at 30% 30%,#fff1e5 0%,#ffb18a 45%,#a13d24 100%)',badgeBorder:'rgba(255,177,138,.74)',badgeColor:'#fff8f2'},
+    {icon:'❔',label:'Récompense secrète aléatoire',type:'secretRandom',weight:1,legendKey:'secret',legendLabel:'🟣 Saison / secrets',colorA:'#a986ff',colorB:'#7758ff',badgeBg:'radial-gradient(circle at 30% 30%,#f2eaff 0%,#ac8cff 38%,#4b2398 100%)',badgeBorder:'rgba(203,152,255,.8)',badgeColor:'#fffbff',secretFx:true}
   ];
 }
 
@@ -1812,12 +1812,29 @@ function buildRouletteWheelGradient(pool){
   const list=Array.isArray(pool)&&pool.length?pool:buildRouletteRewardPool();
   const step=360/list.length;
   return 'conic-gradient(from -90deg,'+list.map((entry,index)=>{
-    const colorA=colors[index%colors.length];
-    const colorB=colors[(index+1)%colors.length];
+    const colorA=entry.colorA||colors[index%colors.length];
+    const colorB=entry.colorB||colors[(index+1)%colors.length];
     const start=(index*step).toFixed(2);
+    const sep1=(index*step+0.9).toFixed(2);
+    const mid=(index*step+step*0.52).toFixed(2);
+    const sep2=((index+1)*step-0.9).toFixed(2);
     const end=((index+1)*step).toFixed(2);
-    return colorA+' '+start+'deg '+(start*1+step*0.62).toFixed(2)+'deg, '+colorB+' '+(start*1+step*0.62).toFixed(2)+'deg '+end+'deg';
+    return 'rgba(255,255,255,.82) '+start+'deg '+sep1+'deg, '+colorA+' '+sep1+'deg '+mid+'deg, '+colorB+' '+mid+'deg '+sep2+'deg, rgba(6,10,24,.45) '+sep2+'deg '+end+'deg';
   }).join(',')+')';
+}
+
+function buildRouletteColorLegend(pool){
+  const list=Array.isArray(pool)&&pool.length?pool:buildRouletteRewardPool();
+  const seen=new Set();
+  return list.filter(entry=>{
+    const key=String(entry.legendKey||entry.icon||'');
+    if(!key||seen.has(key))return false;
+    seen.add(key);
+    return true;
+  }).map(entry=>{
+    const swatch='linear-gradient(135deg,'+String(entry.colorA||'#94a3b8')+','+String(entry.colorB||'#64748b')+')';
+    return '<span class="roulette-legend-item"><span class="roulette-legend-swatch" style="background:'+swatch+'"></span><b>'+escapeHtml(entry.legendLabel||entry.label)+'</b></span>';
+  }).join('');
 }
 
 function buildRouletteWheelBadges(pool){
@@ -1828,7 +1845,11 @@ function buildRouletteWheelBadges(pool){
     const angle=(-Math.PI/2)+(step*index)+(step/2);
     const x=(50+Math.cos(angle)*radius).toFixed(2);
     const y=(50+Math.sin(angle)*radius).toFixed(2);
-    return '<div class="roulette-wheel-badge" style="left:'+x+'%;top:'+y+'%" title="'+escapeAttr(entry.label)+'">'+entry.icon+'</div>';
+    const badgeBg=entry.badgeBg||'radial-gradient(circle at 30% 30%,#ffffff 0%,#dbe7ff 48%,#334155 100%)';
+    const badgeBorder=entry.badgeBorder||'rgba(255,255,255,.22)';
+    const badgeColor=entry.badgeColor||'#fff';
+    const secretCls=isRouletteSecretReward(entry)?' is-secret':'';
+    return '<div class="roulette-wheel-badge'+secretCls+'" style="left:'+x+'%;top:'+y+'%;--roulette-badge-bg:'+badgeBg+';--roulette-badge-border:'+badgeBorder+';--roulette-badge-color:'+badgeColor+'" title="'+escapeAttr(entry.label)+'"><span>'+entry.icon+'</span></div>';
   }).join('');
 }
 
@@ -2010,7 +2031,12 @@ function renderRoulettePanel(){
   const freeSpinAvailable=hasRouletteFreeSpinAvailable();
   const freeSpinCountdown=freeSpinAvailable?'Disponible maintenant':getRouletteFreeSpinCountdownLabel();
   const pool=buildRouletteRewardPool();
-  const rewardPreview=pool.map(entry=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(148,163,184,.14);font-size:.66rem">'+entry.icon+' '+escapeHtml(entry.label)+'</span>').join('');
+  const rewardPreview=pool.map(entry=>{
+    const chipBg='linear-gradient(135deg,'+String(entry.colorA||'#94a3b8')+'33,'+String(entry.colorB||'#64748b')+'26)';
+    const chipBorder=String(entry.badgeBorder||'rgba(148,163,184,.24)');
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:'+chipBg+';border:1px solid '+chipBorder+';font-size:.66rem;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)">'+entry.icon+' '+escapeHtml(entry.label)+'</span>';
+  }).join('');
+  const legendHtml=buildRouletteColorLegend(pool);
   const wheelGradient=buildRouletteWheelGradient(pool);
   const wheelBadges=buildRouletteWheelBadges(pool);
   const bettor=getProfileBettingPlayer();
@@ -2092,8 +2118,8 @@ function renderRoulettePanel(){
               <div class="roulette-wheel-shell">
                 <div class="roulette-wheel-disc ${roulette.isSpinning?'spinning':''}" id="roulette-wheel-disc" style="--roulette-rotation:${Number(roulette.displayRotation)||0}deg;--roulette-spin-duration:${getRouletteSpinDurationMs()}ms;background:${wheelGradient}">
                   ${wheelBadges}
-                  <div class="roulette-wheel-center">Neo</div>
                 </div>
+                <div class="roulette-wheel-center">Neo</div>
               </div>
             </div>
             <div class="roulette-spin-status" id="roulette-spin-status">${spinState}</div>
@@ -2106,7 +2132,9 @@ function renderRoulettePanel(){
           </div>
           <div class="card" style="padding:10px">
             <div class="card-title">🎁 Récompenses possibles</div>
+            <div class="roulette-color-legend" style="margin-top:8px">${legendHtml}</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${rewardPreview}</div>
+            <div style="font-size:.64rem;color:var(--muted);margin-top:8px">Repère rapide : <b>même couleur = même famille de gain</b>.</div>
           </div>
           <div class="card" style="padding:10px">
             <div class="card-title">🛍️ Boutique casino</div>
@@ -2184,7 +2212,7 @@ let P={
   emojiUnlocks:{},
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
-  rouletteCoins:12,
+  rouletteCoins:0,
   rouletteSpinCount:0,
   lastRouletteSettlementId:0,
   lastRouletteFreeSpinDate:'',
@@ -2263,7 +2291,7 @@ function loadProfile(opts){
   P.inventory.mortgageDiscount=Math.max(0,parseInt(P.inventory.mortgageDiscount,10)||0);
   {
     const parsedRouletteCoins=parseInt(P.rouletteCoins,10);
-    P.rouletteCoins=Number.isFinite(parsedRouletteCoins)?Math.max(0,parsedRouletteCoins):12;
+    P.rouletteCoins=Number.isFinite(parsedRouletteCoins)?Math.max(0,parsedRouletteCoins):ROULETTE_LOBBY_STARTING_BALANCE;
   }
   P.rouletteSpinCount=Math.max(0,parseInt(P.rouletteSpinCount,10)||0);
   P.lastRouletteSettlementId=Math.max(0,parseInt(P.lastRouletteSettlementId,10)||0);
