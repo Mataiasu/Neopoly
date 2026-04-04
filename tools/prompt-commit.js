@@ -1,10 +1,10 @@
-const { spawnSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 
 const repoRoot = path.resolve(__dirname, '..');
-const gitDir = path.join(repoRoot, '.git');
-const stateFile = path.join(gitDir, 'copilot-prompt-commit.json');
+let gitDir = path.join(repoRoot, '.git');
+let stateFile = path.join(gitDir, 'copilot-prompt-commit.json');
 const manualCommitScript = path.join(__dirname, 'manual-commit.js');
 const rawArgs = process.argv.slice(2);
 const flagArgs = new Set(rawArgs.filter(arg => arg.startsWith('--')));
@@ -23,6 +23,28 @@ function nowLabel() {
   });
 }
 
+function runGit(commandArgs) {
+  return execFileSync('git', commandArgs, {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
+}
+
+function isGitRepo() {
+  try {
+    return runGit(['rev-parse', '--is-inside-work-tree']) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function refreshGitPaths() {
+  if (!isGitRepo()) throw new Error('Ce dossier n\'est pas un dépôt git.');
+  gitDir = path.resolve(repoRoot, runGit(['rev-parse', '--git-dir']) || '.git');
+  stateFile = path.join(gitDir, 'copilot-prompt-commit.json');
+}
+
 function readState() {
   try {
     const raw = fs.readFileSync(stateFile, 'utf8');
@@ -39,7 +61,8 @@ function readState() {
 }
 
 function writeState(state) {
-  if (!fs.existsSync(gitDir)) fs.mkdirSync(gitDir, { recursive: true });
+  const parentDir = path.dirname(stateFile);
+  if (!fs.existsSync(parentDir)) fs.mkdirSync(parentDir, { recursive: true });
   fs.writeFileSync(stateFile, JSON.stringify(state, null, 2) + '\n', 'utf8');
 }
 
@@ -60,6 +83,7 @@ try {
     process.exit(0);
   }
 
+  refreshGitPaths();
   const state = readState();
   state.threshold = threshold;
 

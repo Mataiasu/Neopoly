@@ -7,8 +7,11 @@ const rawArgs = process.argv.slice(2);
 const args = new Set(rawArgs);
 const runOnce = args.has('--once');
 const untilArg = rawArgs.find((arg) => arg.startsWith('--until='));
+const intervalArg = rawArgs.find((arg) => arg.startsWith('--interval=') || arg.startsWith('--every='));
 const autoPush = !args.has('--no-push') && !['0', 'false', 'no'].includes(String(process.env.AUTO_PUSH || 'true').toLowerCase());
-const intervalMinutes = Math.max(1, Number(process.env.AUTO_COMMIT_INTERVAL_MINUTES || 20));
+const intervalRaw = intervalArg ? intervalArg.split('=').slice(1).join('=') : (process.env.AUTO_COMMIT_INTERVAL_MINUTES || 20);
+const parsedIntervalMinutes = Number(intervalRaw);
+const intervalMinutes = Number.isFinite(parsedIntervalMinutes) && parsedIntervalMinutes > 0 ? Math.max(1, parsedIntervalMinutes) : 20;
 const intervalMs = intervalMinutes * 60 * 1000;
 const untilValue = String(untilArg ? untilArg.split('=').slice(1).join('=') : (process.env.AUTO_COMMIT_UNTIL || '')).trim();
 
@@ -50,8 +53,37 @@ function runGit(commandArgs) {
   }).trim();
 }
 
+function isGitRepo() {
+  try {
+    return runGit(['rev-parse', '--is-inside-work-tree']) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function getGitDir() {
+  try {
+    return path.resolve(repoRoot, runGit(['rev-parse', '--git-dir']) || '.git');
+  } catch (_) {
+    return path.join(repoRoot, '.git');
+  }
+}
+
 function hasGitLock() {
-  return fs.existsSync(path.join(repoRoot, '.git', 'index.lock'));
+  return fs.existsSync(path.join(getGitDir(), 'index.lock'));
+}
+
+function pushCurrentBranch(remote, branch) {
+  try {
+    runGit(['push', remote, branch]);
+  } catch (error) {
+    const stderr = String((error && error.stderr) || '');
+    if (/has no upstream branch|set the remote as upstream/i.test(stderr)) {
+      runGit(['push', '-u', remote, branch]);
+      return;
+    }
+    throw error;
+  }
 }
 
 function getStatusLines() {
@@ -77,6 +109,9 @@ function buildCommitMessage() {
 
 function tick() {
   try {
+    if (!isGitRepo()) {
+      throw new Error('Ce dossier n\'est pas un dépôt git.');
+    }
     if (shouldStopWatcher()) {
       console.log(`[${nowLabel()}] Stop time reached (${stopAt.label}), auto-commit watcher stopped.`);
       if (typeof process !== 'undefined' && typeof process.exit === 'function') process.exit(0);
@@ -114,7 +149,7 @@ function tick() {
       const remote = getFirstRemote();
       if (remote) {
         const branch = getBranchName();
-        runGit(['push', remote, branch]);
+        pushCurrentBranch(remote, branch);
         console.log(`[${nowLabel()}] Pushed to ${remote}/${branch}.`);
       } else {
         console.log(`[${nowLabel()}] No remote found, push skipped.`);

@@ -28,6 +28,22 @@ function runGit(commandArgs) {
   }).trim();
 }
 
+function isGitRepo() {
+  try {
+    return runGit(['rev-parse', '--is-inside-work-tree']) === 'true';
+  } catch (_) {
+    return false;
+  }
+}
+
+function getGitDir() {
+  try {
+    return path.resolve(repoRoot, runGit(['rev-parse', '--git-dir']) || '.git');
+  } catch (_) {
+    return path.join(repoRoot, '.git');
+  }
+}
+
 function getStatusLines() {
   const raw = runGit(['status', '--porcelain']);
   return raw ? raw.split(/\r?\n/).filter(Boolean) : [];
@@ -55,13 +71,33 @@ function printUsage() {
 }
 
 function hasGitLock() {
-  return fs.existsSync(path.join(repoRoot, '.git', 'index.lock'));
+  return fs.existsSync(path.join(getGitDir(), 'index.lock'));
+}
+
+function pushCurrentBranch(remote, branch, amendMode) {
+  try {
+    const pushArgs = amendMode
+      ? ['push', '--force-with-lease', remote, branch]
+      : ['push', remote, branch];
+    runGit(pushArgs);
+  } catch (error) {
+    const stderr = String((error && error.stderr) || '');
+    if (!amendMode && /has no upstream branch|set the remote as upstream/i.test(stderr)) {
+      runGit(['push', '-u', remote, branch]);
+      return;
+    }
+    throw error;
+  }
 }
 
 try {
   if (flagArgs.has('--help')) {
     printUsage();
     process.exit(0);
+  }
+
+  if (!isGitRepo()) {
+    throw new Error('Ce dossier n\'est pas un dépôt git.');
   }
 
   if (hasGitLock()) {
@@ -97,10 +133,7 @@ try {
     const remote = getFirstRemote();
     if (remote) {
       const branch = getBranchName();
-      const pushArgs = amendCommit
-        ? ['push', '--force-with-lease', remote, branch]
-        : ['push', remote, branch];
-      runGit(pushArgs);
+      pushCurrentBranch(remote, branch, amendCommit);
       console.log(`[${nowLabel()}] Push effectué vers ${remote}/${branch}.`);
     } else {
       console.log(`[${nowLabel()}] Aucun remote trouvé, push ignoré.`);
