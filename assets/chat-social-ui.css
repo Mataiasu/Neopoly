@@ -6,6 +6,10 @@
 .chat-user-link{cursor:pointer;pointer-events:auto;text-decoration:underline dotted rgba(148,163,184,.45);text-underline-offset:2px}
 .chat-user-link:hover{opacity:.92;filter:brightness(1.06)}
 .chat-user-badge{display:inline-block;font-size:.58rem;padding:1px 6px;border-radius:999px;border:1px solid var(--border);margin-left:4px;color:var(--muted)}
+.chat-connection-badge{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;margin-left:4px;border-radius:999px;border:1px solid rgba(148,163,184,.18);background:rgba(15,23,42,.32);vertical-align:middle}
+.chat-connection-badge.google{background:rgba(255,255,255,.96);border-color:rgba(255,255,255,.45);box-shadow:0 2px 8px rgba(2,6,23,.14)}
+.chat-connection-badge.google svg{display:block}
+.chat-connection-badge.guest{color:var(--muted);font-size:.62rem;background:rgba(148,163,184,.08)}
 .chat-user-menu{position:fixed;inset:0;z-index:4000;padding:18px;display:none;align-items:center;justify-content:center;overflow-y:auto;overscroll-behavior:contain;background:rgba(2,6,23,.64);backdrop-filter:blur(10px)}
 .chat-user-menu.open{display:flex}
 .chat-user-dialog{width:min(560px,calc(100vw - 20px));max-height:min(88vh,820px);margin:auto;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;scrollbar-gutter:stable both-edges;padding:12px;background:linear-gradient(180deg,rgba(15,23,42,.97),rgba(2,6,23,.97));border:1px solid rgba(148,163,184,.22);border-radius:18px;box-shadow:0 20px 50px rgba(0,0,0,.42)}

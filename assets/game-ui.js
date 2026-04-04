@@ -864,6 +864,14 @@ function connectWs(url,room,onOpen){
           showScreen('lobby');
           return;
         }
+        if(msg.type==='error'&&msg.code==='ACCOUNT_ALREADY_IN_ROOM'){
+          const activeRoom=msg.activeRoom?(' ('+msg.activeRoom+')'):'';
+          toast('⛔ Ce compte est déjà connecté à une autre partie'+activeRoom+'. Quitte-la avant d’en rejoindre une nouvelle.','d');
+          wsLog('Double connexion bloquée'+activeRoom);
+          disconnectWs();
+          showScreen('lobby');
+          return;
+        }
         if(msg.room!==G.room)return;
         if(msg.type==='state'&&msg.sender!==G.myId){
           G.players=msg.state.players;
@@ -1054,6 +1062,12 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
       setJoinRoomStatus('Mot de passe incorrect pour la salle '+roomId+'.','d');
       switchJoinMode('direct');
       document.getElementById('jn-room').value=roomId;
+      return;
+    }
+    if(probe.error==='ACCOUNT_ALREADY_IN_ROOM'){
+      const activeRoom=probe.activeRoom?(' ('+probe.activeRoom+')'):'';
+      toast('⛔ Ce compte est déjà dans une autre partie'+activeRoom+'.','d');
+      setJoinRoomStatus('Ce compte est déjà connecté à une autre partie'+activeRoom+'. Quitte-la avant d’en rejoindre une nouvelle.','d');
       return;
     }
     toast('Aucune salle ne correspond à ce code.','d');

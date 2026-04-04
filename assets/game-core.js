@@ -3201,6 +3201,9 @@ function requestWsServer(url,payload,expectedType,timeoutMs=3500){
     let settled=false;
     let timer=null;
     let socket=null;
+    const enriched=Object.assign({},payload||{});
+    if(P&&P.uid&&!enriched.uid)enriched.uid=P.uid;
+    if(P&&P.googleSessionToken&&!enriched.sessionToken)enriched.sessionToken=P.googleSessionToken;
     const finish=(fn,value)=>{
       if(settled) return;
       settled=true;
@@ -3216,7 +3219,7 @@ function requestWsServer(url,payload,expectedType,timeoutMs=3500){
     }
     timer=setTimeout(()=>finish(reject,new Error('timeout')),timeoutMs);
     socket.onopen=()=>{
-      try{ socket.send(JSON.stringify(payload)); }
+      try{ socket.send(JSON.stringify(enriched)); }
       catch(err){ finish(reject,err); }
     };
     socket.onmessage=(event)=>{
@@ -3380,6 +3383,11 @@ const TUTORIAL_STEPS=[
 ];
 
 function switchLobbyTab(name){
+  if(name==='amis-pane'&&!(P&&P.googleConnected)){
+    toast('👫 Le mode amis est réservé aux comptes Google.','w');
+    if(typeof openGoogleLoginModal==='function')openGoogleLoginModal();
+    name='profil-pane';
+  }
   document.querySelectorAll('.lobby-tab').forEach(t=>t.classList.toggle('active',t.dataset.ltab===name));
   document.querySelectorAll('.lobby-tab-pane').forEach(p=>p.classList.toggle('active',p.id===name));
 }

@@ -1,4 +1,18 @@
+function canUseGoogleFriendsFeature(){
+  return !!(P&&P.googleConnected);
+}
+
+function promptGoogleFriendsAccess(){
+  const msg=document.getElementById('add-friend-msg');
+  const text='👫 Les amis sont réservés aux comptes Google. Connecte-toi pour activer ce mode.';
+  if(msg){msg.style.color='var(--yellow)';msg.textContent=text;}
+  toast(text,'w');
+  if(typeof openGoogleLoginModal==='function')openGoogleLoginModal();
+  return false;
+}
+
 function copyFriendCode(){
+  if(!canUseGoogleFriendsFeature())return promptGoogleFriendsAccess();
   navigator.clipboard?.writeText(P.uid).then(()=>toast('📋 Code copié !','i')).catch(()=>{});
 }
 
@@ -38,6 +52,10 @@ function addFriendFromProfile(profile,opts){
   const msg=document.getElementById('add-friend-msg');
   const uid=normalizeProfileUid(profile&&profile.uid);
   const name=String(profile&&profile.name||'Ami').trim()||'Ami';
+  if(!canUseGoogleFriendsFeature()){
+    if(msg&&!options.silent){msg.style.color='var(--yellow)';msg.textContent='Connecte-toi avec Google pour utiliser les amis.';}
+    return promptGoogleFriendsAccess();
+  }
   if(!uid){
     if(msg&&!options.silent){msg.style.color='var(--red)';msg.textContent='UID ami introuvable.';}
     return false;
@@ -125,7 +143,8 @@ function getSharedChatProfilePayload(sourceProfile){
     emoji:String(source&&source.emoji||P.emoji||'👤'),
     avatarImg:(source&&source.avatarImg)||null,
     admin,
-    profilePrivate
+    profilePrivate,
+    googleConnected:!!(source&&source.googleConnected)
   };
   if(profilePrivate){
     return Object.assign(base,{
@@ -646,6 +665,17 @@ document.addEventListener('keydown',ev=>{
 
 function renderFriendsList(){
   const area=document.getElementById('friends-list-area');if(!area)return;
+  const input=document.getElementById('add-friend-input');
+  const addBtn=document.querySelector('#amis-pane button[onclick="addFriend()"]');
+  const copyBtn=document.querySelector('#amis-pane button[onclick="copyFriendCode()"]');
+  const locked=!canUseGoogleFriendsFeature();
+  if(input)input.disabled=locked;
+  if(addBtn)addBtn.disabled=locked;
+  if(copyBtn)copyBtn.disabled=locked;
+  if(locked){
+    area.innerHTML='<div class="card" style="padding:12px;font-size:.72rem;color:var(--muted);text-align:center">🔒 Le mode amis est réservé aux comptes Google.<div style="margin-top:8px"><button class="btn btn-sm btn-primary" type="button" onclick="openGoogleLoginModal()">Se connecter avec Google</button></div></div>';
+    return;
+  }
   if(!P.friends.length){
     area.innerHTML='<div style="font-size:.72rem;color:var(--muted);text-align:center;padding:10px">Aucun ami pour l\'instant.<br>Partage ton code !</div>';
     return;
@@ -689,6 +719,7 @@ function renderFriendsList(){
 }
 
 function addFriend(){
+  if(!canUseGoogleFriendsFeature())return promptGoogleFriendsAccess();
   const inp=document.getElementById('add-friend-input');
   const msg=document.getElementById('add-friend-msg');
   const code=normalizeProfileUid(inp?.value||'');
@@ -785,14 +816,25 @@ function renderSocialChat(){
       moneyEarned:m.moneyEarned,
       titlesCount:m.titlesCount,
       emojiCount:m.emojiCount,
-      profilePrivate:!!m.profilePrivate
+      profilePrivate:!!m.profilePrivate,
+      googleConnected:!!m.googleConnected
     }));
+
+    const auth=document.createElement('span');
+    auth.className='chat-connection-badge '+(m.googleConnected?'google':'guest');
+    auth.title=m.googleConnected?'Connecté avec Google':'Mode invité';
+    if(m.googleConnected){
+      auth.innerHTML='<svg width="11" height="11" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>';
+    }else{
+      auth.textContent='👤';
+    }
 
     const tm=document.createElement('span');
     tm.className='sc-time';
     tm.textContent=new Date(m.ts).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
 
     d.appendChild(nm);
+    d.appendChild(auth);
     if(isFriend||isMuted||isBlocked){
       const badge=document.createElement('span');
       badge.className='chat-user-badge';
@@ -842,7 +884,8 @@ function addSocialMsg(name,color,text,mine,meta){
     moneyEarned:extra.moneyEarned,
     titlesCount:extra.titlesCount,
     emojiCount:extra.emojiCount,
-    profilePrivate:!!extra.profilePrivate
+    profilePrivate:!!extra.profilePrivate,
+    googleConnected:!!extra.googleConnected
   });
   if(P.chatLog.length>200)P.chatLog.shift();
   queueSocialChatPersist();
@@ -1063,7 +1106,7 @@ function connectSocialWs(auto=false){
             return;
           }
           if(m.type==='social_chat'&&m.uid!==P.uid){
-            addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed,gamesLost:m.gamesLost,propertiesBought:m.propertiesBought,moneyEarned:m.moneyEarned,titlesCount:m.titlesCount,emojiCount:m.emojiCount});
+            addSocialMsg(m.name,m.color,m.text,false,{uid:m.uid||null,admin:!!m.admin,emoji:m.emoji||'',avatarImg:m.avatarImg||null,elo:m.elo,rankLabel:m.rankLabel||'',rankClass:m.rankClass||'',titleLabel:m.titleLabel||'',gamesWon:m.gamesWon,gamesPlayed:m.gamesPlayed,gamesLost:m.gamesLost,propertiesBought:m.propertiesBought,moneyEarned:m.moneyEarned,titlesCount:m.titlesCount,emojiCount:m.emojiCount,googleConnected:!!m.googleConnected});
           }
           if(m.type==='social_join'&&m.uid!==P.uid){
             const f=P.friends.find(f=>normalizeProfileUid(f.uid)===normalizeProfileUid(m.uid));

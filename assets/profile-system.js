@@ -575,6 +575,14 @@ function renderLobbyProfileTab(){
   const pcUid=document.getElementById('pc-uid');
   if(pcUid){pcUid.textContent='ID: '+P.uid;pcUid.title='Clique pour copier (code ami)';}
   const fcEl=document.getElementById('my-friend-code');if(fcEl)fcEl.textContent=P.uid;
+  const friendsTab=document.querySelector('.lobby-tab[data-ltab="amis-pane"]');
+  if(friendsTab){
+    const locked=!P.googleConnected;
+    friendsTab.classList.toggle('tab-locked',locked);
+    friendsTab.setAttribute('aria-disabled',locked?'true':'false');
+    friendsTab.title=locked?'Réservé aux comptes Google':'Amis';
+    if(locked&&document.getElementById('amis-pane')?.classList.contains('active')&&typeof switchLobbyTab==='function')switchLobbyTab('profil-pane');
+  }
   setPublicProfileShareUrl(getPublicProfileShareUrl());
   const gArea=document.getElementById('google-connect-area');
   if(gArea){

@@ -291,6 +291,7 @@ function getTrustedSession(body) {
 const rooms = {};
 const roomAddons = {};
 const roomMeta = {};
+const activeOnlineIdentities = new Map();
 const MAX_ROOM_PLAYERS = 6;
 const SOCIAL_ROOM_ID = 'social-lobby';
 const SOCIAL_CHAT_AUTO_CLEAR_MS = 5 * 60 * 1000;
@@ -494,6 +495,55 @@ function broadcastToRoom(room, payload) {
       client.send(encoded);
     }
   });
+}
+
+function getOnlineIdentityKey(msg, session) {
+  const googleSub = sanitizeStr(msg && (msg.googleSub || (session && session.sub)), 128);
+  if (googleSub) return 'gsub:' + googleSub;
+  const email = normalizeEmail(msg && (msg.email || (session && session.email)));
+  if (email) return 'email:' + email;
+  const uid = sanitizeStr(msg && (msg.uid || msg.userId || msg.profileUid), 128);
+  if (uid) return 'uid:' + uid;
+  return '';
+}
+
+function getOnlineIdentityClaim(identityKey) {
+  const key = String(identityKey || '').trim();
+  if (!key) return null;
+  const claim = activeOnlineIdentities.get(key);
+  if (!claim) return null;
+  if (!claim.ws || claim.ws.readyState !== WebSocket.OPEN) {
+    activeOnlineIdentities.delete(key);
+    return null;
+  }
+  return claim;
+}
+
+function claimOnlineIdentity(identityKey, room, ws) {
+  const key = String(identityKey || '').trim();
+  const roomId = String(room || '').trim();
+  if (!key || !roomId || roomId === SOCIAL_ROOM_ID) return { ok: true };
+  const previousKey = String(ws && ws.__onlineIdentityKey || '').trim();
+  if (previousKey && previousKey !== key) activeOnlineIdentities.delete(previousKey);
+  const existing = getOnlineIdentityClaim(key);
+  if (existing && existing.ws !== ws) {
+    return { ok: false, room: existing.room || '', joinedAt: Number(existing.joinedAt || 0) };
+  }
+  activeOnlineIdentities.set(key, { ws, room: roomId, joinedAt: Date.now() });
+  ws.__onlineIdentityKey = key;
+  ws.__onlineRoom = roomId;
+  return { ok: true, room: roomId };
+}
+
+function releaseOnlineIdentityForSocket(ws) {
+  const key = String(ws && ws.__onlineIdentityKey || '').trim();
+  if (!key) return;
+  const existing = activeOnlineIdentities.get(key);
+  if (!existing || existing.ws === ws) activeOnlineIdentities.delete(key);
+  try {
+    delete ws.__onlineIdentityKey;
+    delete ws.__onlineRoom;
+  } catch (_) {}
 }
 
 function ensureSocialRoom() {
@@ -1139,6 +1189,7 @@ wss.on('connection', (ws) => {
     try {
       const msg = JSON.parse(raw);
       if (msg.sender) mySender = msg.sender;
+      const senderSession = getTrustedSession(msg);
 
       if (msg.type === 'room_list_request') {
         sendJson(ws, { type: 'room_list', rooms: listPublicRooms() });
@@ -1153,18 +1204,21 @@ wss.on('connection', (ws) => {
         const providedPassword = getRoomPassword(msg.password);
         const missingPassword = !!(meta && meta.roomPassword && providedPassword !== meta.roomPassword);
         const roomFull = !!(roomInfo && roomInfo.availableSlots <= 0);
-        const ok = exists && !missingPassword && !roomFull;
+        const identityKey = getOnlineIdentityKey(msg, senderSession);
+        const onlineClaim = getOnlineIdentityClaim(identityKey);
+        const identityBusy = !!(onlineClaim && onlineClaim.ws !== ws);
+        const ok = exists && !missingPassword && !roomFull && !identityBusy;
         sendJson(ws, {
           type: 'join_probe_result',
           room: roomId,
           ok,
-          error: !exists ? 'ROOM_NOT_FOUND' : (roomFull ? 'ROOM_FULL' : (missingPassword ? 'ROOM_BAD_PASSWORD' : null)),
+          error: !exists ? 'ROOM_NOT_FOUND' : (roomFull ? 'ROOM_FULL' : (missingPassword ? 'ROOM_BAD_PASSWORD' : (identityBusy ? 'ACCOUNT_ALREADY_IN_ROOM' : null))),
           roomInfo,
+          activeRoom: identityBusy ? (onlineClaim.room || '') : '',
         });
         return;
       }
 
-      const senderSession = getTrustedSession(msg);
       const senderMod = getModerationState({
         uid: msg.uid || msg.playerId || msg.userId || msg.sender,
         googleSub: senderSession ? senderSession.sub : '',
@@ -1196,6 +1250,17 @@ wss.on('connection', (ws) => {
       myRoom = room;
 
       if (msg.type === 'create_room') {
+        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws);
+        if (!identityClaim.ok) {
+          sendJson(ws, {
+            type: 'error',
+            code: 'ACCOUNT_ALREADY_IN_ROOM',
+            room,
+            activeRoom: identityClaim.room || '',
+            roomInfo: identityClaim.room ? getRoomSummary(identityClaim.room) : null,
+          });
+          return;
+        }
         if (!rooms[room]) rooms[room] = new Set();
         const meta = ensureRoomMeta(room);
         rooms[room].add(ws);
@@ -1247,6 +1312,20 @@ wss.on('connection', (ws) => {
         const providedPassword = getRoomPassword(msg.roomPassword);
         if (meta.roomPassword && providedPassword !== meta.roomPassword) {
           sendJson(ws, { type: 'error', code: 'ROOM_BAD_PASSWORD', room, roomInfo });
+          return;
+        }
+      }
+
+      if (msg.type === 'ready') {
+        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws);
+        if (!identityClaim.ok) {
+          sendJson(ws, {
+            type: 'error',
+            code: 'ACCOUNT_ALREADY_IN_ROOM',
+            room,
+            activeRoom: identityClaim.room || '',
+            roomInfo: identityClaim.room ? getRoomSummary(identityClaim.room) : null,
+          });
           return;
         }
       }
@@ -1338,6 +1417,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    releaseOnlineIdentityForSocket(ws);
     if (myRoom && rooms[myRoom]) {
       rooms[myRoom].delete(ws);
       if (roomMeta[myRoom] && roomMeta[myRoom].hostSender === mySender) {
