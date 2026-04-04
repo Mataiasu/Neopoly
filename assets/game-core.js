@@ -1136,6 +1136,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   initDebugAccessControl();
   initProfileImgZone();
   initDesktopKeyboardShortcuts();
+  initModalBackdropClose();
   window.maybeOpenSharedProfileFromUrl?.();
   document.querySelectorAll('.lobby-tab').forEach(btn=>btn.addEventListener('click',()=>switchLobbyTab(btn.dataset.ltab)));
 });
@@ -1383,7 +1384,11 @@ const EMOJI_UNLOCK_DEFS=[
   {key:'secret_shadow',emoji:'🕶️',label:'Ombre',desc:'Style clandestin reserve aux obstines.',secret:true,cond:'Condition secrète',unlock:p=>((parseInt(p?.stats?.gamesLost,10)||0)>=13&&(parseInt(p?.stats?.gamesWon,10)||0)>=13)},
   {key:'quest_orchid',emoji:'🪷',label:'Lotus astral',desc:'Cosmétique premium obtenu via les quêtes.',secret:true,cond:'Obtenir la Palette prismatique',unlock:p=>!!p?.emojiUnlocks?.quest_orchid},
   {key:'rare_unicorn',emoji:'🦄',label:'Licorne Néo',desc:'Récompense hebdomadaire rare.',secret:true,cond:'Obtenir une mission hebdo rare',unlock:p=>!!p?.emojiUnlocks?.rare_unicorn},
-  {key:'rare_phoenix',emoji:'🐦‍🔥',label:'Phénix',desc:'Récompense légendaire de saison.',secret:true,cond:'Débloquer un palier de saison rare',unlock:p=>!!p?.emojiUnlocks?.rare_phoenix}
+  {key:'rare_phoenix',emoji:'🐦‍🔥',label:'Phénix',desc:'Récompense légendaire de saison.',secret:true,cond:'Débloquer un palier de saison rare',unlock:p=>!!p?.emojiUnlocks?.rare_phoenix},
+  {key:'roulette_clover',emoji:'🍀',label:'Trèfle chanceux',desc:'Récompense exclusive gagnée à la roulette.',secret:true,cond:'Gagner le trèfle via la roulette premium',unlock:p=>!!p?.emojiUnlocks?.roulette_clover},
+  {key:'roulette_joker',emoji:'🃏',label:'Joker VIP',desc:'Cosmétique rare réservé au casino NeoPoly.',secret:true,cond:'Gagner le joker via la roulette premium',unlock:p=>!!p?.emojiUnlocks?.roulette_joker},
+  {key:'roulette_comet',emoji:'☄️',label:'Comète secrète',desc:'Récompense ultra rare de la roue du casino.',secret:true,cond:'Tomber sur le jackpot secret du casino',unlock:p=>!!p?.emojiUnlocks?.roulette_comet},
+  {key:'season_saturn',emoji:'🪐',label:'Saturne mystique',desc:'Récompense secrète liée aux quêtes et saisons avancées.',secret:true,cond:'Obtenir le Sceau Nebula',unlock:p=>!!p?.emojiUnlocks?.season_saturn}
 ];
 const COLORS=['#67f7d7','#8aa1ff','#ff9b74','#ff647c','#d36bff','#ffd166'];
 
@@ -1414,6 +1419,7 @@ const G={
   bonusTurns:{},
   parkingPotEnabled:false,
   parkingPot:0,
+  roulette:{enabled:true,startingCoins:5,totalPot:0,bets:{},history:[]},
   pendingRollBoostFor:null,
   botActionTimer:null,
   turnCount:1,
@@ -1474,6 +1480,672 @@ const NET_TRADE={
   timeoutMs:30000,
 };
 
+const ROULETTE_SPIN_COST=8;
+const ROULETTE_LOBBY_STARTING_BALANCE=12;
+const CASINO_SHOP_ITEMS=[
+  {id:'boost_crate',icon:'⚡',name:'Pack Turbo',price:14,desc:'2 boosters de dé persistants.',reward:{type:'diceBoost',qty:2}},
+  {id:'escape_pass',icon:'🛡️',name:'Pack Évasion',price:16,desc:'2 anti-prison permanents.',reward:{type:'antiJail',qty:2}},
+  {id:'finance_kit',icon:'🏦',name:'Kit Financier',price:18,desc:'2 remises hypothèque persistantes.',reward:{type:'mortgageDiscount',qty:2}},
+  {id:'clover_ticket',icon:'🍀',name:'Ticket Trèfle',price:42,desc:'Débloque l’emoji Trèfle chanceux.',reward:{type:'unlockEmoji',key:'roulette_clover',fallback:{type:'diceBoost',qty:1}}},
+  {id:'casino_badge',icon:'🎖️',name:'Badge Casino',price:58,desc:'Débloque le titre Favori du casino.',reward:{type:'unlockTitle',key:'casino_lucky',fallback:{type:'rouletteCoins',qty:10}}},
+];
+
+function getDefaultRouletteState(){
+  return {
+    enabled:true,
+    totalPot:0,
+    bets:{},
+    history:[],
+    spinCost:ROULETTE_SPIN_COST,
+    pendingPayouts:{},
+    settlementId:0,
+    lastReward:null,
+    lastSpinAt:0,
+    displayRotation:0,
+    isSpinning:false,
+    pendingRewardPreview:null,
+    secretFxActive:false,
+    secretFxLabel:'',
+    secretFxUntil:0,
+  };
+}
+
+function ensureRouletteState(){
+  if(!G.roulette||typeof G.roulette!=='object')G.roulette=getDefaultRouletteState();
+  G.roulette.enabled=G.roulette.enabled!==false;
+  G.roulette.totalPot=Math.max(0,parseInt(G.roulette.totalPot,10)||0);
+  G.roulette.spinCost=Math.max(1,parseInt(G.roulette.spinCost,10)||ROULETTE_SPIN_COST);
+  if(!G.roulette.bets||typeof G.roulette.bets!=='object')G.roulette.bets={};
+  if(!G.roulette.pendingPayouts||typeof G.roulette.pendingPayouts!=='object')G.roulette.pendingPayouts={};
+  G.roulette.settlementId=Math.max(0,parseInt(G.roulette.settlementId,10)||0);
+  G.roulette.lastSpinAt=Math.max(0,parseInt(G.roulette.lastSpinAt,10)||0);
+  G.roulette.displayRotation=Number.isFinite(Number(G.roulette.displayRotation))?Number(G.roulette.displayRotation):0;
+  G.roulette.isSpinning=!!G.roulette.isSpinning;
+  G.roulette.pendingRewardPreview=G.roulette.pendingRewardPreview||null;
+  G.roulette.secretFxActive=!!G.roulette.secretFxActive;
+  G.roulette.secretFxLabel=String(G.roulette.secretFxLabel||'');
+  G.roulette.secretFxUntil=Math.max(0,parseInt(G.roulette.secretFxUntil,10)||0);
+  if(G.roulette.secretFxUntil&&G.roulette.secretFxUntil<Date.now()){
+    G.roulette.secretFxActive=false;
+    G.roulette.secretFxLabel='';
+    G.roulette.secretFxUntil=0;
+  }
+  if(!Array.isArray(G.roulette.history))G.roulette.history=[];
+  return G.roulette;
+}
+
+function ensureProfileRouletteData(){
+  if(!P||typeof P!=='object')return {rouletteCoins:0,rouletteSpinCount:0,lastRouletteSettlementId:0,lastRouletteFreeSpinDate:''};
+  const parsedRouletteCoins=parseInt(P.rouletteCoins,10);
+  P.rouletteCoins=Number.isFinite(parsedRouletteCoins)?Math.max(0,parsedRouletteCoins):ROULETTE_LOBBY_STARTING_BALANCE;
+  P.rouletteSpinCount=Math.max(0,parseInt(P.rouletteSpinCount,10)||0);
+  P.lastRouletteSettlementId=Math.max(0,parseInt(P.lastRouletteSettlementId,10)||0);
+  P.lastRouletteFreeSpinDate=String(P.lastRouletteFreeSpinDate||'');
+  return P;
+}
+
+function hasRouletteFreeSpinAvailable(){
+  ensureProfileRouletteData();
+  return String(P.lastRouletteFreeSpinDate||'')!==getTodayKey();
+}
+
+function getRouletteFreeSpinResetMs(){
+  const now=new Date();
+  const next=new Date(now);
+  next.setHours(24,0,0,0);
+  return Math.max(0,next.getTime()-now.getTime());
+}
+
+function getRouletteFreeSpinCountdownLabel(){
+  const totalMs=getRouletteFreeSpinResetMs();
+  const totalSec=Math.max(0,Math.ceil(totalMs/1000));
+  const hours=Math.floor(totalSec/3600);
+  const minutes=Math.floor((totalSec%3600)/60);
+  const seconds=totalSec%60;
+  return String(hours).padStart(2,'0')+':'+String(minutes).padStart(2,'0')+':'+String(seconds).padStart(2,'0');
+}
+
+function ensureRouletteCountdownTicker(){
+  if(typeof window==='undefined')return;
+  if(window.__rouletteCountdownTimer)return;
+  window.__rouletteCountdownTimer=setInterval(()=>{
+    const el=document.getElementById('roulette-free-spin-countdown');
+    if(!el)return;
+    el.textContent=hasRouletteFreeSpinAvailable()?'Disponible maintenant':getRouletteFreeSpinCountdownLabel();
+  },1000);
+}
+
+function ensureRoulettePlayerData(player){
+  return player&&typeof player==='object'?player:null;
+}
+
+function getRouletteSpinCost(){
+  return Math.max(1,parseInt(ensureRouletteState().spinCost,10)||ROULETTE_SPIN_COST);
+}
+
+function getProfileBettingPlayer(){
+  const players=Array.isArray(G.players)?G.players:[];
+  const controlled=players.find(p=>p&&!p.bot&&typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p));
+  return controlled||players.find(p=>p&&!p.bot&&!p.bust)||players[0]||null;
+}
+
+function getRouletteBetForPlayer(playerId){
+  if(!playerId)return null;
+  const roulette=ensureRouletteState();
+  const bet=roulette.bets[playerId];
+  return bet&&typeof bet==='object'?bet:null;
+}
+
+function resetRouletteForNewMatch(){
+  const roulette=ensureRouletteState();
+  roulette.totalPot=0;
+  roulette.bets={};
+  roulette.pendingPayouts={};
+  roulette.lastReward=null;
+  roulette.secretFxActive=false;
+  roulette.secretFxLabel='';
+  roulette.secretFxUntil=0;
+}
+
+function pushRouletteHistory(entry){
+  const roulette=ensureRouletteState();
+  roulette.history.unshift(String(entry||''));
+  if(roulette.history.length>12)roulette.history.length=12;
+}
+
+function addRouletteCoins(amount,reason='',opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  ensureProfileRouletteData();
+  const delta=parseInt(amount,10)||0;
+  if(!delta)return false;
+  P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)+delta);
+  if(!options.silent){
+    const msg='🪙 '+(delta>0?'+':'')+delta+' jeton'+(Math.abs(delta)>1?'s':'')+(reason?' • '+reason:'');
+    pushRouletteHistory(msg);
+    toast(msg,delta>0?'a':'i');
+    if(typeof glog==='function')glog(msg,delta>0?'a':'i');
+  }
+  if(!options.skipSave)saveProfileData?.();
+  if(!options.skipRender){
+    renderRoulettePanel?.();
+    if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  }
+  return true;
+}
+
+function spendRouletteCoins(amount,reason='',opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  ensureProfileRouletteData();
+  const cost=Math.max(0,parseInt(amount,10)||0);
+  if(!cost)return true;
+  if((parseInt(P.rouletteCoins,10)||0)<cost)return false;
+  P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)-cost);
+  if(!options.silent){
+    const msg='💸 -'+cost+' jeton'+(cost>1?'s':'')+(reason?' • '+reason:'');
+    pushRouletteHistory(msg);
+    toast(msg,'i');
+    if(typeof glog==='function')glog(msg,'i');
+  }
+  if(!options.skipSave)saveProfileData?.();
+  if(!options.skipRender){
+    renderRoulettePanel?.();
+    if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  }
+  return true;
+}
+
+function syncPendingRoulettePayouts(){
+  const roulette=ensureRouletteState();
+  ensureProfileRouletteData();
+  const settlementId=Math.max(0,parseInt(roulette.settlementId,10)||0);
+  if(!settlementId||P.lastRouletteSettlementId>=settlementId)return false;
+  const bettor=getProfileBettingPlayer();
+  const gain=bettor?Math.max(0,parseInt(roulette.pendingPayouts?.[bettor.id],10)||0):0;
+  P.lastRouletteSettlementId=settlementId;
+  if(gain>0){
+    P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)+gain);
+    toast('🪙 Pari gagnant : +'+gain+' jetons casino','a');
+  }
+  saveProfileData?.();
+  return gain>0;
+}
+
+function applyRouletteCosmeticReward(reward){
+  if(!reward||!reward.type)return false;
+  if(reward.type==='unlockEmoji'){
+    if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
+    if(P.emojiUnlocks[reward.key])return reward.fallback?applyRouletteSpinReward(reward.fallback):false;
+    P.emojiUnlocks[reward.key]=Date.now();
+    renderPartyEmojiPickers?.();
+    return true;
+  }
+  if(reward.type==='unlockTitle'){
+    if(!Array.isArray(P.titles))P.titles=[];
+    if(P.titles.includes(reward.key))return reward.fallback?applyRouletteSpinReward(reward.fallback):false;
+    P.titles.push(reward.key);
+    ensureTitleMeta?.(reward.key);
+    showTitleDot?.();
+    renderTitleSelector?.();
+    return true;
+  }
+  return false;
+}
+
+function applySecretRouletteReward(){
+  const secretBag=[
+    {icon:'☄️',label:'Comète secrète',type:'unlockEmoji',key:'roulette_comet',fallback:{type:'rouletteCoins',qty:18}},
+    {icon:'👑',label:'Titre High Roller',type:'unlockTitle',key:'casino_highroller',fallback:{type:'rouletteCoins',qty:16}},
+    {icon:'🔮',label:'Oracle du jackpot',type:'unlockTitle',key:'casino_oracle',fallback:{type:'rouletteCoins',qty:20}},
+    {icon:'✨',label:'Jackpot Mirage',type:'unlockSecret',key:'fx_jackpot',fallback:{type:'rouletteCoins',qty:22}},
+    {icon:'🌠',label:'Relique astrale rare',type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:24}},
+    {icon:'🪐',label:'Sceau Nebula',type:'rareReward',key:'season_sigil',fallback:{type:'seasonXp',qty:120}},
+    {icon:'🎁',label:'Coffre bonus x3',type:'diceBoost',qty:3},
+    {icon:'🪙',label:'Jackpot secret +25 jetons',type:'rouletteCoins',qty:25}
+  ];
+  const pick=secretBag[Math.floor(Math.random()*secretBag.length)]||secretBag[0];
+  const ok=applyRouletteSpinReward(pick);
+  if(!ok)return null;
+  return pick;
+}
+
+function applyRouletteSpinReward(reward){
+  if(!reward||!reward.type)return false;
+  if(reward.type==='secretRandom'){
+    return !!applySecretRouletteReward();
+  }
+  if(reward.type==='rouletteCoins'){
+    ensureProfileRouletteData();
+    P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)+Math.max(1,parseInt(reward.qty,10)||1));
+    return true;
+  }
+  if(reward.type==='unlockEmoji'||reward.type==='unlockTitle')return applyRouletteCosmeticReward(reward);
+  if(reward.type==='diceBoost'||reward.type==='antiJail'||reward.type==='mortgageDiscount'){
+    addInventoryItem(reward.type,Math.max(1,parseInt(reward.qty,10)||1));
+    return true;
+  }
+  return grantProfileReward({type:reward.type,qty:reward.qty,key:reward.key,fallback:reward.fallback});
+}
+
+function isRouletteSecretReward(reward){
+  if(!reward||!reward.type)return false;
+  if(reward.secretFx)return true;
+  if(reward.type==='secretRandom'||reward.type==='unlockSecret')return true;
+  if(reward.type==='rareReward')return ['starlight_chip','season_sigil'].includes(String(reward.key||''));
+  if(reward.type==='unlockEmoji')return ['roulette_comet'].includes(String(reward.key||''));
+  if(reward.type==='unlockTitle')return ['casino_highroller','casino_oracle'].includes(String(reward.key||''));
+  return false;
+}
+
+function triggerRouletteSecretCelebration(reward){
+  const roulette=ensureRouletteState();
+  roulette.secretFxActive=true;
+  roulette.secretFxLabel=String(reward?.label||'Jackpot secret');
+  roulette.secretFxUntil=Date.now()+4200;
+  if(triggerRouletteSecretCelebration._timer)clearTimeout(triggerRouletteSecretCelebration._timer);
+  triggerRouletteSecretCelebration._timer=setTimeout(()=>{
+    const state=ensureRouletteState();
+    state.secretFxActive=false;
+    state.secretFxLabel='';
+    state.secretFxUntil=0;
+    renderRoulettePanel?.();
+  },4200);
+}
+
+function buildRouletteRewardPool(){
+  return [
+    {icon:'🪙',label:'+4 jetons casino',type:'rouletteCoins',qty:4,weight:24},
+    {icon:'💰',label:'+7 jetons casino',type:'rouletteCoins',qty:7,weight:16},
+    {icon:'💎',label:'Jackpot +14 jetons',type:'rouletteCoins',qty:14,weight:7},
+    {icon:'🪐',label:'+70 XP saison',type:'seasonXp',qty:70,weight:7},
+    {icon:'⚡',label:'Booster de dé',type:'diceBoost',qty:1,weight:12},
+    {icon:'🛡️',label:'Anti-prison',type:'antiJail',qty:1,weight:9},
+    {icon:'🏦',label:'Remise hypothèque',type:'mortgageDiscount',qty:1,weight:9},
+    {icon:'🌠',label:'Relique astrale',type:'rareReward',key:'starlight_chip',weight:2,fallback:{type:'rouletteCoins',qty:14}},
+    {icon:'🍀',label:'Emoji Trèfle chanceux',type:'unlockEmoji',key:'roulette_clover',weight:5,fallback:{type:'rouletteCoins',qty:6}},
+    {icon:'🃏',label:'Emoji Joker VIP',type:'unlockEmoji',key:'roulette_joker',weight:3,fallback:{type:'rouletteCoins',qty:8}},
+    {icon:'🎖️',label:'Titre Favori du casino',type:'unlockTitle',key:'casino_lucky',weight:4,fallback:{type:'rouletteCoins',qty:9}},
+    {icon:'👑',label:'Titre High Roller',type:'unlockTitle',key:'casino_highroller',weight:2,fallback:{type:'rouletteCoins',qty:12}},
+    {icon:'❔',label:'Récompense secrète aléatoire',type:'secretRandom',weight:1}
+  ];
+}
+
+function getRouletteSpinDurationMs(){
+  return 3200;
+}
+
+function isCasinoShopRewardOwned(reward){
+  if(!reward||!reward.type)return false;
+  if(reward.type==='unlockEmoji')return !!P.emojiUnlocks?.[reward.key];
+  if(reward.type==='unlockTitle')return Array.isArray(P.titles)&&P.titles.includes(reward.key);
+  return false;
+}
+
+function purchaseCasinoShopItem(itemId){
+  const item=(CASINO_SHOP_ITEMS||[]).find(entry=>entry&&entry.id===itemId);
+  if(!item){toast('Article introuvable.','d');return;}
+  const roulette=ensureRouletteState();
+  ensureProfileRouletteData();
+  if(roulette.isSpinning){toast('La roue est en train de tourner.','i');return;}
+  const price=Math.max(0,parseInt(item.price,10)||0);
+  if((parseInt(P.rouletteCoins,10)||0)<price){toast('Pas assez de jetons casino.','w');return;}
+  const previousBalance=parseInt(P.rouletteCoins,10)||0;
+  if(!spendRouletteCoins(price,'achat '+item.name,{silent:true,skipRender:true,skipSave:true}))return;
+  const ok=applyRouletteSpinReward(item.reward);
+  if(!ok){
+    P.rouletteCoins=previousBalance;
+    toast('Achat annulé, article indisponible.','w');
+    saveProfileData?.();
+    renderRoulettePanel?.();
+    return;
+  }
+  const msg='🛍️ Achat casino : '+item.icon+' '+item.name+' pour '+price+' jetons.';
+  pushRouletteHistory(msg);
+  toast(msg,'a');
+  if(typeof glog==='function')glog(msg,'a');
+  saveProfileData?.();
+  renderRoulettePanel?.();
+  if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+}
+
+function buildRouletteWheelGradient(pool){
+  const colors=['#67f7d7','#8aa1ff','#ffd166','#d36bff','#ff9b74','#ff647c'];
+  const list=Array.isArray(pool)&&pool.length?pool:buildRouletteRewardPool();
+  const step=360/list.length;
+  return 'conic-gradient(from -90deg,'+list.map((entry,index)=>{
+    const colorA=colors[index%colors.length];
+    const colorB=colors[(index+1)%colors.length];
+    const start=(index*step).toFixed(2);
+    const end=((index+1)*step).toFixed(2);
+    return colorA+' '+start+'deg '+(start*1+step*0.62).toFixed(2)+'deg, '+colorB+' '+(start*1+step*0.62).toFixed(2)+'deg '+end+'deg';
+  }).join(',')+')';
+}
+
+function buildRouletteWheelBadges(pool){
+  const list=Array.isArray(pool)&&pool.length?pool:buildRouletteRewardPool();
+  const step=(Math.PI*2)/list.length;
+  const radius=35;
+  return list.map((entry,index)=>{
+    const angle=(-Math.PI/2)+(step*index)+(step/2);
+    const x=(50+Math.cos(angle)*radius).toFixed(2);
+    const y=(50+Math.sin(angle)*radius).toFixed(2);
+    return '<div class="roulette-wheel-badge" style="left:'+x+'%;top:'+y+'%" title="'+escapeAttr(entry.label)+'">'+entry.icon+'</div>';
+  }).join('');
+}
+
+function spinRouletteWheel(){
+  const roulette=ensureRouletteState();
+  ensureProfileRouletteData();
+  if(G.started){
+    toast('🎰 La roue se tourne hors partie. En match, utilise seulement les paris.','i');
+    return;
+  }
+  if(roulette.isSpinning){toast('🎡 La roue tourne déjà.','i');return;}
+  const cost=getRouletteSpinCost();
+  const freeSpinAvailable=hasRouletteFreeSpinAvailable();
+  const usedFreeSpin=freeSpinAvailable;
+  if(!freeSpinAvailable&&(parseInt(P.rouletteCoins,10)||0)<cost){
+    toast('Il faut '+cost+' jetons casino pour tourner la roue.','w');
+    return;
+  }
+  const pool=buildRouletteRewardPool();
+  const totalWeight=pool.reduce((sum,entry)=>sum+Math.max(1,parseInt(entry.weight,10)||1),0);
+  let roll=Math.random()*totalWeight;
+  let reward=pool[0];
+  let rewardIndex=0;
+  for(let i=0;i<pool.length;i++){
+    const entry=pool[i];
+    roll-=Math.max(1,parseInt(entry.weight,10)||1);
+    if(roll<=0){reward=entry;rewardIndex=i;break;}
+  }
+  if(!usedFreeSpin&&!spendRouletteCoins(cost,'rotation de roulette',{silent:true,skipRender:true,skipSave:true}))return;
+  const stepAngle=360/pool.length;
+  const currentRotation=Number(roulette.displayRotation)||0;
+  const landingAngle=(360-((rewardIndex*stepAngle)+(stepAngle/2)))%360;
+  const finalRotation=currentRotation+(360*5)+landingAngle+(Math.random()*4-2);
+  const durationMs=getRouletteSpinDurationMs();
+  roulette.isSpinning=true;
+  roulette.pendingRewardPreview=reward;
+  renderRoulettePanel?.();
+  const wheelEl=document.getElementById('roulette-wheel-disc');
+  const statusEl=document.getElementById('roulette-spin-status');
+  if(statusEl)statusEl.innerHTML='🎡 La roue accélère… accroche-toi !';
+  if(wheelEl){
+    wheelEl.classList.add('spinning');
+    wheelEl.style.setProperty('--roulette-rotation',currentRotation+'deg');
+    wheelEl.style.setProperty('--roulette-spin-duration',durationMs+'ms');
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        wheelEl.style.setProperty('--roulette-rotation',finalRotation+'deg');
+      });
+    });
+  }
+  if(spinRouletteWheel._timer)clearTimeout(spinRouletteWheel._timer);
+  spinRouletteWheel._timer=setTimeout(()=>{
+    roulette.isSpinning=false;
+    roulette.displayRotation=finalRotation%360;
+    roulette.pendingRewardPreview=null;
+    const resolvedReward=reward.type==='secretRandom'?(applySecretRouletteReward()||reward):reward;
+    const applied=reward.type==='secretRandom'?!!resolvedReward:applyRouletteSpinReward(resolvedReward);
+    if(!applied){
+      if(!usedFreeSpin)P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)+cost);
+      toast('Récompense indisponible, coût remboursé.','w');
+      saveProfileData?.();
+      renderRoulettePanel?.();
+      return;
+    }
+    P.rouletteSpinCount=Math.max(0,(parseInt(P.rouletteSpinCount,10)||0)+1);
+    if(usedFreeSpin)P.lastRouletteFreeSpinDate=getTodayKey();
+    roulette.lastSpinAt=Date.now();
+    roulette.lastReward={label:resolvedReward.label,icon:resolvedReward.icon,at:roulette.lastSpinAt};
+    const isSecretHit=isRouletteSecretReward(resolvedReward)||reward.type==='secretRandom';
+    if(isSecretHit)triggerRouletteSecretCelebration(resolvedReward);
+    const secretPrefix=isSecretHit?'🌌 Secret ! ':'';
+    const msg=secretPrefix+'🎰 Roulette : '+resolvedReward.icon+' '+resolvedReward.label+' remporté '+(usedFreeSpin?'grâce au tour gratuit du jour':'pour '+cost+' jetons')+'.';
+    pushRouletteHistory(msg);
+    toast(msg,'a');
+    if(typeof glog==='function')glog(msg,'a');
+    saveProfileData?.();
+    renderRoulettePanel?.();
+    if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  },durationMs+80);
+}
+
+function placeRouletteBet(){
+  const roulette=ensureRouletteState();
+  ensureProfileRouletteData();
+  if(!G.started){toast('Les paris s’ouvrent uniquement pendant une partie.','w');return;}
+  const bettor=getProfileBettingPlayer();
+  if(!bettor||bettor.bust){toast('Aucun joueur de ton profil ne peut miser pour l’instant.','w');return;}
+  const targetId=document.getElementById('roulette-target')?.value||'';
+  const target=G.players.find(p=>p&&p.id===targetId&&!p.bust);
+  if(!target){toast('Choisis un joueur valide.','w');return;}
+  const amount=Math.max(0,parseInt(document.getElementById('roulette-stake')?.value,10)||0);
+  if(amount<=0){toast('Entre une mise supérieure à 0.','w');return;}
+  if(amount>(parseInt(P.rouletteCoins,10)||0)){toast('Pas assez de jetons casino.','w');return;}
+  const existing=getRouletteBetForPlayer(bettor.id);
+  if(existing&&existing.targetId&&existing.targetId!==target.id&&existing.amount>0){
+    const lockedName=G.players.find(p=>p.id===existing.targetId)?.name||existing.targetName||'ce joueur';
+    toast('Ton pari soutient déjà '+lockedName+'.','w');
+    return;
+  }
+  if(!spendRouletteCoins(amount,'pari sur '+target.name,{silent:true,skipRender:true,skipSave:true}))return;
+  roulette.bets[bettor.id]={targetId:target.id,targetName:target.name,amount:(parseInt(existing?.amount,10)||0)+amount};
+  roulette.totalPot=Math.max(0,(roulette.totalPot||0)+amount);
+  const msg='🎯 '+bettor.name+' mise '+amount+' jeton'+(amount>1?'s':'')+' sur '+target.name+'.';
+  pushRouletteHistory(msg);
+  if(typeof glog==='function')glog(msg,'i');
+  toast(msg,'a');
+  saveProfileData?.();
+  renderRoulettePanel?.();
+  renderPlayers?.();
+  broadcast?.();
+}
+
+function resolveRouletteBets(winner){
+  const roulette=ensureRouletteState();
+  const pot=Math.max(0,parseInt(roulette.totalPot,10)||0);
+  const entries=Object.entries(roulette.bets||{}).map(([bettorId,bet])=>({bettorId,bet})).filter(entry=>entry.bet&&parseInt(entry.bet.amount,10)>0);
+  roulette.pendingPayouts={};
+  roulette.settlementId=Date.now();
+  if(!entries.length||pot<=0){
+    roulette.totalPot=0;
+    roulette.bets={};
+    renderRoulettePanel?.();
+    return;
+  }
+  const winningEntries=winner?entries.filter(entry=>{
+    if(entry.bet.targetId===winner.id)return true;
+    if(G.teamMode&&winner.teamId){
+      const target=G.players.find(p=>p&&p.id===entry.bet.targetId);
+      return !!(target&&target.teamId&&target.teamId===winner.teamId);
+    }
+    return false;
+  }):[];
+  if(!winningEntries.length){
+    const msg=winner
+      ?('🎰 Aucun pari gagnant sur '+winner.name+' — le pot de '+pot+' jetons est perdu.')
+      :('🎰 Égalité : le pot de '+pot+' jetons n’est attribué à personne.');
+    pushRouletteHistory(msg);
+    if(typeof glog==='function')glog(msg,'w');
+    toast(msg,'w');
+    roulette.totalPot=0;
+    roulette.bets={};
+    renderRoulettePanel?.();
+    renderPlayers?.();
+    return;
+  }
+  const totalWinningStake=winningEntries.reduce((sum,entry)=>sum+(parseInt(entry.bet.amount,10)||0),0);
+  let distributed=0;
+  const payouts=[];
+  winningEntries.forEach((entry,index)=>{
+    const bettor=G.players.find(p=>p&&p.id===entry.bettorId);
+    if(!bettor)return;
+    const stake=parseInt(entry.bet.amount,10)||0;
+    let gain=index===winningEntries.length-1?(pot-distributed):Math.floor((pot*stake)/Math.max(1,totalWinningStake));
+    gain=Math.max(0,gain);
+    distributed+=gain;
+    roulette.pendingPayouts[bettor.id]=(roulette.pendingPayouts[bettor.id]||0)+gain;
+    payouts.push(bettor.name+' +'+gain);
+  });
+  const msg='🏆 Paris résolus : '+payouts.join(', ')+' récupèrent le pot de '+pot+' jetons.';
+  pushRouletteHistory(msg);
+  if(typeof glog==='function')glog(msg,'a');
+  toast(msg,'a');
+  roulette.totalPot=0;
+  roulette.bets={};
+  syncPendingRoulettePayouts();
+  renderRoulettePanel?.();
+  renderPlayers?.();
+}
+
+function renderRoulettePanel(){
+  const inlineEl=document.getElementById('roulette-lobby-card')||document.getElementById('roulette-inline-panel');
+  const bodyEl=document.getElementById('roulette-body');
+  if(!inlineEl&&!bodyEl)return;
+  const roulette=ensureRouletteState();
+  ensureProfileRouletteData();
+  syncPendingRoulettePayouts();
+  const balance=Math.max(0,parseInt(P.rouletteCoins,10)||0);
+  const spinCost=getRouletteSpinCost();
+  const freeSpinAvailable=hasRouletteFreeSpinAvailable();
+  const freeSpinCountdown=freeSpinAvailable?'Disponible maintenant':getRouletteFreeSpinCountdownLabel();
+  const pool=buildRouletteRewardPool();
+  const rewardPreview=pool.map(entry=>'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(148,163,184,.14);font-size:.66rem">'+entry.icon+' '+escapeHtml(entry.label)+'</span>').join('');
+  const wheelGradient=buildRouletteWheelGradient(pool);
+  const wheelBadges=buildRouletteWheelBadges(pool);
+  const bettor=getProfileBettingPlayer();
+  const currentBet=bettor?getRouletteBetForPlayer(bettor.id):null;
+  const selectedTarget=document.getElementById('roulette-target')?.value||(currentBet?.targetId)||G.players.find(p=>p&&!p.bust)?.id||'';
+  const betsList=Object.entries(roulette.bets||{}).map(([bettorId,bet])=>{
+    const bettorObj=G.players.find(p=>p&&p.id===bettorId);
+    const target=G.players.find(p=>p&&p.id===bet.targetId);
+    if(!bettorObj||!target||!(parseInt(bet.amount,10)>0))return '';
+    return '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.72rem;padding:4px 0;border-bottom:1px solid rgba(148,163,184,.08)"><span>'+escapeHtml(bettorObj.emoji+' '+bettorObj.name)+'</span><span style="color:var(--accent)">🎯 '+escapeHtml(target.name)+' • '+bet.amount+'🎟️</span></div>';
+  }).filter(Boolean).join('')||'<div style="font-size:.72rem;color:var(--muted)">Aucun pari enregistré pour le moment.</div>';
+  const historyHtml=(roulette.history||[]).length
+    ?roulette.history.map(item=>'<div style="font-size:.68rem;color:var(--muted)">• '+escapeHtml(item)+'</div>').join('')
+    :'<div style="font-size:.68rem;color:var(--muted)">Aucun tirage ou pari récent.</div>';
+  const shopHtml=CASINO_SHOP_ITEMS.map(item=>{
+    const affordable=balance>=item.price;
+    const owned=isCasinoShopRewardOwned(item.reward);
+    return '<div class="casino-shop-item'+(affordable?'':' is-locked')+'">'+
+      '<div class="casino-shop-top">'+
+        '<div class="casino-shop-icon">'+item.icon+'</div>'+
+        '<div><div class="casino-shop-name">'+escapeHtml(item.name)+'</div><div class="casino-shop-desc">'+escapeHtml(item.desc)+(owned?' Déjà obtenu: achat = lot alternatif.':'')+'</div></div>'+
+      '</div>'+
+      '<div class="casino-shop-bottom">'+
+        '<span class="casino-shop-price">'+item.price+' 🎟️</span>'+
+        '<button class="btn btn-sm '+(affordable?'btn-yellow':'btn-secondary')+'" type="button" '+(affordable?'':'disabled')+' onclick="purchaseCasinoShopItem(\''+item.id+'\')">Acheter</button>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+  const lastRewardLabel=roulette.lastReward?(roulette.lastReward.icon+' '+roulette.lastReward.label):'Aucun gain récent';
+  const secretFxActive=!!roulette.secretFxActive&&((parseInt(roulette.secretFxUntil,10)||0)>Date.now());
+  const secretOverlayHtml=secretFxActive?`
+              <div class="roulette-secret-overlay" aria-hidden="true">
+                <div class="roulette-secret-rays"></div>
+                <div class="roulette-secret-ring ring-a"></div>
+                <div class="roulette-secret-ring ring-b"></div>
+                ${Array.from({length:10},(_,index)=>`<span class="roulette-secret-particle p${(index%5)+1}" style="--secret-angle:${index*36}deg;--secret-delay:${(index*0.08).toFixed(2)}s">✦</span>`).join('')}
+                <div class="roulette-secret-banner">🌌 JACKPOT SECRET<div>${escapeHtml(roulette.secretFxLabel||'Récompense cachée')}</div></div>
+              </div>`:'';
+
+  if(inlineEl){
+    inlineEl.innerHTML=''+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
+        '<div><div class="card-title" style="margin:0">🎰 Casino NeoPoly</div><div style="font-size:.68rem;color:var(--muted)">Solde: <b style="color:var(--accent)">'+balance+' jetons</b> • '+(freeSpinAvailable?'🎁 1 tour gratuit dispo aujourd’hui':'Coût: '+spinCost+' / tour')+'</div></div>'+
+        '<button class="btn btn-yellow btn-sm" type="button" onclick="openRouletteModal()">Ouvrir</button>'+
+      '</div>'+
+      '<div style="margin-top:8px;font-size:.7rem;color:var(--muted)">Tourne la roue avec une vraie animation et dépense tes jetons dans la boutique casino.</div>';
+  }
+
+  if(bodyEl){
+    ensureRouletteCountdownTicker();
+    const spinDisabled=(G.started||(!freeSpinAvailable&&balance<spinCost)||roulette.isSpinning)?'disabled':'';
+    const spinState=roulette.isSpinning
+      ?('🎡 La roue tourne... récompense en approche !')
+      :(secretFxActive
+        ?('🌌 <b style="color:var(--yellow)">Jackpot secret :</b> '+escapeHtml(roulette.secretFxLabel||'Récompense cachée')+' !')
+        :(G.started
+          ?'La roue premium se tourne uniquement hors partie.'
+          :(freeSpinAvailable
+            ?'🎁 Ton tour gratuit du jour est disponible pour ce compte.'
+            :('Chaque rotation coûte <b style="color:var(--accent)">'+spinCost+' jetons</b>.'))));
+    const betState=G.started
+      ?('<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">'+
+          '<div style="flex:1;min-width:160px"><label style="display:block;font-size:.68rem;color:var(--muted);margin-bottom:4px">Joueur visé</label><select id="roulette-target" style="width:100%">'+
+            G.players.filter(p=>p&&!p.bust).map(p=>'<option value="'+p.id+'" '+(selectedTarget===p.id?'selected':'')+'>'+escapeHtml(p.emoji+' '+p.name)+'</option>').join('')+
+          '</select></div>'+
+          '<div style="width:110px"><label style="display:block;font-size:.68rem;color:var(--muted);margin-bottom:4px">Mise</label><input id="roulette-stake" type="number" min="1" max="999" value="1" style="width:100%"/></div>'+
+          '<button class="btn btn-primary btn-sm" type="button" onclick="placeRouletteBet()">🎯 Miser</button>'+
+        '</div><div style="font-size:.66rem;color:var(--muted);margin-top:8px">'+(currentBet?('Ton pari actuel: <b>🎯 '+escapeHtml(currentBet.targetName||G.players.find(p=>p.id===currentBet.targetId)?.name||'?')+' x'+currentBet.amount+'</b>.'):'Tu peux miser sur le joueur que tu vois gagner.')+'</div>')
+      :'<div style="font-size:.72rem;color:var(--muted)">Les paris s’ouvrent quand une partie est en cours.</div>';
+
+    bodyEl.innerHTML=`
+      <div class="casino-roulette-layout">
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="card" style="padding:10px">
+            <div class="card-title">🎡 Grande roue du casino</div>
+            <div class="roulette-visual-stage ${secretFxActive?'is-secret-hit':''}" id="roulette-wheel-stage">
+              ${secretOverlayHtml}
+              <div class="roulette-pointer"></div>
+              <div class="roulette-wheel-shell">
+                <div class="roulette-wheel-disc ${roulette.isSpinning?'spinning':''}" id="roulette-wheel-disc" style="--roulette-rotation:${Number(roulette.displayRotation)||0}deg;--roulette-spin-duration:${getRouletteSpinDurationMs()}ms;background:${wheelGradient}">
+                  ${wheelBadges}
+                  <div class="roulette-wheel-center">Neo</div>
+                </div>
+              </div>
+            </div>
+            <div class="roulette-spin-status" id="roulette-spin-status">${spinState}</div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin:8px 0"><span>🎟️ Solde</span><b style="color:var(--accent)">${balance} jetons</b></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:10px"><span>🔄 Tours de roue</span><b>${parseInt(P.rouletteSpinCount,10)||0}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:6px"><span>🎁 Tour gratuit</span><b>${freeSpinAvailable?'Disponible':'Déjà utilisé'}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.72rem;margin-bottom:10px"><span>⏳ Reset prochain</span><b id="roulette-free-spin-countdown">${freeSpinCountdown}</b></div>
+            <div style="font-size:.66rem;color:var(--muted);margin-bottom:10px">Dernier gain : <b>${escapeHtml(lastRewardLabel)}</b></div>
+            <button class="btn btn-yellow" type="button" onclick="spinRouletteWheel()" ${spinDisabled}>${roulette.isSpinning?'🎡 En cours...':(freeSpinAvailable?'🎁 Tour gratuit du jour':'🎰 Tourner la roue ('+spinCost+')')}</button>
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">🎁 Récompenses possibles</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">${rewardPreview}</div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">🛍️ Boutique casino</div>
+            <div class="casino-shop-grid">${shopHtml}</div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="card" style="padding:10px">
+            <div class="card-title">💼 Infos casino</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:.72rem">
+              <div>🪙 Jetons dispo: <b style="color:var(--accent)">${balance}</b></div>
+              <div>🏦 Pot de pari: <b>${roulette.totalPot||0}</b></div>
+              <div>🎯 Paris actifs: <b>${Object.keys(roulette.bets||{}).length}</b></div>
+              <div>✨ Dernier spin: <b>${roulette.lastSpinAt?new Date(roulette.lastSpinAt).toLocaleTimeString('fr-FR'):'—'}</b></div>
+            </div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">🎯 Paris de match</div>
+            ${betState}
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">📋 Paris en cours</div>
+            ${betsList}
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">🕘 Historique récent</div>
+            <div style="display:flex;flex-direction:column;gap:5px">${historyHtml}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+}
+
+function openRouletteModal(){
+  syncPendingRoulettePayouts();
+  renderRoulettePanel();
+  openModal('modal-roulette');
+}
+
 // ═══════════════════════════════════════
 //  UTILS
 // ═══════════════════════════════════════
@@ -1512,6 +2184,10 @@ let P={
   emojiUnlocks:{},
   selectedTitle:null,
   inventory:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+  rouletteCoins:12,
+  rouletteSpinCount:0,
+  lastRouletteSettlementId:0,
+  lastRouletteFreeSpinDate:'',
   dailyChallenges:{dateKey:'',streak:0,lastCompletedDate:'',items:[]},
   weeklyMissions:{weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false},
   rareRewards:[],
@@ -1585,6 +2261,13 @@ function loadProfile(opts){
   P.inventory.diceBoost=Math.max(0,parseInt(P.inventory.diceBoost,10)||0);
   P.inventory.antiJail=Math.max(0,parseInt(P.inventory.antiJail,10)||0);
   P.inventory.mortgageDiscount=Math.max(0,parseInt(P.inventory.mortgageDiscount,10)||0);
+  {
+    const parsedRouletteCoins=parseInt(P.rouletteCoins,10);
+    P.rouletteCoins=Number.isFinite(parsedRouletteCoins)?Math.max(0,parsedRouletteCoins):12;
+  }
+  P.rouletteSpinCount=Math.max(0,parseInt(P.rouletteSpinCount,10)||0);
+  P.lastRouletteSettlementId=Math.max(0,parseInt(P.lastRouletteSettlementId,10)||0);
+  P.lastRouletteFreeSpinDate=String(P.lastRouletteFreeSpinDate||'');
   if(!Array.isArray(P.titles))P.titles=[];
   if(!P.titleMeta||typeof P.titleMeta!=='object')P.titleMeta={};
   if(!P.secretUnlocks||typeof P.secretUnlocks!=='object')P.secretUnlocks={};
@@ -1640,19 +2323,23 @@ function saveProfileData(){
 }
 
 const DAILY_CHALLENGE_POOL=[
-  {id:'play_1',label:'Lancer 1 partie',stat:'gamesPlayed',amount:1,reward:{type:'diceBoost',qty:1}},
+  {id:'play_1',label:'Lancer 1 partie',stat:'gamesPlayed',amount:1,reward:{type:'rouletteCoins',qty:4}},
   {id:'buy_4',label:'Acheter 4 propriétés',stat:'propertiesBought',amount:4,reward:{type:'antiJail',qty:1}},
-  {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'elo',qty:15}},
-  {id:'quest_turns_18',label:'Tenir 18 tours aujourd’hui',stat:'totalTurns',amount:18,reward:{type:'unlockTitle',key:'quest_scout',fallback:{type:'elo',qty:12}}},
+  {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'rouletteCoins',qty:6}},
+  {id:'quest_turns_18',label:'Tenir 18 tours aujourd’hui',stat:'totalTurns',amount:18,reward:{type:'unlockTitle',key:'quest_scout',fallback:{type:'rouletteCoins',qty:8}}},
+  {id:'quest_spin_3',label:'Tourner 3 fois la roulette',stat:'rouletteSpinCount',amount:3,reward:{type:'unlockSecret',key:'fx_jackpot',fallback:{type:'rouletteCoins',qty:12}}},
+  {id:'quest_season_120',label:'Gagner 120 XP de saison',stat:'seasonData.xp',amount:120,reward:{type:'rareToken',qty:1}},
   {id:'win_1',label:'Gagner 1 partie',stat:'gamesWon',amount:1,reward:{type:'diceBoost',qty:2}},
-  {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'mortgageDiscount',qty:1}},
+  {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'rouletteCoins',qty:8}},
 ];
 
 const WEEKLY_MISSION_POOL=[
-  {id:'week_play_5',label:'Jouer 5 parties cette semaine',stat:'gamesPlayed',amount:5,reward:{type:'seasonXp',qty:140}},
+  {id:'week_play_5',label:'Jouer 5 parties cette semaine',stat:'gamesPlayed',amount:5,reward:{type:'rouletteCoins',qty:18}},
   {id:'week_win_3',label:'Gagner 3 parties cette semaine',stat:'gamesWon',amount:3,reward:{type:'rareReward',key:'crown_neon'}},
   {id:'week_buy_18',label:'Acheter 18 propriétés',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn',fallback:{type:'rareToken',qty:1}}},
   {id:'week_turns_80',label:'Jouer 80 tours',stat:'totalTurns',amount:80,reward:{type:'rareReward',key:'quest_palette'}},
+  {id:'week_spin_12',label:'Effectuer 12 tours de roulette',stat:'rouletteSpinCount',amount:12,reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:20}}},
+  {id:'week_season_450',label:'Cumuler 450 XP saison',stat:'seasonData.xp',amount:450,reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
   {id:'week_money_5000',label:'Cumuler 5000$ gagnés',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura',fallback:{type:'seasonXp',qty:90}}},
 ];
 
@@ -1662,6 +2349,8 @@ const RARE_REWARD_DEFS={
   aurora_shard:{label:'Éclat Aurora',icon:'✨',rarity:'rare',desc:'Débloque l’aura Elite.',secretKey:'fx_aura'},
   quest_palette:{label:'Palette Prismatique',icon:'🎨',rarity:'épique',desc:'Débloque un lotus astral et un titre cosmétique exclusif.',emojiKey:'quest_orchid',titleKey:'quest_curator'},
   vault_key:{label:'Clé du Coffre',icon:'🗝️',rarity:'épique',desc:'Offre des objets premium.',itemBonus:{diceBoost:2,mortgageDiscount:1}},
+  starlight_chip:{label:'Jeton Astral',icon:'🌠',rarity:'légendaire',desc:'Débloque un halo jackpot secret et un titre occulte du casino.',secretKey:'fx_jackpot',titleKey:'casino_oracle',itemBonus:{diceBoost:2,antiJail:1}},
+  season_sigil:{label:'Sceau Nebula',icon:'🪐',rarity:'mythique',desc:'Récompense secrète des quêtes et saisons qui débloque Saturne mystique et une traînée stellaire.',emojiKey:'season_saturn',secretKey:'fx_stardust',titleKey:'season_oracle'},
 };
 
 const SEASON_ROTATION=[
@@ -1673,9 +2362,11 @@ const SEASON_ROTATION=[
 
 const SEASON_PASS_REWARDS=[
   {tier:1,xp:80,reward:{type:'diceBoost',qty:1}},
-  {tier:2,xp:180,reward:{type:'rareReward',key:'aurora_shard'}},
-  {tier:3,xp:320,reward:{type:'rareReward',key:'phoenix_core'}},
-  {tier:4,xp:520,reward:{type:'rareReward',key:'vault_key'}},
+  {tier:2,xp:180,reward:{type:'rareReward',key:'aurora_shard',fallback:{type:'seasonXp',qty:45}}},
+  {tier:3,xp:320,reward:{type:'rareReward',key:'phoenix_core',fallback:{type:'rouletteCoins',qty:12}}},
+  {tier:4,xp:520,reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:1}}},
+  {tier:5,xp:760,reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:18}}},
+  {tier:6,xp:980,reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
 ];
 
 const SEASON_LEAGUES=[
@@ -1713,7 +2404,16 @@ function getTodayKey(){
 }
 
 function readProfileStatValue(statKey){
-  return Math.max(0,parseInt(P?.stats?.[statKey],10)||0);
+  const key=String(statKey||'').trim();
+  if(!key)return 0;
+  if(key.includes('.')){
+    const value=key.split('.').reduce((acc,part)=>(acc&&typeof acc==='object')?acc[part]:undefined,P);
+    return Math.max(0,parseInt(value,10)||0);
+  }
+  if(P?.stats&&Object.prototype.hasOwnProperty.call(P.stats,key)){
+    return Math.max(0,parseInt(P.stats[key],10)||0);
+  }
+  return Math.max(0,parseInt(P?.[key],10)||0);
 }
 
 function pickRandomEntries(list,count){
@@ -1734,6 +2434,7 @@ function getRewardText(reward){
     case 'mortgageDiscount':return '🏦 +'+qty+' remise hypo';
     case 'elo':return '📈 +'+qty+' ELO';
     case 'seasonXp':return '🏆 +'+qty+' XP saison';
+    case 'rouletteCoins':return '🎰 +'+qty+' jetons casino';
     case 'rareToken':return '💠 +'+qty+' jeton rare';
     case 'rareReward':return '💎 '+(RARE_REWARD_DEFS[reward.key]?.label||'récompense rare');
     case 'unlockEmoji':return (emojiDef?.emoji||'🧩')+' '+(emojiDef?.label||'Cosmétique emoji');
@@ -1855,7 +2556,7 @@ function addSeasonProgress(amount,reason,shouldPersist=true){
 function grantProfileReward(reward){
   if(!reward||!reward.type)return false;
   if(G&&G.started&&!canTrackProfileStatsInCurrentMatch())return false;
-  const isBonusReward=reward.type==='diceBoost'||reward.type==='antiJail'||reward.type==='mortgageDiscount';
+  const isBonusReward=reward.type==='diceBoost'||reward.type==='antiJail'||reward.type==='mortgageDiscount'||reward.type==='rouletteCoins';
   if(!canUseAccountProgression()&&!isBonusReward){
     const fallback=reward.fallback;
     if(fallback&&(fallback.type==='diceBoost'||fallback.type==='antiJail'||fallback.type==='mortgageDiscount')){
@@ -1864,6 +2565,10 @@ function grantProfileReward(reward){
     return false;
   }
   const qty=Math.max(1,parseInt(reward.qty,10)||1);
+  if(reward.type==='rouletteCoins'){
+    P.rouletteCoins=Math.max(0,(parseInt(P.rouletteCoins,10)||0)+qty);
+    return true;
+  }
   if(reward.type==='elo'){
     P.elo=Math.max(0,Math.min(9999,(parseInt(P.elo,10)||0)+qty));
     if(typeof checkSecretTitles==='function')checkSecretTitles(false);
@@ -4066,6 +4771,7 @@ function saveUndo(){
     players:clone(G.players),
     board:clone(G.board),
     cur:G.cur,rolled:G.rolled,doublesCount:G.doublesCount,
+    roulette:clone(G.roulette),
   });
   if(G.undoStack.length>10)G.undoStack.shift();
 }
@@ -4075,6 +4781,9 @@ function undoLast(){
   const s=G.undoStack.pop();
   G.players=s.players;G.board=s.board;G.cur=s.cur;
   G.rolled=s.rolled;G.doublesCount=s.doublesCount;
+  G.roulette=s.roulette||getDefaultRouletteState();
+  ensureRouletteState();
+  G.players.forEach(ensureRoulettePlayerData);
   hideBuyBar();buildBoard();renderPlayers();updBtns();
   toast('↩ Annulé.','i');
 }
@@ -4088,6 +4797,28 @@ function openProfileEditModal(){
   openModal('modal-profile-edit');
 }
 
+function initModalBackdropClose(){
+  if(window.__neopolyModalBackdropInit)return;
+  window.__neopolyModalBackdropInit=true;
+  document.addEventListener('click',e=>{
+    const target=e.target;
+    if(typeof Element==='undefined'||!(target instanceof Element))return;
+    const bg=target.closest('.modal-bg.open,#shop-modal-bg.open,#pack-manager-modal.open');
+    if(!bg||target!==bg)return;
+    if(bg.id==='shop-modal-bg'){
+      closeShop?.();
+      return;
+    }
+    if(bg.id==='pack-manager-modal'){
+      bg.classList.remove('open');
+      updateCenterActionsPopup?.();
+      updateAddonButtonVisibility?.();
+      return;
+    }
+    if(bg.id)closeModal(bg.id);
+  });
+}
+
 function openModal(id){
   if(id==='modal-create'&&typeof isInviteOnlyAccount==='function'&&isInviteOnlyAccount()){
     toast('🔐 Connecte-toi avec Google pour créer une partie en ligne. Le mode invité garde l’accès aux parties locales et rapides.','i');
@@ -4097,6 +4828,7 @@ function openModal(id){
   if(['modal-create','modal-join','modal-add-local'].includes(id))syncPartyProfileDefaults();
   document.getElementById(id).classList.add('open');
   updateCenterActionsPopup();
+  updateAddonButtonVisibility();
   if(id==='modal-join'){
     setJoinRoomFilter(JOIN_ROOM_FILTER);
     setJoinRoomSort(JOIN_ROOM_SORT);
@@ -4108,6 +4840,7 @@ function openModal(id){
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
   updateCenterActionsPopup();
+  updateAddonButtonVisibility();
   if(id==='modal-join') stopJoinRoomRefresh();
 }
 function openGameWheel(){openModal('modal-game-wheel');}
@@ -4272,8 +5005,16 @@ function showScreen(id){
 function updateAddonButtonVisibility(){
   const btn=document.getElementById('pack-manager-btn');
   const debugBtn=document.getElementById('admin-debug-btn');
-  const inLobby=!!document.getElementById('lobby')?.classList.contains('active');
-  if(btn)btn.style.display=inLobby?'block':'none';
+  const appWrap=document.getElementById('app-wrap');
+  const inLobby=!!document.getElementById('lobby')?.classList.contains('active')&&!!appWrap?.classList.contains('in-lobby');
+  const blockedByModal=!!document.querySelector('#modal-roulette.open,#modal-party-wheel.open,#modal-game-wheel.open,#pack-manager-modal.open');
+  const showAddons=inLobby&&!blockedByModal;
+  document.body?.classList.toggle('addons-hidden-by-overlay',blockedByModal);
+  if(btn){
+    btn.style.setProperty('display',showAddons?'block':'none','important');
+    btn.hidden=!showAddons;
+    btn.setAttribute('aria-hidden',showAddons?'false':'true');
+  }
   if(debugBtn)debugBtn.style.display=(inLobby&&!!P?.isAdmin)?'block':'none';
 }
 
@@ -5673,10 +6414,14 @@ function endGame(winner){
       :(winner.emoji+' '+winner.name))
     :'Égalité';
   document.getElementById('endgame-body').textContent=winnerLabel+' gagne !';
+  resolveRouletteBets(winner);
     const profilePlayer=G.players.find(p=>!p.bot&&isProfileControlledPlayer(p))||null;
     const profileWon=!!(winner&&profilePlayer&&(winner.id===profilePlayer.id||(G.teamMode&&winner.teamId&&profilePlayer.teamId===winner.teamId)));
     const canTrackStats=canTrackProfileStatsInCurrentMatch();
     const canProgress=canAwardPersistentProfileProgressInCurrentMatch();
+    if(profilePlayer){
+      addRouletteCoins(profileWon?6:2,profileWon?'victoire de partie':'partie terminée',{skipRender:true});
+    }
     if(profileWon){
       if(canTrackStats)P.stats.gamesWon++;
       if(canProgress){
@@ -7468,6 +8213,7 @@ function snapshotGame(){
     game:{
       players:clone(G.players),board:clone(G.board),cur:G.cur,started:G.started,rolled:G.rolled,
       doublesCount:G.doublesCount,jailTurns:clone(G.jailTurns),txns:clone(G.txns),
+      roulette:clone(G.roulette),
       room:G.room,mode:G.mode,myId:G.myId,myReady:G.myReady,
       startingMoney:G.startingMoney,passGoBonus:G.passGoBonus,jailFine:G.jailFine,
       maxTurns:G.maxTurns,goalMoney:G.goalMoney,turnCount:G.turnCount,
@@ -7482,7 +8228,14 @@ function snapshotGame(){
       timerEnabled:G.timerEnabled,timerDuration:G.timerDuration,autoEnd:G.autoEnd,
       centerActions:G.centerActions,gameZoom:G.gameZoom,centerDiceScale:G.centerDiceScale,pawnScale:G.pawnScale,pawnGlow:G.pawnGlow,streamerMode:G.streamerMode,musicSource:G.musicSource,musicThemeVariant:G.musicThemeVariant,daTheme:G.daTheme,musicBoostEnabled:G.musicBoostEnabled,musicBoostPercent:G.musicBoostPercent,toastMs:G.toastMs,
     },
-    profile:{stats:clone(P.stats),inventory:clone(P.inventory||{})},
+    profile:{
+      stats:clone(P.stats),
+      inventory:clone(P.inventory||{}),
+      rouletteCoins:parseInt(P.rouletteCoins,10)||0,
+      rouletteSpinCount:parseInt(P.rouletteSpinCount,10)||0,
+      lastRouletteSettlementId:parseInt(P.lastRouletteSettlementId,10)||0,
+      lastRouletteFreeSpinDate:String(P.lastRouletteFreeSpinDate||''),
+    },
   };
 }
 
@@ -7514,6 +8267,9 @@ function applyImportedSnapshot(snap){
   G.doublesCount=parseInt(g.doublesCount,10)||0;
   G.jailTurns=g.jailTurns||{};
   G.txns=Array.isArray(g.txns)?g.txns:[];
+  G.roulette=Object.assign(getDefaultRouletteState(),g.roulette||{});
+  ensureRouletteState();
+  G.players.forEach(ensureRoulettePlayerData);
   G.room=g.room||'';G.mode=g.mode||G.mode;G.myId=g.myId||G.myId;G.myReady=!!g.myReady;
   setStartingMoney(g.startingMoney??G.startingMoney);
   setPassGoBonus(g.passGoBonus??G.passGoBonus);
@@ -7560,6 +8316,13 @@ function applyImportedSnapshot(snap){
   if(snap.profile&&snap.profile.stats)P.stats=Object.assign({},P.stats,snap.profile.stats);
   if(snap.profile&&snap.profile.inventory){
     P.inventory=Object.assign({},P.inventory||{},snap.profile.inventory);
+  }
+  if(snap.profile){
+    const parsedRouletteCoins=parseInt(snap.profile.rouletteCoins,10);
+    if(Number.isFinite(parsedRouletteCoins))P.rouletteCoins=Math.max(0,parsedRouletteCoins);
+    P.rouletteSpinCount=Math.max(0,parseInt(snap.profile.rouletteSpinCount,10)||P.rouletteSpinCount||0);
+    P.lastRouletteSettlementId=Math.max(0,parseInt(snap.profile.lastRouletteSettlementId,10)||P.lastRouletteSettlementId||0);
+    P.lastRouletteFreeSpinDate=String(snap.profile.lastRouletteFreeSpinDate||P.lastRouletteFreeSpinDate||'');
   }
   if(G.started)setupTeamMode();
   else clearTeamMode();

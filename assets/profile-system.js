@@ -134,12 +134,18 @@ const TITLE_DEFS={
   quest_scout:{label:'🧭 Éclaireur des quêtes', cls:'vt-s4', cond:'Compléter un défi quotidien cosmétique'},
   quest_architect:{label:'🏗️ Architecte mystique', cls:'vt-s7', cond:'Réussir une mission secrète du bâtisseur'},
   quest_curator:{label:'🎨 Curateur prismatique', cls:'vt-legend', cond:'Obtenir la Palette prismatique via une quête'},
+  casino_lucky:{label:'🎰 Favori du casino', cls:'vt-s2', cond:'Débloquer un titre via la roulette premium'},
+  casino_highroller:{label:'💰 High Roller', cls:'vt-legend', cond:'Décrocher le gros lot du casino NeoPoly'},
+  casino_oracle:{label:'🔮 Oracle du jackpot', cls:'vt-m2', cond:'Obtenir le Jeton Astral ou un jackpot secret du casino'},
+  season_oracle:{label:'🌠 Oracle de saison', cls:'vt-m3', cond:'Obtenir le Sceau Nebula pendant une saison'},
 };
 
 const SECRET_FEATURE_DEFS={
   fx_cosmic:{label:'Cosmic Mode'},
   fx_arcade:{label:'Arcade Pulse'},
   fx_aura:{label:'Aura Elite'},
+  fx_jackpot:{label:'Jackpot Mirage'},
+  fx_stardust:{label:'Stardust Trails'},
 };
 
 function ensureTitleMeta(key){
@@ -185,6 +191,8 @@ function applySecretUnlocks(){
   root.classList.toggle('secret-cosmic',has('fx_cosmic'));
   root.classList.toggle('secret-arcade',has('fx_arcade'));
   root.classList.toggle('secret-aura',has('fx_aura'));
+  root.classList.toggle('secret-jackpot',has('fx_jackpot'));
+  root.classList.toggle('secret-stardust',has('fx_stardust'));
 }
 
 function unlockSecretFeature(key,toastMsg){
@@ -561,6 +569,7 @@ function renderLobbyProfileTab(){
   if(typeof renderRareRewardsUi==='function')renderRareRewardsUi();
   if(typeof renderSeasonHubUi==='function')renderSeasonHubUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
+  if(typeof renderRoulettePanel==='function')renderRoulettePanel();
   const av=document.getElementById('pc-avatar');
   if(av){
     if(P.avatarImg){av.innerHTML=`<img src="${P.avatarImg}" alt="avatar">`;}
@@ -621,7 +630,7 @@ function renderLobbyProfileTab(){
   if(sg){
     const s=P.stats;
     const rank=getEloRankInfo(P.elo||0);
-    const statsKey=[P.elo||0,rank.label,s.gamesWon,s.gamesPlayed].join('|');
+    const statsKey=[P.elo||0,rank.label,s.gamesWon,s.gamesPlayed,P.rouletteCoins||0].join('|');
     if(statsKey!==UI_RENDER_CACHE.statsKey){
       UI_RENDER_CACHE.statsKey=statsKey;
       sg.innerHTML=[
@@ -629,6 +638,7 @@ function renderLobbyProfileTab(){
         {val:rank.label,label:'🎖️ Rang'},
         {val:s.gamesWon,label:'🏆 Victoires'},
         {val:s.gamesPlayed,label:'🎮 Parties'},
+        {val:P.rouletteCoins||0,label:'🎰 Jetons'},
       ].map(x=>`<div class="stat-tile"><div class="stat-tile-val" style="font-size:${String(x.val).length>6?'.65rem':'1.05rem'}">${x.val}</div><div class="stat-tile-label">${x.label}</div></div>`).join('');
     }
   }

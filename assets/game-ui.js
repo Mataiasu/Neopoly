@@ -86,7 +86,7 @@ function renderPlayers(){
     started:!!G.started,
     fogMode:G.fogMode,
     tutorialHintsEnabled:!!G.tutorialHintsEnabled,
-    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{}}))
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{},rouletteBet:(G.roulette?.bets?.[p.id]?.targetId||'')+':'+(G.roulette?.bets?.[p.id]?.amount||0)}))
   });
   if(G.playerPanelSignature!==playerSignature){
     list.innerHTML='';
@@ -104,7 +104,10 @@ function renderPlayers(){
     }else{
       avatarHtml = `<span class="player-avatar" style="background:${p.color}22;border:2px solid ${p.color}">${p.emoji}</span>`;
     }
+    ensureRoulettePlayerData?.(p);
     const mi=p.matchItems||{};
+    const roulette=typeof ensureRouletteState==='function'?ensureRouletteState():{bets:{}};
+    const betInfo=roulette?.bets?.[p.id]||null;
     const fogMode=(typeof normalizeFogMode==='function')?normalizeFogMode(G.fogMode):'off';
     const isControlled=typeof isProfileControlledPlayer==='function'?!!isProfileControlledPlayer(p):false;
     const canReveal=!G.started||fogMode==='off'||isControlled||i===G.cur||p.bust;
@@ -121,6 +124,10 @@ function renderPlayers(){
     if((mi.diceBoost||0)>0)_pBadges.push('⚡×'+mi.diceBoost);
     if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
     if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
+    if(betInfo&&parseInt(betInfo.amount,10)>0){
+      const targetName=G.players.find(x=>x.id===betInfo.targetId)?.name||betInfo.targetName||'?';
+      _pBadges.push('🎯 '+targetName+' x'+betInfo.amount);
+    }
     const badgesHtml=_pBadges.length?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">${_pBadges.map(b=>`<span style="font-size:.55rem;background:rgba(255,255,255,.08);border-radius:3px;padding:0 3px;line-height:1.5">${b}</span>`).join('')}</div>`:'';
       row.innerHTML=`
         ${avatarHtml}
@@ -198,6 +205,7 @@ function renderPlayers(){
   if(typeof renderTurnSummaryUi==='function')renderTurnSummaryUi();
   if(typeof renderBoardEventUi==='function')renderBoardEventUi();
   if(typeof renderAlliancePanel==='function')renderAlliancePanel();
+  if(typeof renderRoulettePanel==='function')renderRoulettePanel();
   scheduleBotTurn();
 }
 
@@ -327,7 +335,11 @@ function showPlayerModal(playerId){
   const totalPropVal=owned.reduce((s,c)=>s+(c.p||0),0);
   const netWorth=p.money+totalPropVal;
   const cell=G.board[p.pos];
+  ensureRoulettePlayerData?.(p);
   const matchItems=ensurePlayerMatchItems(p);
+  const roulette=typeof ensureRouletteState==='function'?ensureRouletteState():{bets:{}};
+  const betInfo=roulette?.bets?.[p.id]||null;
+  const betTarget=betInfo?G.players.find(x=>x.id===betInfo.targetId):null;
   const title=document.getElementById('player-modal-title');
   const body=document.getElementById('player-modal-body');
   if(!title||!body)return;
@@ -359,7 +371,8 @@ function showPlayerModal(playerId){
     {label:'💰 Argent',val:p.money+'$',accent:true},
     {label:'📊 Valeur nette',val:netWorth+'$',accent:false},
     {label:'🏠 Propriétés',val:owned.length,accent:false},
-    {label:'🎴 Cartes prison',val:p.jailCards||0,accent:false}
+    {label:'🎴 Cartes prison',val:p.jailCards||0,accent:false},
+    {label:' Pari en cours',val:betInfo&&parseInt(betInfo.amount,10)>0?((betTarget?.name||betInfo.targetName||'?')+' • '+betInfo.amount+'🎟️'):'Aucun',accent:false}
   ].map(s=>`
     <div class="card" style="padding:8px 10px">
       <div style="font-size:.62rem;color:var(--muted);margin-bottom:2px">${s.label}</div>
@@ -633,6 +646,7 @@ function doStart(){
     p.openingBonusLabel='';
     if(p.bot)ensureBotPersona(p);
   });
+  resetRouletteForNewMatch?.();
   if(typeof applyStartingDraftBonuses==='function')applyStartingDraftBonuses();
   if(typeof assignBossBotLeader==='function')assignBossBotLeader();
   setupTeamMode?.();
@@ -685,6 +699,7 @@ function doReset(){
     p.openingBonusLabel='';
     if(p.bot)ensureBotPersona(p);
   });
+  resetRouletteForNewMatch?.();
   if(typeof applyStartingDraftBonuses==='function')applyStartingDraftBonuses();
   if(typeof assignBossBotLeader==='function')assignBossBotLeader();
   G.cur=0;G.rolled=false;G.doublesCount=0;G.txns=[];G.undoStack=[];
@@ -750,6 +765,12 @@ function backToLobby(){
   clearTeamMode?.();
   G.pendingRematch=false;
   G.pendingPartyBots=[];
+  if(typeof ensureRouletteState==='function'){
+    ensureRouletteState();
+    G.roulette.totalPot=0;
+    G.roulette.bets={};
+    G.roulette.pendingPayouts={};
+  }
   G.onlineLobbySignature='';
   G.playerPanelSignature='';
   setBoardEditingLocked(false);
@@ -880,6 +901,11 @@ function connectWs(url,room,onOpen){
           G.started=!!msg.state.started;
           G.rolled=msg.state.rolled;
           G.jailTurns=msg.state.jailTurns||{};
+          G.roulette=msg.state.roulette||G.roulette;
+          G.turnCount=Math.max(1,parseInt(msg.state.turnCount,10)||G.turnCount||1);
+          if(typeof ensureRouletteState==='function')ensureRouletteState();
+          if(Array.isArray(G.players))G.players.forEach(p=>ensureRoulettePlayerData?.(p));
+          syncPendingRoulettePayouts?.();
           if(G.started) document.getElementById('chat-card').style.display='block';
           buildBoard();renderPlayers();updBtns();renderOnlineLobby();
           wsLog('État reçu de '+msg.sender);
@@ -950,7 +976,7 @@ function broadcast(){
   if(!G.ws||!G.wsOk)return;
   const msg=JSON.stringify({
     type:'state',room:G.room,sender:G.myId,
-    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns}
+    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns,roulette:G.roulette,turnCount:G.turnCount}
   });
   try{G.ws.send(msg);}catch(e){wsLog('Erreur envoi: '+e);}
 }
