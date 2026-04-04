@@ -3138,18 +3138,31 @@ function renderAlliancePanel(){
 }
 
 function createDynamicBoardEvent(){
+  const turn=Math.max(1,parseInt(G.turnCount,10)||1);
   const colors=[...new Set((G.board||[]).filter(cell=>cell&&cell.t==='property'&&cell.c).map(cell=>cell.c))];
   const targetColor=colors[Math.floor(Math.random()*colors.length)]||'#22c55e';
-  const sampleCell=(G.board||[]).find(cell=>cell&&cell.c===targetColor);
-  const colorName=sampleCell?.n||'quartier ciblé';
+  const sampleCell=(G.board||[]).find(cell=>cell&&cell.c===targetColor&&cell.t==='property');
+  const districtLabel=sampleCell?('du secteur '+sampleCell.n):'du secteur ciblé';
   const pool=[
-    {id:'rent_surge',label:'💥 Boom des loyers',desc:'Le quartier '+colorName+' rapporte +60% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,targetColor,rentMultiplier:1.6},
-    {id:'go_festival',label:'🎉 Festival du départ',desc:'Le bonus Départ est augmenté de 50% pendant 3 tours.',untilTurn:(G.turnCount||1)+3,goBonusMultiplier:1.5},
-    {id:'builder_sale',label:'🏗️ Salon du BTP',desc:'Le coût des maisons baisse de 30% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,houseDiscount:0.7},
-    {id:'utility_blackout',label:'⚡ Blackout',desc:'Les compagnies ne rapportent plus pendant 2 tours.',untilTurn:(G.turnCount||1)+2,zeroUtility:true},
-    {id:'rail_rush',label:'🚂 Rush ferroviaire',desc:'Les gares rapportent +50% pendant 2 tours.',untilTurn:(G.turnCount||1)+2,railroadBonus:1.5},
+    {id:'rent_surge',label:'💥 Boom des loyers',desc:'Les propriétés '+districtLabel+' rapportent +60% pendant 2 tours.',untilTurn:turn+2,targetColor,rentMultiplier:1.6,weight:14,theme:'danger'},
+    {id:'golden_block',label:'🏙️ Quartier en vedette',desc:'Les propriétés '+districtLabel+' rapportent presque le double pendant 2 tours.',untilTurn:turn+2,targetColor,rentMultiplier:1.9,weight:8,theme:'danger'},
+    {id:'go_festival',label:'🎉 Festival du départ',desc:'Le bonus Départ est augmenté de 50% pendant 3 tours.',untilTurn:turn+3,goBonusMultiplier:1.5,weight:12,theme:'celebration'},
+    {id:'go_parade',label:'🎊 Parade municipale',desc:'Le bonus Départ grimpe de 75% pendant 2 tours.',untilTurn:turn+2,goBonusMultiplier:1.75,weight:7,theme:'celebration'},
+    {id:'builder_sale',label:'🏗️ Salon du BTP',desc:'Le coût des maisons baisse de 30% pendant 2 tours.',untilTurn:turn+2,houseDiscount:0.7,weight:12,theme:'industry'},
+    {id:'mega_cranes',label:'🧱 Chantier géant',desc:'Les constructions sont en promo massive (-45%) pendant 2 tours.',untilTurn:turn+2,houseDiscount:0.55,weight:6,theme:'industry'},
+    {id:'utility_blackout',label:'⚡ Blackout',desc:'Les compagnies ne rapportent plus pendant 2 tours.',untilTurn:turn+2,zeroUtility:true,weight:10,theme:'storm'},
+    {id:'rail_rush',label:'🚂 Rush ferroviaire',desc:'Les gares rapportent +50% pendant 2 tours.',untilTurn:turn+2,railroadBonus:1.5,weight:10,theme:'rail'},
+    {id:'cargo_week',label:'🚚 Semaine logistique',desc:'Les gares explosent à +90% pendant 2 tours.',untilTurn:turn+2,railroadBonus:1.9,weight:6,theme:'rail'},
+    {id:'market_heat',label:'📈 Marché en surchauffe',desc:'Tous les loyers montent de 20% pendant 2 tours.',untilTurn:turn+2,globalRentMultiplier:1.2,weight:8,theme:'danger'},
   ];
-  return pool[Math.floor(Math.random()*pool.length)]||null;
+  const bannerId='we_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6);
+  const totalWeight=pool.reduce((sum,entry)=>sum+Math.max(1,parseInt(entry.weight,10)||1),0);
+  let roll=Math.random()*totalWeight;
+  for(const entry of pool){
+    roll-=Math.max(1,parseInt(entry.weight,10)||1);
+    if(roll<=0)return Object.assign({bannerId},entry);
+  }
+  return pool[0]?Object.assign({bannerId},pool[0]):null;
 }
 
 function getActiveBoardEvent(){
@@ -3168,9 +3181,12 @@ function maybeTriggerBoardEvent(force=false){
   const eventMode=normalizeWorldEventMode(G.worldEventMode);
   if(eventMode==='off')return false;
   if(!force){
-    if((G.turnCount||1)<4)return false;
-    if(((G.turnCount||1)-(G.lastBoardEventTurn||0))<3)return false;
-    const chance=eventMode==='wild'?0.34:0.18;
+    const turn=Math.max(1,parseInt(G.turnCount,10)||1);
+    const minTurn=eventMode==='wild'?3:4;
+    const gapNeeded=eventMode==='wild'?2:3;
+    if(turn<minTurn)return false;
+    if((turn-(G.lastBoardEventTurn||0))<gapNeeded)return false;
+    const chance=eventMode==='wild'?0.42:0.24;
     if(Math.random()>chance)return false;
   }
   const next=createDynamicBoardEvent();
@@ -3179,8 +3195,33 @@ function maybeTriggerBoardEvent(force=false){
   G.lastBoardEventTurn=G.turnCount||1;
   glog('🌩️ '+next.label+' — '+next.desc,'a');
   toast(next.label,'a');
+  showWorldEventBanner(next);
   renderBoardEventUi();
+  broadcast?.();
   return true;
+}
+
+function showWorldEventBanner(ev){
+  const banner=document.getElementById('world-event-banner');
+  if(!banner||!ev)return;
+  const labelParts=String(ev.label||'🌩️ Événement mondial').trim().split(/\s+/);
+  const leadIcon=labelParts.shift()||'🌩️';
+  const titleText=labelParts.join(' ')||String(ev.label||'Événement mondial');
+  const theme=String(ev.theme||'default');
+  banner.innerHTML=''+
+    '<div class="world-event-banner-card theme-'+escapeUiText(theme)+'">'+
+      '<div class="world-event-banner-chip">🌩️ ÉVÉNEMENT MONDIAL</div>'+
+      '<div class="world-event-banner-head">'+
+        '<div class="world-event-banner-icon">'+escapeUiText(leadIcon)+'</div>'+
+        '<div><div class="world-event-banner-title">'+escapeUiText(titleText)+'</div><div class="world-event-banner-desc">'+escapeUiText(ev.desc||'Un nouvel événement mondial influence la partie.')+'</div></div>'+
+      '</div>'+
+      '<div class="world-event-banner-meta">Actif jusqu’au tour '+(parseInt(ev.untilTurn,10)||Math.max(1,parseInt(G.turnCount,10)||1))+'</div>'+
+    '</div>';
+  banner.classList.add('open');
+  if(showWorldEventBanner._timer)clearTimeout(showWorldEventBanner._timer);
+  showWorldEventBanner._timer=setTimeout(()=>{
+    banner.classList.remove('open');
+  },3200);
 }
 
 function renderBoardEventUi(){
@@ -3196,7 +3237,7 @@ function renderBoardEventUi(){
   }
   const ev=getActiveBoardEvent();
   if(!ev){
-    status.innerHTML='Aucun événement actif. <span style="color:var(--muted)">Le prochain peut arriver à partir du tour '+Math.max(4,(G.lastBoardEventTurn||1)+3)+'.</span>';
+    status.innerHTML='Aucun événement actif. <span style="color:var(--muted)">Le prochain peut tomber aléatoirement à partir du tour '+Math.max(4,(G.lastBoardEventTurn||1)+3)+'.</span>';
     return;
   }
   status.innerHTML='<b>'+escapeUiText(ev.label)+'</b><div style="font-size:.66rem;color:var(--muted);margin-top:4px">'+escapeUiText(ev.desc)+' • fin au tour '+(ev.untilTurn||G.turnCount||1)+'</div>';

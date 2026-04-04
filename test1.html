@@ -1623,6 +1623,24 @@ body.streamer-mode #invite-link {
 .t-d{background:var(--red);color:#fff}
 .t-w{background:var(--yellow);color:#000}
 .t-i{background:var(--blue);color:#fff}
+.world-event-banner{position:fixed;inset:0;display:none;align-items:flex-start;justify-content:center;padding:clamp(18px,5vh,52px) 14px 14px;pointer-events:none;z-index:260}
+.world-event-banner.open{display:flex;animation:worldEventBannerIn .28s ease}
+.world-event-banner-card{position:relative;overflow:hidden;width:min(92vw,720px);padding:14px 16px 12px;border-radius:18px;border:1px solid rgba(255,255,255,.16);background:linear-gradient(135deg,rgba(9,17,32,.96),rgba(18,34,62,.93));box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 22px rgba(96,165,250,.18);backdrop-filter:blur(10px)}
+.world-event-banner-card::before{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 0%,rgba(255,255,255,.16) 35%,transparent 70%);transform:translateX(-120%);animation:worldEventSheen 1.5s ease forwards}
+.world-event-banner-card.theme-celebration{box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 26px rgba(251,191,36,.2)}
+.world-event-banner-card.theme-danger{box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 26px rgba(248,113,113,.18)}
+.world-event-banner-card.theme-industry{box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 26px rgba(251,146,60,.18)}
+.world-event-banner-card.theme-storm{box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 26px rgba(96,165,250,.22)}
+.world-event-banner-card.theme-rail{box-shadow:0 18px 42px rgba(2,6,23,.42),0 0 26px rgba(52,211,153,.18)}
+.world-event-banner-chip{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);font-size:.63rem;font-weight:900;letter-spacing:.08em;color:#dbeafe}
+.world-event-banner-head{display:flex;align-items:center;gap:12px;margin-top:10px}
+.world-event-banner-icon{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 30% 30%,#fff8db 0%,#ffd166 44%,#8b5a08 100%);box-shadow:0 8px 18px rgba(0,0,0,.28);font-size:1.6rem;animation:worldEventPulse 1s ease-in-out 2}
+.world-event-banner-title{font-size:1rem;font-weight:900;color:#fff7dc;letter-spacing:.02em}
+.world-event-banner-desc{margin-top:4px;font-size:.76rem;line-height:1.4;color:#dbeafe}
+.world-event-banner-meta{margin-top:10px;font-size:.68rem;color:#bfdbfe}
+@keyframes worldEventBannerIn{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes worldEventSheen{from{transform:translateX(-120%)}to{transform:translateX(120%)}}
+@keyframes worldEventPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 
 /* ── LOBBY PANEL (sidebar en mode menu) ── */
 #lobby-panel{display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden}
@@ -3050,6 +3068,7 @@ body.streamer-mode #invite-link {
   </div>
 </div>
 
+<div id="world-event-banner" class="world-event-banner" aria-live="polite"></div>
 <div class="toast-wrap" id="toasts"></div>
 
 <div id="center-actions-wrap">

@@ -895,6 +895,7 @@ function connectWs(url,room,onOpen){
         }
         if(msg.room!==G.room)return;
         if(msg.type==='state'&&msg.sender!==G.myId){
+          const prevBoardEventId=String(G.boardEvent?.bannerId||G.boardEvent?.id||'');
           G.players=msg.state.players;
           G.board=msg.state.board;
           G.cur=msg.state.cur;
@@ -902,10 +903,14 @@ function connectWs(url,room,onOpen){
           G.rolled=msg.state.rolled;
           G.jailTurns=msg.state.jailTurns||{};
           G.roulette=msg.state.roulette||G.roulette;
+          if(Object.prototype.hasOwnProperty.call(msg.state,'boardEvent'))G.boardEvent=msg.state.boardEvent||null;
+          G.lastBoardEventTurn=Math.max(0,parseInt(msg.state.lastBoardEventTurn,10)||G.lastBoardEventTurn||0);
           G.turnCount=Math.max(1,parseInt(msg.state.turnCount,10)||G.turnCount||1);
           if(typeof ensureRouletteState==='function')ensureRouletteState();
           if(Array.isArray(G.players))G.players.forEach(p=>ensureRoulettePlayerData?.(p));
           syncPendingRoulettePayouts?.();
+          const nextBoardEventId=String(G.boardEvent?.bannerId||G.boardEvent?.id||'');
+          if(nextBoardEventId&&nextBoardEventId!==prevBoardEventId)showWorldEventBanner?.(G.boardEvent);
           if(G.started) document.getElementById('chat-card').style.display='block';
           buildBoard();renderPlayers();updBtns();renderOnlineLobby();
           wsLog('État reçu de '+msg.sender);
@@ -976,7 +981,7 @@ function broadcast(){
   if(!G.ws||!G.wsOk)return;
   const msg=JSON.stringify({
     type:'state',room:G.room,sender:G.myId,
-    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns,roulette:G.roulette,turnCount:G.turnCount}
+    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns,roulette:G.roulette,boardEvent:G.boardEvent,lastBoardEventTurn:G.lastBoardEventTurn,turnCount:G.turnCount}
   });
   try{G.ws.send(msg);}catch(e){wsLog('Erreur envoi: '+e);}
 }
