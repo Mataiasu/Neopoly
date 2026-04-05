@@ -429,6 +429,113 @@ let globalLeaderboardLiveTicker=null;
 let remoteProfileSyncTimer=null;
 const GLOBAL_LEADERBOARD_FETCH_COOLDOWN_MS=45000;
 const GLOBAL_LEADERBOARD_LIVE_REFRESH_MS=5000;
+const SITE_PRESENCE_STORAGE_KEY='NP_SITE_PRESENCE_ID';
+const SITE_PRESENCE_TAB_KEY='NP_SITE_PRESENCE_TAB_ID';
+const SITE_PRESENCE_PING_MS=25000;
+let sitePresenceTimer=null;
+let sitePresenceInFlight=false;
+let sitePresenceStarted=false;
+
+function createSitePresenceToken(prefix='np'){
+  try{
+    if(window.crypto&&typeof window.crypto.randomUUID==='function')return prefix+'-'+window.crypto.randomUUID();
+  }catch(_){ }
+  return prefix+'-'+Math.random().toString(36).slice(2,10)+'-'+Date.now().toString(36);
+}
+
+function getSitePresenceId(){
+  try{
+    let id=localStorage.getItem(SITE_PRESENCE_STORAGE_KEY)||'';
+    if(!id){
+      id=createSitePresenceToken('site');
+      localStorage.setItem(SITE_PRESENCE_STORAGE_KEY,id);
+    }
+    return id;
+  }catch(_){
+    if(!window.__npSitePresenceId)window.__npSitePresenceId=createSitePresenceToken('site');
+    return window.__npSitePresenceId;
+  }
+}
+
+function getSitePresenceTabId(){
+  try{
+    let id=sessionStorage.getItem(SITE_PRESENCE_TAB_KEY)||'';
+    if(!id){
+      id=createSitePresenceToken('tab');
+      sessionStorage.setItem(SITE_PRESENCE_TAB_KEY,id);
+    }
+    return id;
+  }catch(_){
+    if(!window.__npSitePresenceTabId)window.__npSitePresenceTabId=createSitePresenceToken('tab');
+    return window.__npSitePresenceTabId;
+  }
+}
+
+function getSitePresencePayload(){
+  return {
+    presenceId:getSitePresenceId(),
+    tabId:getSitePresenceTabId(),
+    uid:P?.uid||'',
+    name:P?.name||'Joueur',
+    page:String(window.location?.pathname||'/'),
+  };
+}
+if(typeof window!=='undefined')window.getSitePresencePayload=getSitePresencePayload;
+
+async function pingSitePresence(opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/, '');
+  if(!base)return false;
+  const payload=getSitePresencePayload();
+  const url=base+(options.leave?'/api/presence/leave':'/api/presence/ping');
+  if(options.leave&&typeof navigator!=='undefined'&&typeof navigator.sendBeacon==='function'){
+    try{
+      const blob=new Blob([JSON.stringify(payload)],{type:'application/json'});
+      navigator.sendBeacon(url,blob);
+      return true;
+    }catch(_){ }
+  }
+  if(sitePresenceInFlight&&!options.force&&!options.leave)return false;
+  sitePresenceInFlight=true;
+  try{
+    const r=await fetch(url,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload),
+      cache:'no-store',
+      keepalive:!!options.keepalive,
+    });
+    const data=await r.json().catch(()=>null);
+    const live=data&&data.live&&typeof data.live==='object'?data.live:data;
+    if(r.ok&&data&&data.ok&&live){
+      if(live.onlinePlayers!==undefined)GLOBAL_LEADERBOARD_STATE.onlinePlayers=Math.max(0,parseInt(live.onlinePlayers,10)||0);
+      if(live.siteUsers!==undefined)GLOBAL_LEADERBOARD_STATE.siteUsers=Math.max(0,parseInt(live.siteUsers,10)||0);
+      if(live.publicRooms!==undefined)GLOBAL_LEADERBOARD_STATE.publicRooms=Math.max(0,parseInt(live.publicRooms,10)||0);
+      renderGlobalLeaderboardCard();
+      return true;
+    }
+  }catch(_){
+  }finally{
+    sitePresenceInFlight=false;
+  }
+  return false;
+}
+
+function ensureSitePresenceHeartbeat(){
+  if(sitePresenceStarted)return;
+  sitePresenceStarted=true;
+  pingSitePresence({force:true});
+  if(sitePresenceTimer)clearInterval(sitePresenceTimer);
+  sitePresenceTimer=setInterval(()=>{pingSitePresence({force:true});},SITE_PRESENCE_PING_MS);
+  if(typeof window!=='undefined'&&!window.__npSitePresenceBound){
+    window.__npSitePresenceBound=true;
+    document.addEventListener('visibilitychange',()=>{
+      if(document.visibilityState==='visible')pingSitePresence({force:true});
+    });
+    window.addEventListener('pagehide',()=>{pingSitePresence({leave:true,keepalive:true,force:true});});
+    window.addEventListener('beforeunload',()=>{pingSitePresence({leave:true,keepalive:true,force:true});});
+  }
+}
 
 function normalizeGlobalLeaderboardEntry(raw,source='local'){
   if(!raw||typeof raw!=='object')return null;
@@ -920,6 +1027,7 @@ function queueRemoteProfileSync(_reason='save'){
 }
 
 function ensureGlobalLeaderboardLiveTicker(){
+  ensureSitePresenceHeartbeat();
   if(globalLeaderboardLiveTicker)return;
   globalLeaderboardLiveTicker=setInterval(()=>{
     const inLobby=!!document.getElementById('app-wrap')?.classList.contains('in-lobby');
@@ -955,7 +1063,15 @@ function scheduleGlobalLeaderboardRefresh(force=false){
     GLOBAL_LEADERBOARD_STATE.status='Synchronisation…';
     renderGlobalLeaderboardCard();
     try{
-      const r=await fetch(base+'/api/profile/leaderboard?limit=20',{cache:'no-store'});
+      const presence=getSitePresencePayload();
+      const leaderboardUrl=base+'/api/profile/leaderboard?limit=20&presenceId='+encodeURIComponent(presence.presenceId||'')+'&tabId='+encodeURIComponent(presence.tabId||'');
+      const r=await fetch(leaderboardUrl,{
+        cache:'no-store',
+        headers:{
+          'x-neopoly-presence':presence.presenceId||'',
+          'x-neopoly-tab':presence.tabId||'',
+        },
+      });
       const data=await r.json().catch(()=>null);
       if(!r.ok||!data||!data.ok)throw new Error('leaderboard_unavailable');
       GLOBAL_LEADERBOARD_STATE.entries=mergeGlobalLeaderboardEntries([

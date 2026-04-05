@@ -300,6 +300,8 @@ const activeOnlineIdentities = new Map();
 const MAX_ROOM_PLAYERS = 6;
 const SOCIAL_ROOM_ID = 'social-lobby';
 const SOCIAL_CHAT_AUTO_CLEAR_MS = 5 * 60 * 1000;
+const SITE_PRESENCE_TTL_MS = 75 * 1000;
+const sitePresence = new Map();
 
 const CFG_BOUNDS = {
   eventChance:    [0, 100],
@@ -493,19 +495,121 @@ function listPublicRooms() {
     });
 }
 
+function sanitizePresenceToken(value, maxLen = 160) {
+  return String(value || '').trim().replace(/[^a-zA-Z0-9:_-]/g, '').slice(0, maxLen);
+}
+
+function getRequestIp(req) {
+  const forwarded = String(req && req.headers && req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  const remote = String(req && req.socket && req.socket.remoteAddress || '').trim();
+  return sanitizeStr(forwarded || remote || '', 128);
+}
+
+function getFallbackPresenceId(req) {
+  const seed = [
+    getRequestIp(req),
+    String(req && req.headers && req.headers['user-agent'] || '').slice(0, 160),
+  ].join('|');
+  if (!seed.replace(/\|/g, '').trim()) return '';
+  return 'anon:' + crypto.createHash('sha1').update(seed).digest('hex').slice(0, 24);
+}
+
+function pruneSitePresence(now = Date.now()) {
+  sitePresence.forEach((entry, presenceId) => {
+    if (!entry || !(entry.tabs instanceof Map)) {
+      sitePresence.delete(presenceId);
+      return;
+    }
+    entry.tabs.forEach((tabState, tabId) => {
+      const lastSeen = Number(tabState && tabState.lastSeen || 0);
+      if (!lastSeen || (now - lastSeen) > SITE_PRESENCE_TTL_MS) {
+        entry.tabs.delete(tabId);
+      }
+    });
+    if (entry.tabs.size === 0) {
+      sitePresence.delete(presenceId);
+      return;
+    }
+    entry.lastSeen = Math.max(0, ...Array.from(entry.tabs.values()).map((tabState) => Number(tabState && tabState.lastSeen || 0)));
+  });
+}
+
+function countActiveSiteUsers(now = Date.now()) {
+  pruneSitePresence(now);
+  return sitePresence.size;
+}
+
+function registerSitePresence(req, payload) {
+  const raw = payload && typeof payload === 'object' ? payload : {};
+  const presenceId = sanitizePresenceToken(
+    raw.presenceId || raw.sitePresenceId || (req && req.headers && req.headers['x-neopoly-presence']),
+    160
+  ) || getFallbackPresenceId(req);
+  const tabId = sanitizePresenceToken(
+    raw.tabId || raw.siteTabId || (req && req.headers && req.headers['x-neopoly-tab']),
+    160
+  ) || 'tab';
+  const now = Date.now();
+  if (!presenceId) {
+    return { ok: true, presenceId: '', siteUsers: countActiveSiteUsers(now) };
+  }
+  pruneSitePresence(now);
+  const existing = sitePresence.get(presenceId) || { tabs: new Map(), uid: '', name: '' };
+  existing.uid = sanitizeStr(raw.uid || existing.uid || '', 128);
+  existing.name = sanitizeStr(raw.name || existing.name || '', 64);
+  existing.lastSeen = now;
+  existing.updatedAt = now;
+  existing.userAgent = sanitizeStr(String(req && req.headers && req.headers['user-agent'] || existing.userAgent || ''), 160);
+  existing.ip = getRequestIp(req) || existing.ip || '';
+  existing.tabs.set(tabId, {
+    lastSeen: now,
+    page: sanitizeStr(raw.page || raw.pathname || '', 160),
+  });
+  sitePresence.set(presenceId, existing);
+  return { ok: true, presenceId, tabId, siteUsers: countActiveSiteUsers(now) };
+}
+
+function unregisterSitePresence(payload) {
+  const raw = payload && typeof payload === 'object' ? payload : {};
+  const presenceId = sanitizePresenceToken(raw.presenceId || raw.sitePresenceId, 160);
+  const tabId = sanitizePresenceToken(raw.tabId || raw.siteTabId, 160);
+  if (!presenceId) {
+    return { ok: true, siteUsers: countActiveSiteUsers() };
+  }
+  const existing = sitePresence.get(presenceId);
+  if (!existing) {
+    return { ok: true, siteUsers: countActiveSiteUsers() };
+  }
+  if (tabId && existing.tabs instanceof Map) {
+    existing.tabs.delete(tabId);
+    if (existing.tabs.size > 0) {
+      existing.lastSeen = Math.max(0, ...Array.from(existing.tabs.values()).map((tabState) => Number(tabState && tabState.lastSeen || 0)));
+      sitePresence.set(presenceId, existing);
+      return { ok: true, siteUsers: countActiveSiteUsers() };
+    }
+  }
+  sitePresence.delete(presenceId);
+  return { ok: true, siteUsers: countActiveSiteUsers() };
+}
+
 function getLiveSiteStats() {
   const publicRooms = listPublicRooms();
   const onlinePlayers = publicRooms.reduce((sum, room) => sum + Math.max(0, Number(room && room.playerCount) || 0), 0);
-  let siteUsers = 0;
+  const socketUsers = new Set();
+  let fallbackSocketIndex = 0;
   try {
     if (wss && wss.clients) {
       wss.clients.forEach((client) => {
-        if (client && client.readyState === WebSocket.OPEN) siteUsers += 1;
+        if (!client || client.readyState !== WebSocket.OPEN) return;
+        const key = sanitizePresenceToken(
+          client.__sitePresenceId || client.__siteVisitorKey || client.__onlineIdentityKey || '',
+          160
+        ) || ('socket:' + (++fallbackSocketIndex));
+        socketUsers.add(key);
       });
     }
-  } catch (_) {
-    siteUsers = 0;
-  }
+  } catch (_) {}
+  const siteUsers = Math.max(countActiveSiteUsers(), socketUsers.size, onlinePlayers);
   return {
     onlinePlayers,
     siteUsers,
@@ -1046,6 +1150,35 @@ async function handleApi(req, res, pathname) {
     return true;
   }
 
+  if (pathname === '/api/presence/ping' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const presence = registerSitePresence(req, body);
+      const live = getLiveSiteStats();
+      live.siteUsers = Math.max(live.siteUsers, presence.siteUsers || 0);
+      sendApiJson(req, res, 200, {
+        ok: true,
+        presenceId: presence.presenceId || '',
+        tabId: presence.tabId || '',
+        live,
+      });
+    } catch (_) {
+      sendApiJson(req, res, 400, { ok: false, error: 'invalid_presence_payload' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/presence/leave' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      unregisterSitePresence(body);
+      sendApiJson(req, res, 200, { ok: true, live: getLiveSiteStats() });
+    } catch (_) {
+      sendApiJson(req, res, 400, { ok: false, error: 'invalid_presence_payload' });
+    }
+    return true;
+  }
+
   if (pathname === '/api/profile/get' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
@@ -1095,7 +1228,12 @@ async function handleApi(req, res, pathname) {
 
   if (pathname === '/api/profile/leaderboard' && req.method === 'GET') {
     try {
-      const limit = Math.max(5, Math.min(30, parseInt((parsedUrl.searchParams.get('limit') || '12'), 10) || 12));
+      const requestUrl = new URL(req.url, 'http://localhost');
+      registerSitePresence(req, {
+        presenceId: requestUrl.searchParams.get('presenceId') || '',
+        tabId: requestUrl.searchParams.get('tabId') || '',
+      });
+      const limit = Math.max(5, Math.min(30, parseInt((requestUrl.searchParams.get('limit') || '12'), 10) || 12));
       const db = loadProfilesDb();
       const dedup = new Map();
       Object.values(db).forEach((entry) => {
@@ -1141,7 +1279,10 @@ async function handleApi(req, res, pathname) {
         live: getLiveSiteStats(),
         updatedAt: Date.now(),
       });
-    } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }
+    } catch (error) {
+      console.error('[leaderboard api] failed', error);
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
+    }
     return true;
   }
 
@@ -1264,7 +1405,7 @@ server.on('upgrade', (req, socket, head) => {
   });
 });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   let myRoom = null;
   let mySender = null;
   let roomRegistered = false;
@@ -1274,6 +1415,21 @@ wss.on('connection', (ws) => {
       const msg = JSON.parse(raw);
       if (msg.sender) mySender = msg.sender;
       const senderSession = getTrustedSession(msg);
+      const sitePresenceId = sanitizePresenceToken(msg && (msg.sitePresenceId || msg.presenceId), 160);
+      const siteTabId = sanitizePresenceToken(msg && (msg.siteTabId || msg.tabId), 160);
+      const siteVisitorKey = sitePresenceId || getOnlineIdentityKey(msg, senderSession);
+      if (siteVisitorKey) ws.__siteVisitorKey = siteVisitorKey;
+      if (sitePresenceId) {
+        ws.__sitePresenceId = sitePresenceId;
+        ws.__siteTabId = siteTabId || ws.__siteTabId || 'ws';
+        registerSitePresence(req, {
+          presenceId: sitePresenceId,
+          tabId: siteTabId || 'ws',
+          uid: msg.uid || msg.userId || msg.profileUid || '',
+          name: msg.name || msg.hostName || '',
+          page: 'ws:' + String(msg.room || myRoom || 'site'),
+        });
+      }
 
       if (msg.type === 'room_list_request') {
         sendJson(ws, { type: 'room_list', rooms: listPublicRooms() });
