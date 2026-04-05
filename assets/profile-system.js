@@ -1284,6 +1284,7 @@ function saveProfileEdit(){
 }
 
 function debugAddVictories(amount){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   const add=Math.max(0,parseInt(amount,10)||0);
   if(!add)return;
   P.stats.gamesWon=Math.max(0,(parseInt(P.stats.gamesWon,10)||0)+add);
@@ -1295,6 +1296,7 @@ function debugAddVictories(amount){
 }
 
 function debugAddLosses(amount){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   const add=Math.max(0,parseInt(amount,10)||0);
   if(!add)return;
   P.stats.gamesLost=(parseInt(P.stats.gamesLost,10)||0)+add;
@@ -1305,6 +1307,7 @@ function debugAddLosses(amount){
 }
 
 function debugAddElo(amount){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   const add=parseInt(amount,10)||0;
   P.elo=Math.max(0,Math.min(9999,(P.elo||0)+add));
   saveProfileData();
@@ -1313,6 +1316,7 @@ function debugAddElo(amount){
 }
 
 function debugSetElo(value){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   P.elo=Math.max(0,Math.min(9999,parseInt(value,10)||0));
   saveProfileData();
   renderLobbyProfileTab();
@@ -1320,6 +1324,7 @@ function debugSetElo(value){
 }
 
 function debugUnlockWinnerLooser(){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   if(!Array.isArray(P.titles))P.titles=[];
   if(P.titles.includes('winner_looser')){toast('Déjà déverrouillé.','i');return;}
   P.titles.push('winner_looser');
@@ -1353,10 +1358,12 @@ function resetProfileProgress(options){
 }
 
 function debugResetStats(){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   resetProfileProgress({source:'debug',toast:'🧹 Reset total: stats, ELO, titres, dates et secrets'});
 }
 
 function debugRemoveWinnerLooser(){
+  if(typeof hasAdminDebugAccess==='function'&&!hasAdminDebugAccess(true))return;
   if(!Array.isArray(P.titles)||!P.titles.includes('winner_looser')){
     toast('Titre "Winner Looser" non présent.','i');
     return;

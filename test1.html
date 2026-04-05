@@ -112,6 +112,35 @@ body.addons-hidden-by-overlay #pack-manager-btn{
   background:linear-gradient(180deg,rgba(18,28,54,.98),rgba(20,34,66,.95));
   border-color:#ffd166;
 }
+#debug-tools-window-backdrop{display:none;position:fixed;inset:0;background:rgba(8,12,24,.82);backdrop-filter:blur(6px);z-index:174}
+#debug-tools-window-backdrop.open{display:block}
+#debug-tools-card{display:none}
+body.debug-tools-window-open #debug-tools-card{
+  display:block !important;
+  position:fixed;
+  left:50%;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:min(92vw,620px);
+  max-height:88vh;
+  overflow-y:auto;
+  z-index:175;
+  padding:12px;
+  border:1px solid rgba(255,209,102,.28);
+  box-shadow:0 24px 48px rgba(1,6,18,.45);
+}
+body.debug-tools-window-open #debug-tools-card summary{
+  position:sticky;
+  top:-12px;
+  z-index:2;
+  margin:-12px -12px 10px;
+  padding:12px;
+  background:linear-gradient(180deg,rgba(11,18,38,.98),rgba(16,26,51,.96));
+  border-bottom:1px solid var(--border);
+  cursor:grab;
+  user-select:none;
+}
+body.debug-tools-window-open #debug-tools-card.is-dragging summary{cursor:grabbing}
 #mobile-sidebar-gear{display:none}
 #app-wrap.in-lobby #pack-manager-btn{display:block !important}
 #connection-zone:not(.hidden) ~ #app-wrap #pack-manager-btn{display:none !important}
@@ -511,7 +540,11 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   text-align: center;
   line-height: 1.1;
   letter-spacing: .01em;
-  word-break: break-word;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: break-word;
+  hyphens: manual;
+  text-wrap: balance;
   max-width: calc(100% + 6px);
   padding: calc(1px * var(--cell-upscale,1)) calc(3px * var(--cell-upscale,1));
   margin-top: calc(2px * var(--cell-upscale,1));
@@ -650,16 +683,18 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .cell[data-side="left"] .cell-price {
   writing-mode: horizontal-tb;
   transform: none;
-  font-size: calc(clamp(.3rem, .44vw, .46rem) * var(--zoom-detail,1));
-  line-height: 1.08;
+  font-size: calc(clamp(.28rem, .4vw, .42rem) * var(--zoom-detail,1));
+  line-height: 1.03;
 }
 
 .cell[data-side="left"] .cell-name {
   max-height: none;
-  max-width: calc(100% + 14px);
+  max-width: calc(100% + 18px);
   margin-bottom: 0;
   margin-right: calc(-10px * var(--cell-upscale,1));
   padding: calc(1px * var(--cell-upscale,1)) calc(6px * var(--cell-upscale,1)) calc(1px * var(--cell-upscale,1)) calc(2px * var(--cell-upscale,1));
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .cell[data-side="left"] .cell-meta,
@@ -695,16 +730,29 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .cell[data-side="right"] .cell-price {
   writing-mode: horizontal-tb;
   transform: none;
-  font-size: calc(clamp(.3rem, .44vw, .46rem) * var(--zoom-detail,1));
-  line-height: 1.08;
+  font-size: calc(clamp(.28rem, .4vw, .42rem) * var(--zoom-detail,1));
+  line-height: 1.03;
 }
 
 .cell[data-side="right"] .cell-name {
   max-height: none;
-  max-width: calc(100% + 14px);
+  max-width: calc(100% + 18px);
   margin-bottom: 0;
   margin-left: calc(-10px * var(--cell-upscale,1));
   padding: calc(1px * var(--cell-upscale,1)) calc(2px * var(--cell-upscale,1)) calc(1px * var(--cell-upscale,1)) calc(6px * var(--cell-upscale,1));
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* Ajustement ciblé : ne pas masquer "Avenue des Champs-Élysées" */
+.cell[data-idx="37"]{
+  padding-top: calc(10px * var(--cell-upscale,1));
+}
+.cell[data-idx="37"] .cell-meta{
+  margin-top: calc(8px * var(--cell-upscale,1));
+}
+.cell[data-idx="37"] .cell-name{
+  margin-top: calc(6px * var(--cell-upscale,1));
 }
 
 /* ═══════════════════════════════════════
@@ -1554,7 +1602,19 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 .leaderboard-profile-modal::before{content:'';position:absolute;inset:-30% auto auto -10%;width:55%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);transform:rotate(12deg);animation:leaderboardHeroSweep 5.8s linear infinite;pointer-events:none}
 .leaderboard-profile-hero{display:flex;gap:14px;align-items:center;padding:12px;border-radius:16px;background:linear-gradient(135deg,rgba(10,20,42,.98),rgba(15,18,32,.96));border:1px solid rgba(96,165,250,.14);margin-bottom:12px}
 .leaderboard-premium-focus{position:relative;padding:1px;border-radius:18px;background:linear-gradient(135deg,rgba(37,99,235,.72),rgba(56,189,248,.45),rgba(239,68,68,.48));box-shadow:0 14px 34px rgba(2,6,23,.3),0 0 16px rgba(59,130,246,.08);margin-bottom:12px}
-.leaderboard-premium-focus::after{content:'';position:absolute;inset:0;border-radius:18px;padding:1px;background:linear-gradient(135deg,rgba(255,255,255,.18),transparent 45%,rgba(96,165,250,.16));-webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);-webkit-mask-composite:xor;mask-composite:exclude;pointer-events:none}
+.leaderboard-premium-focus::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:18px;
+  padding:1px;
+  background:linear-gradient(135deg,rgba(255,255,255,.18),transparent 45%,rgba(96,165,250,.16));
+  mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  -webkit-mask:linear-gradient(#fff 0 0) content-box,linear-gradient(#fff 0 0);
+  mask-composite:exclude;
+  -webkit-mask-composite:xor;
+  pointer-events:none;
+}
 .leaderboard-premium-focus>.leaderboard-profile-hero{margin:0;background:linear-gradient(135deg,rgba(8,18,38,.98),rgba(18,22,42,.96))}
 .leaderboard-profile-avatar{width:72px;height:72px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:2rem;font-weight:900;overflow:hidden;border:2px solid rgba(255,255,255,.16);box-shadow:0 10px 24px rgba(2,6,23,.22),0 0 22px rgba(255,216,79,.08);flex-shrink:0}
 .leaderboard-profile-avatar img{width:100%;height:100%;object-fit:cover;display:block}
@@ -1946,7 +2006,9 @@ body.streamer-mode #invite-link {
     <button class="feature-chip" type="button" onclick="openNewsPane()" data-tip="Affiche les nouveautés et les derniers ajouts intégrés au jeu.">🆕 Nouveautés live</button>
     <button class="feature-chip" type="button" onclick="openHelpPane()" data-tip="Ouvre le centre d’aide et les raccourcis utiles.">❓ FAQ / Aide</button>
     <button class="feature-chip" type="button" onclick="openMyPublicProfilePreview()" data-tip="Prévisualise puis partage ton profil public NeoPoly.">🔗 Profil public</button>
+    <button class="feature-chip" id="lobby-reconnect-btn" type="button" onclick="reconnectOnlineRoom()" style="display:none" data-tip="Retourne rapidement dans ta dernière salle online si la connexion a sauté.">🔄 Reconnexion</button>
   </div>
+  <div id="lobby-reconnect-meta" style="display:none;font-size:.72rem;color:var(--muted);margin-top:8px"></div>
   <div class="lobby-version">NeoPoly v5.0 — 2026<br><span style="font-size:.7rem"><a href="/privacy.html" target="_blank" rel="noopener" style="color:var(--accent)">Politique de confidentialité</a> • <a href="/terms.html" target="_blank" rel="noopener" style="color:var(--accent)">Conditions d'utilisation</a></span></div>
 </div>
 
@@ -1993,6 +2055,7 @@ body.streamer-mode #invite-link {
     </div>
   </div>
 </aside>
+<div id="debug-tools-window-backdrop" onclick="closeAdminDebugMenu()" aria-hidden="true"></div>
 <div class="sidebar">
   <div id="sidebar-topbar" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);flex-shrink:0" onclick="toggleMobileSidebar()">
     <div style="font-size:.85rem;font-weight:800">NeoPoly</div>
@@ -2093,10 +2156,14 @@ body.streamer-mode #invite-link {
             <div id="emoji-collection-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(34px,1fr));gap:6px"></div>
           </div>
 
-          <details class="card" id="debug-tools-card" style="padding:10px;display:none">
-            <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
-              <span class="card-title" style="margin:0">🧪 Debug</span>
-              <span style="font-size:.62rem;color:var(--muted)">Ouvrir</span>
+          <details class="card" id="debug-tools-card" style="padding:10px;display:none" open>
+            <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <span class="card-title" style="margin:0">🧪 Debug admin</span>
+              <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                <span style="font-size:.62rem;color:var(--muted)">Admin</span>
+                <button type="button" class="btn btn-xs btn-secondary" onclick="event.preventDefault();event.stopPropagation();recenterAdminDebugMenu()">🎯 Recentrer</button>
+                <button type="button" class="btn btn-xs btn-danger" onclick="event.preventDefault();event.stopPropagation();closeAdminDebugMenu()">✕</button>
+              </span>
             </summary>
             <div id="debug-access-msg" style="font-size:.66rem;color:var(--muted);margin:6px 0 8px"></div>
             <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Victoires</div>
@@ -2393,6 +2460,7 @@ body.streamer-mode #invite-link {
         <div style="font-size:.7rem;color:var(--muted)" id="room-info">Non connecté</div>
         <div id="ws-log" style="max-height:120px;overflow-y:auto;margin-top:8px;padding:6px;background:var(--bg);border-radius:6px"></div>
         <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-secondary btn-sm" id="reconnect-btn" type="button" onclick="reconnectOnlineRoom()" style="display:none">🔄 Reconnexion</button>
           <button class="btn btn-danger btn-sm" id="disc-btn" type="button" onclick="return handleLeaveButtonClick(event)" disabled>Déconnecter</button>
         </div>
       </div>

@@ -86,15 +86,16 @@ function renderPlayers(){
     started:!!G.started,
     fogMode:G.fogMode,
     tutorialHintsEnabled:!!G.tutorialHintsEnabled,
-    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{},rouletteBet:(G.roulette?.bets?.[p.id]?.targetId||'')+':'+(G.roulette?.bets?.[p.id]?.amount||0)}))
+    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,disconnected:!!p.disconnected,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{},rouletteBet:(G.roulette?.bets?.[p.id]?.targetId||'')+':'+(G.roulette?.bets?.[p.id]?.amount||0)}))
   });
   if(G.playerPanelSignature!==playerSignature){
     list.innerHTML='';
     const frag=document.createDocumentFragment();
     G.players.forEach((p,i)=>{
       const row=document.createElement('div');
-    row.className='player-row'+(i===G.cur&&!p.bust?' active-player':'')+(p.bust?' bust-player':'');
+    row.className='player-row'+(i===G.cur&&!p.bust&&!p.disconnected?' active-player':'')+(p.bust?' bust-player':'')+(p.disconnected?' offline-player':'');
     row.style.cursor='pointer';
+    row.style.opacity=p.disconnected?'0.58':'1';
     row.title='Voir les stats de '+p.name;
     row.onclick=()=>showPlayerModal(p.id);
     const cell=G.board[p.pos];
@@ -110,7 +111,7 @@ function renderPlayers(){
     const betInfo=roulette?.bets?.[p.id]||null;
     const fogMode=(typeof normalizeFogMode==='function')?normalizeFogMode(G.fogMode):'off';
     const isControlled=typeof isProfileControlledPlayer==='function'?!!isProfileControlledPlayer(p):false;
-    const canReveal=!G.started||fogMode==='off'||isControlled||i===G.cur||p.bust;
+    const canReveal=!G.started||fogMode==='off'||isControlled||i===G.cur||p.bust||p.disconnected;
     const displayedPos=canReveal?(cell?cell.ico+' '+cell.n:'?'):(fogMode==='soft'?'🌫️ Position masquée':'🌫️ Infos masquées');
     const displayedMoney=canReveal?(p.money+' $'):(fogMode==='soft'?('≈'+Math.max(0,Math.round((p.money||0)/100)*100)+' $'):'🌫️ ???');
     const _pBadges=[];
@@ -121,6 +122,7 @@ function renderPlayers(){
       _pBadges.push(persona.icon+' '+persona.label);
     }
     if(p.openingBonusLabel)_pBadges.push(p.openingBonusLabel);
+    if(p.disconnected)_pBadges.push('📡 Hors ligne');
     if((mi.diceBoost||0)>0)_pBadges.push('⚡×'+mi.diceBoost);
     if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
     if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
@@ -132,7 +134,7 @@ function renderPlayers(){
       row.innerHTML=`
         ${avatarHtml}
         <div style="flex:1;min-width:0">
-          <div class="player-name" style="color:${p.color}">${p.name}${p.bust?' 💀':''}${p.jailed?' ⛓️':''}</div>
+          <div class="player-name" style="color:${p.color}">${p.name}${p.bust?' 💀':''}${p.disconnected?' 📡':''}${p.jailed?' ⛓️':''}</div>
           <div class="player-pos">${displayedPos}</div>
           ${badgesHtml}
         </div>
@@ -166,8 +168,9 @@ function renderPlayers(){
       info = cur.emoji+' ';
     }
     const gt=(G.globalTimerSec>0)?(' • ⏰ '+Math.floor((G.globalTimerLeft||0)/60).toString().padStart(2,'0')+':'+String((G.globalTimerLeft||0)%60).padStart(2,'0')):'';
-    nextCenterInfo=[cur.name,cur.color,cur.img||'',cur.emoji||'',gt].join('|');
-    nextCenterHtml=info + cur.name + ' (tour)' + gt;
+    const turnLabel=cur.disconnected?' (hors ligne)': ' (tour)';
+    nextCenterInfo=[cur.name,cur.color,cur.img||'',cur.emoji||'',gt,cur.disconnected?'offline':'online'].join('|');
+    nextCenterHtml=info + cur.name + turnLabel + gt;
   }
   if(G.centerInfoSignature!==nextCenterInfo){
     G.centerInfoSignature=nextCenterInfo;
@@ -573,13 +576,15 @@ function renderOnlineLobby(){
     G.onlineLobbySignature='';
     return;
   }
+  const lobbyPlayers=(Array.isArray(G.players)?G.players:[]).filter(p=>p&&!p.disconnected);
   const lobbySignature=JSON.stringify({
-    players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:p.img,ready:!!p.ready})),
+    players:lobbyPlayers.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:p.img,ready:!!p.ready})),
+    disconnected:(Array.isArray(G.players)?G.players:[]).filter(p=>p&&p.disconnected).map(p=>p.id),
     myId:G.myId,
     myReady:!!G.myReady
   });
   if(pl&&G.onlineLobbySignature!==lobbySignature){
-    pl.innerHTML=G.players.length?G.players.map(p=>`
+    pl.innerHTML=lobbyPlayers.length?lobbyPlayers.map(p=>`
       <div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)">
         ${p.img?`<img src="${p.img}" style="width:22px;height:22px;border-radius:999px;object-fit:cover;border:2px solid ${p.color}">`:`<span style="font-size:.9rem">${p.emoji||'👤'}</span>`}
         <span style="flex:1;font-size:.75rem;font-weight:700;color:${p.color}">${p.name}${p.id===G.myId?' <span style="color:var(--muted);font-weight:400">(moi)</span>':''}</span>
@@ -587,7 +592,7 @@ function renderOnlineLobby(){
       </div>`).join(''):'<div style="font-size:.72rem;color:var(--muted)">En attente de joueurs…</div>';
     G.onlineLobbySignature=lobbySignature;
   }
-  const allReady=G.players.length>=2&&G.players.every(p=>p.ready);
+  const allReady=lobbyPlayers.length>=2&&lobbyPlayers.every(p=>p.ready);
   const isHost=G.myId&&G.myId.startsWith('h-');
   if(hostBtn){hostBtn.style.display=isHost?'inline-flex':'none';hostBtn.disabled=!allReady;}
   if(hostPartyBtn){
@@ -595,12 +600,17 @@ function renderOnlineLobby(){
     hostPartyBtn.disabled=!!G.started;
   }
   if(readyBtn){
+    readyBtn.disabled=!G.wsOk;
     readyBtn.className='btn btn-sm '+(G.myReady?'btn-primary':'btn-secondary');
-    readyBtn.textContent=G.myReady?'✅ Prêt !':'⏳ Je suis Prêt';
+    readyBtn.textContent=!G.wsOk?'🔄 Reconnexion requise':(G.myReady?'✅ Prêt !':'⏳ Je suis Prêt');
   }
 }
 
 function toggleOnlineReady(){
+  if(G.mode==='online'&&!G.wsOk){
+    toast('Reconnecte-toi d’abord pour revenir dans la salle.','w');
+    return;
+  }
   G.myReady=!G.myReady;
   const me=G.players.find(p=>p.id===G.myId);
   if(me)me.ready=G.myReady;
@@ -638,7 +648,7 @@ function doStart(){
   if(window.DEVICE==='mobile'){G.autoEnd=true;G.centerActions=true;}
   setBoardEditingLocked(true);
   G.players.forEach(p=>{
-    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;
+    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.disconnected=false;p.jailCards=0;p.ready=false;
     p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};p.ghostPass=0;
     p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
     p.turnStartMoney=p.money;
@@ -692,7 +702,7 @@ function doReset(){
   enforceUniquePlayerColors();
   G.board=clone(DEF);
   G.players.forEach(p=>{
-    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.jailCards=0;p.ready=false;p.ghostPass=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};
+    p.pos=0;p.money=G.startingMoney;p.jailed=false;p.bust=false;p.disconnected=false;p.jailCards=0;p.ready=false;p.ghostPass=0;p.matchItems={diceBoost:0,antiJail:0,mortgageDiscount:0};
     p.matchStats={propertiesBought:0,housesBuilt:0,passedGo:0,rentCollected:0,rentPaid:0,turnsPlayed:0};
     p.turnStartMoney=p.money;
     p.isBossBot=false;
@@ -743,6 +753,7 @@ function confirmLeave(skipPrompt){
 
 function backToLobby(){
   G.started=false;stopTimer();stopGlobalTimer();
+  clearOnlineAutoReconnect(true);
   if(G.botActionTimer){clearTimeout(G.botActionTimer);G.botActionTimer=null;}
   G.pendingRollBoostFor=null;
   G.pendingBuy=null;
@@ -832,6 +843,96 @@ function wsLog(msg){
   queueWsLogRender();
 }
 
+const ONLINE_RECONNECT_KEY='NP_ONLINE_RECONNECT';
+const ONLINE_AUTO_RECONNECT_DELAY_MS=3500;
+const ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS=3;
+let onlineAutoReconnectTimer=null;
+let onlineAutoReconnectAttempts=0;
+
+function clearOnlineAutoReconnect(resetCount=true){
+  if(onlineAutoReconnectTimer){
+    clearTimeout(onlineAutoReconnectTimer);
+    onlineAutoReconnectTimer=null;
+  }
+  if(resetCount)onlineAutoReconnectAttempts=0;
+}
+
+function scheduleOnlineAutoReconnect(reason=''){
+  const info=getStoredOnlineReconnectInfo();
+  if(!info||!info.room||!info.wsUrl)return;
+  if(G.wsOk||G.mode!=='online'||!G.room)return;
+  if(onlineAutoReconnectTimer||onlineAutoReconnectAttempts>=ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS)return;
+  const waitSec=Math.max(1,Math.round(ONLINE_AUTO_RECONNECT_DELAY_MS/1000));
+  wsLog('🔄 Reconnexion auto dans '+waitSec+'s'+(reason?(' · '+reason):'')+'.');
+  onlineAutoReconnectTimer=setTimeout(()=>{
+    onlineAutoReconnectTimer=null;
+    if(G.wsOk||G.mode!=='online'||!G.room)return;
+    onlineAutoReconnectAttempts++;
+    reconnectOnlineRoom({auto:true,silent:true,reason}).catch(err=>{
+      wsLog('Auto-reconnexion échouée: '+(err?.message||err));
+    });
+    updateReconnectButtons();
+  },ONLINE_AUTO_RECONNECT_DELAY_MS);
+  updateReconnectButtons();
+}
+
+function getStoredOnlineReconnectInfo(){
+  try{
+    const raw=localStorage.getItem(ONLINE_RECONNECT_KEY)||'';
+    const parsed=raw?JSON.parse(raw):null;
+    return parsed&&typeof parsed==='object'?parsed:null;
+  }catch(_){
+    return null;
+  }
+}
+
+function clearStoredOnlineReconnectInfo(){
+  try{localStorage.removeItem(ONLINE_RECONNECT_KEY);}catch(_){ }
+}
+
+function rememberOnlineReconnectInfo(patch){
+  const prev=getStoredOnlineReconnectInfo()||{};
+  const next=Object.assign({},prev,patch||{});
+  next.room=String(next.room||'').trim();
+  next.wsUrl=String(next.wsUrl||'').trim();
+  next.roomPassword=String(next.roomPassword||'');
+  next.myId=String(next.myId||G.myId||'').trim();
+  next.name=String(next.name||'').slice(0,64);
+  next.emoji=String(next.emoji||'👤').slice(0,16);
+  next.color=String(next.color||'#3b82f6');
+  next.img=typeof next.img==='string'?next.img:'';
+  next.savedAt=Date.now();
+  if(!next.room||!next.wsUrl||!next.myId){
+    clearStoredOnlineReconnectInfo();
+    return null;
+  }
+  try{localStorage.setItem(ONLINE_RECONNECT_KEY,JSON.stringify(next));}catch(_){ }
+  return next;
+}
+
+function updateReconnectButtons(){
+  const info=getStoredOnlineReconnectInfo();
+  const canShow=!!(info&&info.room&&info.wsUrl&&info.myId&&(!G.wsOk||G.room!==info.room));
+  const autoPending=!!onlineAutoReconnectTimer;
+  const label=autoPending
+    ?('🔄 Auto… ('+(info?.room||'?')+')')
+    :(info&&info.room?('🔄 Reconnexion ('+info.room+')'):'🔄 Reconnexion');
+  ['reconnect-btn','lobby-reconnect-btn'].forEach(id=>{
+    const btn=document.getElementById(id);
+    if(!btn)return;
+    btn.style.display=canShow?'inline-flex':'none';
+    btn.disabled=!canShow;
+    if(canShow)btn.textContent=label;
+  });
+  const meta=document.getElementById('lobby-reconnect-meta');
+  if(meta){
+    meta.style.display=canShow?'block':'none';
+    meta.textContent=canShow
+      ?('Salle sauvegardée : '+info.room+(autoPending?' • tentative auto en cours':'')+(onlineAutoReconnectAttempts>0?' • essai '+onlineAutoReconnectAttempts+'/'+ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS:''))
+      :'';
+  }
+}
+
 function isHostedOnlineUiContext(){
   const host=String(window.location.hostname||'').trim().toLowerCase();
   const protocol=String(window.location.protocol||'').trim().toLowerCase();
@@ -841,24 +942,22 @@ function isHostedOnlineUiContext(){
 function updateSidebarConnectionIndicator(){
   const wsDot=document.getElementById('ws-dot');
   const wsLabel=document.getElementById('ws-label');
-  if(!wsDot||!wsLabel)return;
-  if(G.wsOk){
-    wsDot.style.background='var(--accent)';
-    wsLabel.textContent='En ligne';
-    return;
+  if(wsDot&&wsLabel){
+    if(G.wsOk){
+      wsDot.style.background='var(--accent)';
+      wsLabel.textContent='En ligne';
+    }else if(G.room){
+      wsDot.style.background='#f59e0b';
+      wsLabel.textContent='Hors ligne';
+    }else if(isHostedOnlineUiContext()){
+      wsDot.style.background='#38bdf8';
+      wsLabel.textContent='Web';
+    }else{
+      wsDot.style.background='#6b7280';
+      wsLabel.textContent='Local';
+    }
   }
-  if(G.room){
-    wsDot.style.background='#f59e0b';
-    wsLabel.textContent='Hors ligne';
-    return;
-  }
-  if(isHostedOnlineUiContext()){
-    wsDot.style.background='#38bdf8';
-    wsLabel.textContent='Web';
-    return;
-  }
-  wsDot.style.background='#6b7280';
-  wsLabel.textContent='Local';
+  updateReconnectButtons();
 }
 
 function connectWs(url,room,onOpen){
@@ -883,9 +982,23 @@ function connectWs(url,room,onOpen){
     G.ws.onopen=()=>{
       opened=true;
       G.wsOk=true;
+      clearOnlineAutoReconnect(true);
+      const me=Array.isArray(G.players)?G.players.find(p=>p&&p.id===G.myId):null;
+      if(me)me.disconnected=false;
+      rememberOnlineReconnectInfo({
+        room,
+        wsUrl:candidate,
+        myId:G.myId,
+        name:me?.name||'',
+        emoji:me?.emoji||'👤',
+        color:me?.color||'#3b82f6',
+        img:me?.img||'',
+      });
       if(typeof rememberRenderOrigin==='function')rememberRenderOrigin(wsUrlToHttpBase(candidate));
       updateSidebarConnectionIndicator();
-      document.getElementById('disc-btn').disabled=false;
+      const discBtn=document.getElementById('disc-btn');
+      if(discBtn)discBtn.disabled=false;
+      renderOnlineLobby();renderPlayers();updBtns();
       wsLog('Connecté à '+candidate);
       if(onOpen)onOpen();
     };
@@ -895,6 +1008,8 @@ function connectWs(url,room,onOpen){
         if(msg.type==='error'&&msg.code==='ROOM_NOT_FOUND'){
           toast('Salle introuvable.','d');
           wsLog('Salle introuvable: '+(msg.room||'?'));
+          clearOnlineAutoReconnect(true);
+          clearStoredOnlineReconnectInfo();
           disconnectWs();
           showScreen('lobby');
           return;
@@ -902,6 +1017,7 @@ function connectWs(url,room,onOpen){
         if(msg.type==='error'&&msg.code==='ROOM_FULL'){
           toast('Salle pleine.','d');
           wsLog('Salle pleine: '+(msg.room||'?'));
+          clearOnlineAutoReconnect(true);
           disconnectWs();
           showScreen('lobby');
           return;
@@ -909,6 +1025,7 @@ function connectWs(url,room,onOpen){
         if(msg.type==='error'&&msg.code==='ROOM_BAD_PASSWORD'){
           toast('Mot de passe de salle invalide.','d');
           wsLog('Mot de passe invalide pour: '+(msg.room||'?'));
+          clearOnlineAutoReconnect(true);
           disconnectWs();
           showScreen('lobby');
           return;
@@ -917,6 +1034,7 @@ function connectWs(url,room,onOpen){
           const activeRoom=msg.activeRoom?(' ('+msg.activeRoom+')'):'';
           toast('⛔ Ce compte est déjà connecté à une autre partie'+activeRoom+'. Quitte-la avant d’en rejoindre une nouvelle.','d');
           wsLog('Double connexion bloquée'+activeRoom);
+          clearOnlineAutoReconnect(true);
           disconnectWs();
           showScreen('lobby');
           return;
@@ -924,7 +1042,7 @@ function connectWs(url,room,onOpen){
         if(msg.room!==G.room)return;
         if(msg.type==='state'&&msg.sender!==G.myId){
           const prevBoardEventId=String(G.boardEvent?.bannerId||G.boardEvent?.id||'');
-          G.players=msg.state.players;
+          G.players=Array.isArray(msg.state.players)?msg.state.players:[];
           G.board=msg.state.board;
           G.cur=msg.state.cur;
           G.started=!!msg.state.started;
@@ -935,7 +1053,12 @@ function connectWs(url,room,onOpen){
           G.lastBoardEventTurn=Math.max(0,parseInt(msg.state.lastBoardEventTurn,10)||G.lastBoardEventTurn||0);
           G.turnCount=Math.max(1,parseInt(msg.state.turnCount,10)||G.turnCount||1);
           if(typeof ensureRouletteState==='function')ensureRouletteState();
-          if(Array.isArray(G.players))G.players.forEach(p=>ensureRoulettePlayerData?.(p));
+          if(Array.isArray(G.players))G.players.forEach(p=>{
+            if(!p||typeof p!=='object')return;
+            p.disconnected=!!p.disconnected;
+            if(G.wsOk&&p.id===G.myId)p.disconnected=false;
+            ensureRoulettePlayerData?.(p);
+          });
           syncPendingRoulettePayouts?.();
           const nextBoardEventId=String(G.boardEvent?.bannerId||G.boardEvent?.id||'');
           if(nextBoardEventId&&nextBoardEventId!==prevBoardEventId)showWorldEventBanner?.(G.boardEvent);
@@ -945,14 +1068,46 @@ function connectWs(url,room,onOpen){
         }
         if(msg.type==='ready'&&msg.sender!==G.myId){
           const rp=G.players.find(x=>x.id===msg.playerId);
-          if(rp){rp.ready=msg.ready;}
-          else{
+          if(rp){
+            rp.ready=msg.ready;
+            rp.disconnected=false;
+            if(msg.name)rp.name=msg.name;
+            if(msg.emoji)rp.emoji=msg.emoji;
+            if(msg.color)rp.color=pickUniquePlayerColor(msg.color,msg.playerId);
+          }else if(!G.started){
             const netColor=pickUniquePlayerColor(msg.color||'#888',msg.playerId);
-            G.players.push({id:msg.playerId,name:msg.name||'?',emoji:msg.emoji||'👤',color:netColor,img:null,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:msg.ready});
+            G.players.push({id:msg.playerId,name:msg.name||'?',emoji:msg.emoji||'👤',color:netColor,img:null,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:msg.ready,disconnected:false});
           }
           enforceUniquePlayerColors();
-          renderOnlineLobby();renderPlayers();
-          wsLog((msg.ready?'✅':'⏳')+' Prêt: '+(msg.name||msg.playerId));
+          renderOnlineLobby();renderPlayers();updBtns();
+          if(msg.reconnect&&msg.name)toast('🔄 '+msg.name+' est revenu dans la partie.','a');
+          wsLog((msg.reconnect?'🔄 ':'')+(msg.ready?'✅':'⏳')+'Prêt: '+(msg.name||msg.playerId));
+        }
+        if(msg.type==='player_disconnected'&&msg.playerId){
+          const leftId=String(msg.playerId||'');
+          const leftPlayer=Array.isArray(G.players)?G.players.find(x=>x&&x.id===leftId):null;
+          if(leftPlayer){
+            leftPlayer.disconnected=true;
+            leftPlayer.ready=false;
+          }
+          if(leftId!==G.myId){
+            toast('📴 '+(leftPlayer?.name||'Un joueur')+' s’est déconnecté.','w');
+            wsLog('📴 Déconnexion: '+(leftPlayer?.name||leftId));
+          }
+          renderOnlineLobby();renderPlayers();updBtns();
+          const isHost=G.myId&&String(G.myId).startsWith('h-');
+          if(isHost&&leftPlayer){
+            if(G.started&&G.players[G.cur]?.id===leftId){
+              G.pendingBuy=null;
+              G.rolled=true;
+              setTimeout(()=>{
+                if(G.started&&G.players[G.cur]?.id===leftId)doNextTurn();
+                else broadcast();
+              },20);
+            }else{
+              broadcast();
+            }
+          }
         }
         if(msg.type==='state_request'&&msg.sender!==G.myId){
           const isHost=G.myId&&String(G.myId).startsWith('h-');
@@ -987,12 +1142,21 @@ function connectWs(url,room,onOpen){
     G.ws.onclose=()=>{
       G.wsOk=false;
       G.ws=null;
+      const me=Array.isArray(G.players)?G.players.find(p=>p&&p.id===G.myId):null;
+      if(me)me.disconnected=true;
+      G.myReady=false;
       updateSidebarConnectionIndicator();
-      document.getElementById('disc-btn').disabled=true;
+      const discBtn=document.getElementById('disc-btn');
+      if(discBtn)discBtn.disabled=true;
+      renderOnlineLobby();renderPlayers();updBtns();
       if(!opened&&index+1<urls.length){
         wsLog('Déconnecté, bascule auto vers '+urls[index+1]);
         startConnect(index+1);
         return;
+      }
+      if(G.room&&G.mode==='online'){
+        toast('📡 Connexion perdue. Reconnexion auto dans quelques secondes…','w');
+        scheduleOnlineAutoReconnect('perte réseau');
       }
       wsLog('Déconnecté.');
     };
@@ -1015,6 +1179,7 @@ function broadcast(){
 
 function disconnectWs(){
   const ws=G.ws;
+  clearOnlineAutoReconnect(false);
   G.ws=null;
   G.wsOk=false;
   if(ws){
@@ -1048,7 +1213,7 @@ function createOnlineRoom(){
   if(totalPlayers>ONLINE_ROOM_MAX_PLAYERS){toast('Trop de joueurs configurés pour une salle online ('+totalPlayers+'/'+ONLINE_ROOM_MAX_PLAYERS+').','d');return;}
   G.room=roomId;G.mode='online';
   G.myId='h-'+Date.now();
-  const host={id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false};
+  const host={id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false,disconnected:false};
   const bots=(G.pendingPartyBots||[]).map((b,ix)=>{
     const botIdentity=pickRandomBotIdentity(b.name);
     return {
@@ -1057,9 +1222,10 @@ function createOnlineRoom(){
     emoji:b.emoji||botIdentity.emoji,
     color:pickUniquePlayerColor(b.color||COLORS[(ix+1)%COLORS.length],b.id),
     img:null,bot:true,botLevel:b.botLevel||'easy',botPersona:b.botPersona||pickRandomBotPersona(),
-    matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:true,
+    matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,disconnected:false,jailCards:0,ready:true,
   };});
   G.players=[host,...bots];
+  rememberOnlineReconnectInfo({room:roomId,wsUrl,myId:G.myId,roomPassword:hostPass,name,emoji,color,img:img||''});
   enforceUniquePlayerColors();
   refreshInviteLink();
   document.getElementById('room-info').textContent='Salle: '+roomId+' (hôte)';
@@ -1134,7 +1300,8 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
 
   G.room=roomId;G.mode='online';
   G.myId='j-'+Date.now();
-  G.players=[{id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false}];
+  G.players=[{id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false,disconnected:false}];
+  rememberOnlineReconnectInfo({room:roomId,wsUrl,myId:G.myId,roomPassword,name,emoji,color,img:img||''});
   refreshInviteLink();
   document.getElementById('room-info').textContent='Salle: '+roomId+' (invité)';
   document.getElementById('chat-card').style.display='block';
@@ -1153,6 +1320,118 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
   showScreen('game');
   toggleMobileSidebar(true);
   buildBoard();renderPlayers();updBtns();
+}
+
+async function reconnectOnlineRoom(options){
+  const opts=options&&typeof options==='object'?options:{};
+  clearOnlineAutoReconnect(false);
+  const info=getStoredOnlineReconnectInfo();
+  if(!info||!info.room||!info.wsUrl||!info.myId){
+    if(!opts.silent)toast('Aucune partie à reconnecter.','w');
+    updateReconnectButtons();
+    return false;
+  }
+  if(G.wsOk&&G.room===info.room){
+    if(!opts.silent)toast('Déjà connecté à '+info.room+'.','i');
+    return true;
+  }
+  const roomId=String(info.room||'').trim();
+  const wsUrl=String(info.wsUrl||'').trim();
+  const roomPassword=String(info.roomPassword||'').trim();
+  if(!roomId||!wsUrl){
+    if(!opts.silent)toast('Infos de reconnexion invalides.','d');
+    clearStoredOnlineReconnectInfo();
+    updateReconnectButtons();
+    return false;
+  }
+
+  let probe;
+  try{
+    probe=await requestWsServer(wsUrl,{type:'join_probe',room:roomId,password:roomPassword,reconnect:true},'join_probe_result');
+  }catch(err){
+    wsLog('Serveur indisponible pour la reconnexion.');
+    if(!opts.silent)toast('Impossible de joindre la salle pour le moment.','d');
+    if(opts.auto)scheduleOnlineAutoReconnect('nouvelle tentative');
+    return false;
+  }
+  if(!probe.ok){
+    if(probe.error==='ROOM_NOT_FOUND'){
+      clearStoredOnlineReconnectInfo();
+      if(!opts.silent)toast('La salle n’existe plus.','d');
+    }else if(probe.error==='ROOM_BAD_PASSWORD'){
+      if(!opts.silent)toast('Mot de passe invalide pour la reconnexion.','d');
+    }else if(probe.error==='ROOM_FULL'){
+      if(!opts.silent)toast('La salle est pleine.','d');
+    }else if(probe.error==='ACCOUNT_ALREADY_IN_ROOM'){
+      if(!opts.silent)toast('Une autre session utilise déjà ce compte.','d');
+    }
+    updateReconnectButtons();
+    return false;
+  }
+
+  disconnectWs();
+  G.room=roomId;
+  G.mode='online';
+  G.myId=String(info.myId||G.myId||('j-'+Date.now()));
+
+  if(!Array.isArray(G.players)||!G.players.length){
+    G.players=[{
+      id:G.myId,
+      name:info.name||getProfileDefaultName('Joueur'),
+      emoji:info.emoji||getProfileDefaultEmoji('🐶'),
+      color:pickUniquePlayerColor(info.color||getProfileDefaultColor('#3b82f6'),G.myId),
+      img:info.img||getProfileDefaultAvatar()||null,
+      matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+      money:G.startingMoney,
+      pos:0,
+      jailed:false,
+      bust:false,
+      jailCards:0,
+      ready:false,
+      disconnected:false,
+    }];
+  }else{
+    const me=G.players.find(p=>p&&p.id===G.myId);
+    if(me){
+      me.disconnected=false;
+      me.ready=false;
+    }else{
+      G.players.push({
+        id:G.myId,
+        name:info.name||getProfileDefaultName('Joueur'),
+        emoji:info.emoji||getProfileDefaultEmoji('🐶'),
+        color:pickUniquePlayerColor(info.color||getProfileDefaultColor('#3b82f6'),G.myId),
+        img:info.img||getProfileDefaultAvatar()||null,
+        matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+        money:G.startingMoney,
+        pos:0,
+        jailed:false,
+        bust:false,
+        jailCards:0,
+        ready:false,
+        disconnected:false,
+      });
+    }
+  }
+
+  G.myReady=false;
+  refreshInviteLink();
+  const roomInfo=document.getElementById('room-info');
+  if(roomInfo)roomInfo.textContent='Salle: '+roomId+' (reconnexion)';
+  const chatCard=document.getElementById('chat-card');
+  if(chatCard)chatCard.style.display='block';
+  setJoinRoomStatus?.((opts.auto?'Auto-reconnexion':'Reconnexion')+' à la salle '+roomId+'…','i');
+  showScreen('game');
+  toggleMobileSidebar(true);
+  buildBoard();renderPlayers();updBtns();renderOnlineLobby();
+
+  connectWs(wsUrl,roomId,()=>{
+    announceOnlinePresence(roomPassword,{reconnect:true});
+    wsLog((opts.auto?'Auto-reconnexion':'Reconnexion')+' à la salle: '+roomId);
+    if(!opts.silent)toast('🔄 Reconnecté à '+roomId,'a');
+    sendWsMessage({type:'state_request',room:roomId,sender:G.myId,reconnect:true});
+  });
+  return true;
 }
 
 // ═══════════════════════════════════════

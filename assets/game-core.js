@@ -1220,12 +1220,16 @@ function movePlayerToCellDirect(p,targetPos,reason,options){
   }
 }
 
+function isPlayerUnavailable(p){
+  return !p||!!p.bust||!!p.disconnected;
+}
+
 function getActivePlayers(){
-  return G.players.filter(p=>p&&!p.bust);
+  return G.players.filter(p=>p&&!p.bust&&!p.disconnected);
 }
 
 function grantBonusTurnToPlayer(p,reason){
-  if(!p||p.bust)return false;
+  if(isPlayerUnavailable(p))return false;
   G.bonusTurns[p.id]=(G.bonusTurns[p.id]||0)+1;
   if(reason){
     glog('🎁 '+p.name+' obtient un tour bonus'+(reason?' ('+reason+')':'')+'.','a');
@@ -1235,7 +1239,7 @@ function grantBonusTurnToPlayer(p,reason){
 }
 
 function grantGhostPassBonus(p,reason){
-  if(!p||p.bust)return false;
+  if(isPlayerUnavailable(p))return false;
   p.ghostPass=(parseInt(p.ghostPass,10)||0)+1;
   if(reason){
     glog('👻 '+p.name+' gagne un passe-fantôme'+(reason?' ('+reason+')':'')+'.','a');
@@ -1245,7 +1249,7 @@ function grantGhostPassBonus(p,reason){
 }
 
 function awardFreeBuildBonus(p,reason){
-  if(!p||p.bust)return false;
+  if(isPlayerUnavailable(p))return false;
   const eco=getBoardEconomySnapshot();
   const candidates=G.board.filter(cell=>{
     if(!cell||cell.t!=='property'||cell.owner!==p.id||cell.mortgaged||(cell.houses||0)>=5)return false;
@@ -1589,14 +1593,14 @@ function ensureProfileRouletteData(){
 
 function hasRouletteFreeSpinAvailable(){
   ensureProfileRouletteData();
-  return String(P.lastRouletteFreeSpinDate||'')!==getTodayKey();
+  return String(P.lastRouletteFreeSpinDate||'')!==getFranceTodayKey();
 }
 
 function getRouletteFreeSpinResetMs(){
   const now=new Date();
-  const next=new Date(now);
-  next.setHours(24,0,0,0);
-  return Math.max(0,next.getTime()-now.getTime());
+  const franceNow=getTimeZoneDateParts(now,'Europe/Paris');
+  const elapsedMs=((Math.max(0,franceNow.hour)*3600)+(Math.max(0,franceNow.minute)*60)+Math.max(0,franceNow.second))*1000+now.getMilliseconds();
+  return Math.max(0,(86400000-elapsedMs)%86400000);
 }
 
 function getRouletteFreeSpinCountdownLabel(){
@@ -1628,8 +1632,8 @@ function getRouletteSpinCost(){
 
 function getProfileBettingPlayer(){
   const players=Array.isArray(G.players)?G.players:[];
-  const controlled=players.find(p=>p&&!p.bot&&typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p));
-  return controlled||players.find(p=>p&&!p.bot&&!p.bust)||players[0]||null;
+  const controlled=players.find(p=>p&&!p.bot&&!p.disconnected&&typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p));
+  return controlled||players.find(p=>p&&!p.bot&&!p.bust&&!p.disconnected)||players.find(p=>p&&!p.disconnected)||players[0]||null;
 }
 
 function getRouletteBetForPlayer(playerId){
@@ -1958,7 +1962,7 @@ function spinRouletteWheel(){
       return;
     }
     P.rouletteSpinCount=Math.max(0,(parseInt(P.rouletteSpinCount,10)||0)+1);
-    if(usedFreeSpin)P.lastRouletteFreeSpinDate=getTodayKey();
+    if(usedFreeSpin)P.lastRouletteFreeSpinDate=getFranceTodayKey();
     roulette.lastSpinAt=Date.now();
     roulette.lastReward={label:resolvedReward.label,icon:resolvedReward.icon,at:roulette.lastSpinAt};
     const isSecretHit=isRouletteSecretReward(resolvedReward)||reward.type==='secretRandom';
@@ -1979,9 +1983,9 @@ function placeRouletteBet(){
   ensureProfileRouletteData();
   if(!G.started){toast('Les paris s’ouvrent uniquement pendant une partie.','w');return;}
   const bettor=getProfileBettingPlayer();
-  if(!bettor||bettor.bust){toast('Aucun joueur de ton profil ne peut miser pour l’instant.','w');return;}
+  if(isPlayerUnavailable(bettor)){toast('Aucun joueur de ton profil ne peut miser pour l’instant.','w');return;}
   const targetId=document.getElementById('roulette-target')?.value||'';
-  const target=G.players.find(p=>p&&p.id===targetId&&!p.bust);
+  const target=G.players.find(p=>p&&p.id===targetId&&!p.bust&&!p.disconnected);
   if(!target){toast('Choisis un joueur valide.','w');return;}
   const amount=Math.max(0,parseInt(document.getElementById('roulette-stake')?.value,10)||0);
   if(amount<=0){toast('Entre une mise supérieure à 0.','w');return;}
@@ -2084,7 +2088,7 @@ function renderRoulettePanel(){
   const wheelBadges=buildRouletteWheelBadges(pool);
   const bettor=getProfileBettingPlayer();
   const currentBet=bettor?getRouletteBetForPlayer(bettor.id):null;
-  const selectedTarget=document.getElementById('roulette-target')?.value||(currentBet?.targetId)||G.players.find(p=>p&&!p.bust)?.id||'';
+  const selectedTarget=document.getElementById('roulette-target')?.value||(currentBet?.targetId)||G.players.find(p=>p&&!p.bust&&!p.disconnected)?.id||'';
   const betsList=Object.entries(roulette.bets||{}).map(([bettorId,bet])=>{
     const bettorObj=G.players.find(p=>p&&p.id===bettorId);
     const target=G.players.find(p=>p&&p.id===bet.targetId);
@@ -2122,7 +2126,7 @@ function renderRoulettePanel(){
   if(inlineEl){
     inlineEl.innerHTML=''+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">'+
-        '<div><div class="card-title" style="margin:0">🎰 Casino NeoPoly</div><div style="font-size:.68rem;color:var(--muted)">Solde: <b style="color:var(--accent)">'+balance+' jetons</b> • '+(freeSpinAvailable?'🎁 1 tour gratuit dispo aujourd’hui':'Coût: '+spinCost+' / tour')+'</div></div>'+
+        '<div><div class="card-title" style="margin:0">🎰 Casino NeoPoly</div><div style="font-size:.68rem;color:var(--muted)">Solde: <b style="color:var(--accent)">'+balance+' jetons</b> • '+(freeSpinAvailable?'🎁 1 tour gratuit/jour (00:00 Paris)':'Coût: '+spinCost+' / tour')+'</div></div>'+
         '<button class="btn btn-yellow btn-sm" type="button" onclick="openRouletteModal()">Ouvrir</button>'+
       '</div>'+
       '<div style="margin-top:8px;font-size:.7rem;color:var(--muted)">Tourne la roue avec une vraie animation et dépense tes jetons dans la boutique casino.</div>';
@@ -2143,7 +2147,7 @@ function renderRoulettePanel(){
     const betState=G.started
       ?('<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end">'+
           '<div style="flex:1;min-width:160px"><label style="display:block;font-size:.68rem;color:var(--muted);margin-bottom:4px">Joueur visé</label><select id="roulette-target" style="width:100%">'+
-            G.players.filter(p=>p&&!p.bust).map(p=>'<option value="'+p.id+'" '+(selectedTarget===p.id?'selected':'')+'>'+escapeHtml(p.emoji+' '+p.name)+'</option>').join('')+
+            G.players.filter(p=>p&&!p.bust&&!p.disconnected).map(p=>'<option value="'+p.id+'" '+(selectedTarget===p.id?'selected':'')+'>'+escapeHtml(p.emoji+' '+p.name)+'</option>').join('')+
           '</select></div>'+
           '<div style="width:110px"><label style="display:block;font-size:.68rem;color:var(--muted);margin-bottom:4px">Mise</label><input id="roulette-stake" type="number" min="1" max="999" value="1" style="width:100%"/></div>'+
           '<button class="btn btn-primary btn-sm" type="button" onclick="placeRouletteBet()">🎯 Miser</button>'+
@@ -2169,7 +2173,7 @@ function renderRoulettePanel(){
             <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin:8px 0"><span>🎟️ Solde</span><b style="color:var(--accent)">${balance} jetons</b></div>
             <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:10px"><span>🔄 Tours de roue</span><b>${parseInt(P.rouletteSpinCount,10)||0}</b></div>
             <div style="display:flex;justify-content:space-between;gap:8px;font-size:.74rem;margin-bottom:6px"><span>🎁 Tour gratuit</span><b>${freeSpinAvailable?'Disponible':'Déjà utilisé'}</b></div>
-            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.72rem;margin-bottom:10px"><span>⏳ Reset prochain</span><b id="roulette-free-spin-countdown">${freeSpinCountdown}</b></div>
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:.72rem;margin-bottom:10px"><span>⏳ Reset 00:00 Paris</span><b id="roulette-free-spin-countdown">${freeSpinCountdown}</b></div>
             <div style="font-size:.66rem;color:var(--muted);margin-bottom:10px">Dernier gain : <b>${escapeHtml(lastRewardLabel)}</b></div>
             <button class="btn btn-yellow" type="button" onclick="spinRouletteWheel()" ${spinDisabled}>${roulette.isSpinning?'🎡 En cours...':(freeSpinAvailable?'🎁 Tour gratuit du jour':'🎰 Tourner la roue ('+spinCost+')')}</button>
           </div>
@@ -2545,6 +2549,42 @@ function escapeUiText(str){
 function getTodayKey(){
   const now=new Date();
   return now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0')+'-'+String(now.getDate()).padStart(2,'0');
+}
+
+function getTimeZoneDateParts(date,timeZone){
+  const base=date instanceof Date?date:new Date();
+  try{
+    const parts=new Intl.DateTimeFormat('fr-FR',{
+      timeZone:String(timeZone||'Europe/Paris'),
+      year:'numeric',month:'2-digit',day:'2-digit',
+      hour:'2-digit',minute:'2-digit',second:'2-digit',
+      hourCycle:'h23'
+    }).formatToParts(base);
+    const map={};
+    parts.forEach(part=>{if(part&&part.type&&part.type!=='literal')map[part.type]=part.value;});
+    return {
+      year:Math.max(0,parseInt(map.year,10)||base.getFullYear()),
+      month:Math.max(1,parseInt(map.month,10)||base.getMonth()+1),
+      day:Math.max(1,parseInt(map.day,10)||base.getDate()),
+      hour:Math.max(0,parseInt(map.hour,10)||0),
+      minute:Math.max(0,parseInt(map.minute,10)||0),
+      second:Math.max(0,parseInt(map.second,10)||0),
+    };
+  }catch(_){
+    return {
+      year:base.getFullYear(),
+      month:base.getMonth()+1,
+      day:base.getDate(),
+      hour:base.getHours(),
+      minute:base.getMinutes(),
+      second:base.getSeconds(),
+    };
+  }
+}
+
+function getFranceTodayKey(){
+  const now=getTimeZoneDateParts(new Date(),'Europe/Paris');
+  return now.year+'-'+String(now.month).padStart(2,'0')+'-'+String(now.day).padStart(2,'0');
 }
 
 function readProfileStatValue(statKey){
@@ -3584,31 +3624,28 @@ async function resolvePublicIp(){
   }finally{clearTimeout(t);}
 }
 
+function hasAdminDebugAccess(notify){
+  const allowed=!!P?.isAdmin;
+  if(!allowed&&notify)toast('Accès réservé aux admins.','w');
+  return allowed;
+}
+
 function setDebugMenuVisibility(allowed,msg){
   const card=document.getElementById('debug-tools-card');
   const info=document.getElementById('debug-access-msg');
-  if(card)card.style.display=allowed?'block':'none';
-  if(info&&msg)info.textContent=msg;
+  const backdrop=document.getElementById('debug-tools-window-backdrop');
+  if(card){
+    card.dataset.allowed=allowed?'1':'0';
+    if(!document.body?.classList.contains('debug-tools-window-open'))card.style.display='none';
+  }
+  if(backdrop&&!allowed)backdrop.classList.remove('open');
+  if(!allowed)document.body?.classList.remove('debug-tools-window-open');
+  if(info)info.textContent=msg||(allowed?'Acces administrateur autorise.':'Acces reserve aux admins.');
 }
 
 async function initDebugAccessControl(){
-  if(P?.isAdmin){
-    setDebugMenuVisibility(true,'Acces administrateur autorise.');
-    return;
-  }
-  const curIp=await resolvePublicIp();
-  if(!curIp){
-    setDebugMenuVisibility(false,'Debug verrouille: IP non resolue.');
-    return;
-  }
-  let ownerIp=localStorage.getItem(DEBUG_OWNER_IP_KEY)||'';
-  if(!ownerIp){
-    localStorage.setItem(DEBUG_OWNER_IP_KEY,curIp);
-    ownerIp=curIp;
-    toast('🛡️ Debug lie a IP: '+ownerIp,'i');
-  }
-  const allowed=curIp===ownerIp;
-  setDebugMenuVisibility(allowed,allowed?('Acces autorise: '+curIp):('IP refusee ('+curIp+'). IP autorisee: '+ownerIp));
+  const allowed=hasAdminDebugAccess(false);
+  setDebugMenuVisibility(allowed,allowed?'Acces administrateur autorise.':'Acces reserve aux admins.');
 }
 
 async function rebindDebugOwnerIp(source='debug'){
@@ -4218,10 +4255,11 @@ function sendWsMessage(payload){
   }
 }
 
-function announceOnlinePresence(roomPassword=''){
+function announceOnlinePresence(roomPassword='',extraPayload){
   const me=G.players.find(p=>p.id===G.myId);
   if(!me) return;
-  sendWsMessage({type:'ready',room:G.room,sender:G.myId,playerId:G.myId,name:me.name,emoji:me.emoji,color:me.color,ready:!!me.ready,roomPassword:String(roomPassword||'').trim()});
+  me.disconnected=false;
+  sendWsMessage(Object.assign({type:'ready',room:G.room,sender:G.myId,playerId:G.myId,name:me.name,emoji:me.emoji,color:me.color,ready:!!me.ready,roomPassword:String(roomPassword||'').trim()},extraPayload||{}));
 }
 
 function toggleMobileSidebar(forceOpen){
@@ -4399,19 +4437,96 @@ function initDesktopKeyboardShortcuts(){
   });
 }
 
-function openAdminDebugMenu(){
-  if(!P?.isAdmin){
-    toast('Accès réservé aux admins.','w');
-    return;
+function initAdminDebugWindowDrag(){
+  const card=document.getElementById('debug-tools-card');
+  const handle=card?.querySelector('summary');
+  if(!card||!handle||card.dataset.dragInit==='1')return;
+  card.dataset.dragInit='1';
+  let dragging=false;
+  let startX=0;
+  let startY=0;
+  let originLeft=0;
+  let originTop=0;
+
+  const onMove=(ev)=>{
+    if(!dragging)return;
+    const nextLeft=originLeft+(ev.clientX-startX);
+    const nextTop=originTop+(ev.clientY-startY);
+    card.style.left=nextLeft+'px';
+    card.style.top=nextTop+'px';
+    card.style.transform='none';
+    card.dataset.dragMoved='1';
+  };
+
+  const stopDrag=()=>{
+    if(!dragging)return;
+    dragging=false;
+    card.classList.remove('is-dragging');
+    document.removeEventListener('mousemove',onMove);
+    document.removeEventListener('mouseup',stopDrag);
+  };
+
+  handle.addEventListener('mousedown',ev=>{
+    const target=ev.target;
+    if(target&&typeof target.closest==='function'&&target.closest('button'))return;
+    if(ev.button!==0)return;
+    ev.preventDefault();
+    dragging=true;
+    card.classList.add('is-dragging');
+    const rect=card.getBoundingClientRect();
+    startX=ev.clientX;
+    startY=ev.clientY;
+    originLeft=rect.left;
+    originTop=rect.top;
+    card.style.left=rect.left+'px';
+    card.style.top=rect.top+'px';
+    card.style.transform='none';
+    document.addEventListener('mousemove',onMove);
+    document.addEventListener('mouseup',stopDrag);
+  });
+}
+
+function recenterAdminDebugMenu(){
+  const card=document.getElementById('debug-tools-card');
+  if(!card)return;
+  card.style.left='50%';
+  card.style.top='50%';
+  card.style.transform='translate(-50%,-50%)';
+  card.dataset.dragMoved='';
+  card.classList.remove('is-dragging');
+}
+
+function closeAdminDebugMenu(){
+  const card=document.getElementById('debug-tools-card');
+  const backdrop=document.getElementById('debug-tools-window-backdrop');
+  if(card){
+    card.style.display='none';
+    card.classList.remove('is-dragging');
   }
+  if(backdrop)backdrop.classList.remove('open');
+  document.body?.classList.remove('debug-tools-window-open');
+  updateCenterActionsPopup?.();
+  updateAddonButtonVisibility?.();
+}
+
+function openAdminDebugMenu(){
+  if(!hasAdminDebugAccess(true))return;
   showScreen('lobby');
   switchLobbyTab('profil-pane');
   const card=document.getElementById('debug-tools-card');
+  const backdrop=document.getElementById('debug-tools-window-backdrop');
   if(card){
     card.style.display='block';
     card.open=true;
-    card.scrollIntoView({behavior:'smooth',block:'start'});
+    if(!card.dataset.dragMoved){
+      recenterAdminDebugMenu();
+    }
+    initAdminDebugWindowDrag();
   }
+  if(backdrop)backdrop.classList.add('open');
+  document.body?.classList.add('debug-tools-window-open');
+  updateCenterActionsPopup?.();
+  updateAddonButtonVisibility?.();
 }
 
 // Profile / ELO / titles system moved to `assets/profile-system.js`.
@@ -5239,15 +5354,31 @@ function showScreen(id){
 function updateAddonButtonVisibility(){
   const btn=document.getElementById('pack-manager-btn');
   const debugBtn=document.getElementById('admin-debug-btn');
+  const leaderboardPanel=document.getElementById('global-leaderboard-edge');
+  const leaderboardHotzone=document.getElementById('global-leaderboard-edge-hotzone');
   const appWrap=document.getElementById('app-wrap');
   const inLobby=!!document.getElementById('lobby')?.classList.contains('active')&&!!appWrap?.classList.contains('in-lobby');
   const blockedByModal=!!document.querySelector('#modal-roulette.open,#modal-party-wheel.open,#modal-game-wheel.open,#pack-manager-modal.open');
   const showAddons=inLobby&&!blockedByModal;
+  const showLeaderboard=inLobby&&!blockedByModal;
   document.body?.classList.toggle('addons-hidden-by-overlay',blockedByModal);
   if(btn){
     btn.style.setProperty('display',showAddons?'block':'none','important');
     btn.hidden=!showAddons;
     btn.setAttribute('aria-hidden',showAddons?'false':'true');
+  }
+  if(leaderboardPanel){
+    if(!showLeaderboard){
+      leaderboardPanel.classList.remove('is-open');
+      document.body?.classList.remove('leaderboard-edge-open');
+    }
+    leaderboardPanel.style.setProperty('display',showLeaderboard?'block':'none','important');
+    leaderboardPanel.hidden=!showLeaderboard;
+    leaderboardPanel.setAttribute('aria-hidden',showLeaderboard?'false':'true');
+  }
+  if(leaderboardHotzone){
+    leaderboardHotzone.style.setProperty('display',showLeaderboard?'block':'none','important');
+    leaderboardHotzone.setAttribute('aria-hidden',showLeaderboard?'false':'true');
   }
   if(debugBtn)debugBtn.style.display=(inLobby&&!!P?.isAdmin)?'block':'none';
 }
@@ -5381,7 +5512,7 @@ function refreshHouses(){
 
 function refreshPawns(){
   const cachedPawns=Array.isArray(G.boardPawnEls)?G.boardPawnEls:[];
-  const pawnSignature=G.players.filter(p=>!p.bust).map(p=>`${p.id}:${p.pos}:${p.emoji}:${p.color}:${p.img?'img':'plain'}`).join('|');
+  const pawnSignature=G.players.filter(p=>p&&!p.bust&&!p.disconnected).map(p=>`${p.id}:${p.pos}:${p.emoji}:${p.color}:${p.img?'img':'plain'}`).join('|');
   if(G.lastPawnSignature===pawnSignature&&cachedPawns.length)return;
   G.lastPawnSignature=pawnSignature;
   if(cachedPawns.length){
@@ -5390,7 +5521,7 @@ function refreshPawns(){
     document.querySelectorAll('.cell .pawns').forEach(p=>p.innerHTML='');
   }
   G.players.forEach(p=>{
-    if(p.bust)return;
+    if(!p||p.bust||p.disconnected)return;
     const el=cachedPawns[p.pos]||document.querySelector(`.cell[data-idx="${p.pos}"] .pawns`);
     if(!el)return;
     if(p.img){
@@ -5495,8 +5626,9 @@ function updBtns(){
   if(buyBar&&!controlled&&G.pendingBuy){
     buyBar.classList.remove('open');
   }
-  document.getElementById('roll-btn').disabled=G.rolled||!p||p.bust;
-  document.getElementById('end-btn').disabled=!G.rolled||!!G.pendingBuy;
+  const playerUnavailable=isPlayerUnavailable(p)||(G.mode==='online'&&!G.wsOk);
+  document.getElementById('roll-btn').disabled=G.rolled||playerUnavailable;
+  document.getElementById('end-btn').disabled=playerUnavailable||!G.rolled||!!G.pendingBuy;
   const skipBtn=document.getElementById('skip-btn');
   if(skipBtn){
     skipBtn.style.display=(p&&p.jailed&&!G.rolled)?'inline-flex':'none';
@@ -5536,7 +5668,7 @@ function updateCenterActionsPopup(){
   }
 
   const p=G.players[G.cur];
-  if(!p||p.bust){
+  if(isPlayerUnavailable(p)){
     wrap.classList.remove('open');
     if(row.innerHTML)row.innerHTML='';
     G.centerActionsSignature='';
@@ -5754,7 +5886,14 @@ function sendToJail(p,reason=''){
     toast('🛡️ Anti-prison utilisé','a');
     return;
   }
-  p.pos=10;p.jailed=true;G.doublesCount=0;
+  p.pos=10;
+  p.jailed=true;
+  G.doublesCount=0;
+  if(G&&G.started&&G.players?.[G.cur]?.id===p.id){
+    G.rolled=true;
+    G.pendingBuy=null;
+    document.getElementById('buy-bar')?.classList.remove('open');
+  }
   playSfx('jail');
   glog(p.name+' va en prison'+(reason?' ('+reason+')':'')+' !','d');
   toast('👮 Prison !','d');
@@ -5837,7 +5976,7 @@ function stopGlobalTimer(){
 function doRoll(){
   if(!G.started||G.rolled)return;
   const p=G.players[G.cur];
-  if(!p||p.bust)return;
+  if(isPlayerUnavailable(p))return;
   saveUndo();
 
   if(p.jailed){
@@ -5861,7 +6000,10 @@ function doRoll(){
       G.rolled=true;movePlayer(p,a+b+boost);
     } else {
       glog(p.name+' reste en prison ('+a+'+'+b+').','w');
-      G.rolled=true;renderPlayers();updBtns();broadcast();
+      G.doublesCount=0;
+      G.rolled=true;
+      renderPlayers();updBtns();broadcast();
+      if(G.autoEnd&&G.started&&!G.pendingBuy)setTimeout(()=>doNextTurn(),450);
     }
     return;
   }
@@ -5894,7 +6036,7 @@ function payJailFine(){
     glog(p.name+' utilise une carte pour sortir de prison.','a');
     toast('🃏 Sortie de prison utilisée','a');
     refreshPartyRuleUi();
-    renderPlayers();updBtns();
+    renderPlayers();updBtns();broadcast();
     return;
   }
   p.money-=G.jailFine;recordTxn(p,-G.jailFine,'Prison: amende volontaire');
@@ -5902,7 +6044,7 @@ function payJailFine(){
   refreshPartyRuleUi();
   p.jailed=false;delete G.jailTurns[p.id];G.doublesCount=0;
   glog(p.name+' paie '+G.jailFine+'$ et sort de prison.','w');
-  renderPlayers();updBtns();
+  renderPlayers();updBtns();broadcast();
 }
 
 // ═══════════════════════════════════════
@@ -6275,12 +6417,12 @@ function getTradableCellListByOwner(ownerId){
 function openTradeModal(){
   if(!G.started){toast('Lance une partie d\'abord.','w');return;}
   const me=G.players[G.cur];
-  if(!me||me.bust)return;
+  if(isPlayerUnavailable(me))return;
   if(!isProfileControlledPlayer(me)){toast('Ce n\'est pas ton tour.','w');return;}
 
   const body=document.getElementById('trade-body');
   if(!body)return;
-  const others=G.players.filter(p=>p.id!==me.id&&!p.bust);
+  const others=G.players.filter(p=>p.id!==me.id&&!p.bust&&!p.disconnected);
   const outgoingList=Object.values(NET_TRADE.outgoing||{});
   const pendingOffer=outgoingList[0]||null;
   const pendingLeft=pendingOffer?Math.max(1,Math.ceil(((parseInt(pendingOffer.expiresAt,10)||Date.now())-Date.now())/1000)):0;
@@ -6711,7 +6853,7 @@ function countDominatedGroups(playerId){
 }
 
 function getLeaderByNetWorth(){
-  const alive=G.players.filter(p=>!p.bust);
+  const alive=getActivePlayers();
   if(!alive.length)return null;
   const eco=getBoardEconomySnapshot();
   if(G.teamMode){
@@ -6729,7 +6871,7 @@ function getLeaderByNetWorth(){
 
 function checkPartyObjectives(){
   if(G.goalMoney>0){
-    const winner=G.players.find(p=>!p.bust&&p.money>=G.goalMoney);
+    const winner=G.players.find(p=>!p.bust&&!p.disconnected&&p.money>=G.goalMoney);
     if(winner){
       glog('🏁 Objectif fortune atteint par '+winner.name+' ('+winner.money+'$).','a');
       toast('🏁 Objectif atteint: '+winner.name,'a');
@@ -6738,7 +6880,7 @@ function checkPartyObjectives(){
     }
   }
   if(G.dominationTarget>0){
-    const winner=G.players.find(p=>!p.bust&&countDominatedGroups(p.id)>=G.dominationTarget);
+    const winner=G.players.find(p=>!p.bust&&!p.disconnected&&countDominatedGroups(p.id)>=G.dominationTarget);
     if(winner){
       glog('👑 Domination de quartiers atteinte par '+winner.name+'.','a');
       toast('👑 Domination: '+winner.name,'a');
@@ -6786,7 +6928,7 @@ function doNextTurn(){
       props:propsOwned,
       turn:G.turnCount||1,
       cellName:G.board?.[curP.pos]?.n||'Case inconnue',
-      status:curP.bust?'Faillite':(curP.jailed?'Termine en prison':'Tour terminé')
+      status:curP.bust?'Faillite':(curP.disconnected?'Déconnecté':(curP.jailed?'Termine en prison':'Tour terminé'))
     };
     pushTurnHistory(curP.name+' termine avec '+curP.money+'$ et '+propsOwned+' propriété(s).','i');
     renderTurnSummaryUi();
@@ -6800,11 +6942,16 @@ function doNextTurn(){
   let next=G.cur;
   let tries=0;
   do{next=(next+1)%G.players.length;tries++;}
-  while(G.players[next].bust&&tries<G.players.length);
+  while(isPlayerUnavailable(G.players[next])&&tries<G.players.length);
   G.cur=next;G.rolled=false;G.doublesCount=0;
   const np=G.players[G.cur];
+  if(isPlayerUnavailable(np)){
+    renderPlayers();updBtns();broadcast();
+    wsLog?.('Partie en pause : aucun joueur actif.');
+    return;
+  }
   if(np)np.turnStartMoney=np.money||0;
-  if(np&&G.bonusTurnEnabled&&!np.bust&&Math.random()<((G.bonusTurnChance||0)/100)){
+  if(np&&G.bonusTurnEnabled&&!isPlayerUnavailable(np)&&Math.random()<((G.bonusTurnChance||0)/100)){
     G.bonusTurns[np.id]=(G.bonusTurns[np.id]||0)+1;
     glog('✨ '+np.name+' obtient un tour bonus.','a');
   }
@@ -8029,7 +8176,7 @@ function addMatchItem(p,type,qty=1,reason){
 }
 
 function grantRandomMatchItem(p,reason){
-  if(!p||p.bust)return;
+  if(isPlayerUnavailable(p))return;
   const bag=['diceBoost','antiJail','mortgageDiscount'];
   const pick=bag[Math.floor(Math.random()*bag.length)];
   addMatchItem(p,pick,1,reason);
@@ -8089,8 +8236,8 @@ function refreshPowerupsUi(){
   const enabled=isPowerupsAddonEnabled();
   const p=G.players[G.cur];
   const controlled=!!(p&&isProfileControlledPlayer(p));
-  const active=enabled&&!!G.started&&controlled&&!p?.bust;
-  const sig=[enabled,G.cur,!!G.started,!!controlled,!!(p&&p.bust),!!G.pendingBuy].join('|');
+  const active=enabled&&!!G.started&&controlled&&!p?.bust&&!p?.disconnected;
+  const sig=[enabled,G.cur,!!G.started,!!controlled,!!(p&&p.bust),!!(p&&p.disconnected),!!G.pendingBuy].join('|');
   if(G.powerupsUiSignature===sig)return;
   G.powerupsUiSignature=sig;
   btn.style.display=enabled?'inline-flex':'none';
@@ -8585,7 +8732,7 @@ function refreshAdvancedStats(){
   if(!grid)return;
   const games=Math.max(1,P.stats.gamesPlayed||0);
   const winRate=Math.round(((P.stats.gamesWon||0)/games)*100);
-  const alive=G.players.filter(p=>!p.bust).length;
+  const alive=G.players.filter(p=>!p.bust&&!p.disconnected).length;
   const avgTurns=Math.round((P.stats.totalTurns||0)/games);
   const netNow=(G.players||[]).reduce((s,p)=>s+(p.money||0),0);
   const turnsRule=G.maxTurns>0?String(G.maxTurns):'∞';

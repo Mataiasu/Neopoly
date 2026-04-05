@@ -416,9 +416,10 @@ function ensureRoomMeta(room) {
 function updateRoomMetaFromState(room, state) {
   const meta = ensureRoomMeta(room);
   const players = Array.isArray(state && state.players) ? state.players : [];
+  const activePlayers = players.filter((player) => player && !player.disconnected);
 
   if (players.length) {
-    meta.playerCount = players.length;
+    meta.playerCount = activePlayers.length || players.length;
     const host = players.find((player) => isHostId(player && player.id));
     if (host) {
       meta.hostSender = host.id || meta.hostSender;
@@ -524,15 +525,21 @@ function getOnlineIdentityClaim(identityKey) {
   return claim;
 }
 
-function claimOnlineIdentity(identityKey, room, ws) {
+function claimOnlineIdentity(identityKey, room, ws, options) {
   const key = String(identityKey || '').trim();
   const roomId = String(room || '').trim();
+  const opts = options && typeof options === 'object' ? options : {};
   if (!key || !roomId || roomId === SOCIAL_ROOM_ID) return { ok: true };
   const previousKey = String(ws && ws.__onlineIdentityKey || '').trim();
   if (previousKey && previousKey !== key) activeOnlineIdentities.delete(previousKey);
   const existing = getOnlineIdentityClaim(key);
   if (existing && existing.ws !== ws) {
-    return { ok: false, room: existing.room || '', joinedAt: Number(existing.joinedAt || 0) };
+    const sameRoom = String(existing.room || '').trim() === roomId;
+    if (!(opts.allowReconnect && sameRoom)) {
+      return { ok: false, room: existing.room || '', joinedAt: Number(existing.joinedAt || 0) };
+    }
+    try { existing.ws.close(4001, 'replaced_by_reconnect'); } catch (_) {}
+    activeOnlineIdentities.delete(key);
   }
   activeOnlineIdentities.set(key, { ws, room: roomId, joinedAt: Date.now() });
   ws.__onlineIdentityKey = key;
@@ -1259,10 +1266,11 @@ wss.on('connection', (ws) => {
         const meta = exists ? ensureRoomMeta(roomId) : null;
         const providedPassword = getRoomPassword(msg.password);
         const missingPassword = !!(meta && meta.roomPassword && providedPassword !== meta.roomPassword);
-        const roomFull = !!(roomInfo && roomInfo.availableSlots <= 0);
         const identityKey = getOnlineIdentityKey(msg, senderSession);
         const onlineClaim = getOnlineIdentityClaim(identityKey);
-        const identityBusy = !!(onlineClaim && onlineClaim.ws !== ws);
+        const allowReconnectSameRoom = !!(msg.reconnect && onlineClaim && String(onlineClaim.room || '').trim() === roomId);
+        const roomFull = !!(roomInfo && roomInfo.availableSlots <= 0 && !allowReconnectSameRoom);
+        const identityBusy = !!(onlineClaim && onlineClaim.ws !== ws && !allowReconnectSameRoom);
         const ok = exists && !missingPassword && !roomFull && !identityBusy;
         sendJson(ws, {
           type: 'join_probe_result',
@@ -1306,7 +1314,7 @@ wss.on('connection', (ws) => {
       myRoom = room;
 
       if (msg.type === 'create_room') {
-        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws);
+        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws, { allowReconnect: !!msg.reconnect });
         if (!identityClaim.ok) {
           sendJson(ws, {
             type: 'error',
@@ -1361,7 +1369,9 @@ wss.on('connection', (ws) => {
 
       if (!roomRegistered && msg.type === 'ready') {
         const roomInfo = getRoomSummary(room);
-        if (roomInfo.availableSlots <= 0) {
+        const reconnectClaim = msg.reconnect ? getOnlineIdentityClaim(getOnlineIdentityKey(msg, senderSession)) : null;
+        const allowReconnectSameRoom = !!(reconnectClaim && String(reconnectClaim.room || '').trim() === room);
+        if (roomInfo.availableSlots <= 0 && !allowReconnectSameRoom) {
           sendJson(ws, { type: 'error', code: 'ROOM_FULL', room, roomInfo });
           return;
         }
@@ -1373,7 +1383,7 @@ wss.on('connection', (ws) => {
       }
 
       if (msg.type === 'ready') {
-        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws);
+        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws, { allowReconnect: !!msg.reconnect });
         if (!identityClaim.ok) {
           sendJson(ws, {
             type: 'error',
@@ -1483,9 +1493,20 @@ wss.on('connection', (ws) => {
         delete rooms[myRoom];
         delete roomAddons[myRoom];
         delete roomMeta[myRoom];
-      } else if (roomMeta[myRoom]) {
-        roomMeta[myRoom].updatedAt = Date.now();
-        roomMeta[myRoom].playerCount = Math.max(1, rooms[myRoom].size);
+      } else {
+        if (mySender) {
+          broadcastToRoom(myRoom, {
+            type: 'player_disconnected',
+            room: myRoom,
+            sender: mySender,
+            playerId: mySender,
+            at: Date.now(),
+          });
+        }
+        if (roomMeta[myRoom]) {
+          roomMeta[myRoom].updatedAt = Date.now();
+          roomMeta[myRoom].playerCount = Math.max(1, rooms[myRoom].size);
+        }
       }
     }
   });
