@@ -48,8 +48,13 @@ function sanitizeProfilePayload(raw) {
     googleSub:  sanitizeStr(raw.googleSub, 128),
     name:       sanitizeStr(raw.name, 64),
     avatar:     sanitizeStr(raw.avatar, 4096),
+    avatarImg:  sanitizeStr(raw.avatarImg, 4096),
+    emoji:      sanitizeStr(raw.emoji, 16),
+    color:      sanitizeStr(raw.color, 32),
     title:      sanitizeStr(raw.title, 64),
     bio:        sanitizeStr(raw.bio, 300),
+    elo:        Math.max(0, Math.min(999999, parseInt(raw.elo, 10) || 0)),
+    rankLabel:  sanitizeStr(raw.rankLabel, 64),
     wins:       Math.max(0, Math.min(999999, parseInt(raw.wins, 10) || 0)),
     losses:     Math.max(0, Math.min(999999, parseInt(raw.losses, 10) || 0)),
     gamesPlayed:Math.max(0, Math.min(999999, parseInt(raw.gamesPlayed, 10) || 0)),
@@ -1057,6 +1062,57 @@ async function handleApi(req, res, pathname) {
       db[key] = { profile: merged, updatedAt: now };
       saveProfilesDb(db);
       sendApiJson(req, res, 200, { ok: true, updatedAt: now, profile: merged });
+    } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }
+    return true;
+  }
+
+  if (pathname === '/api/profile/leaderboard' && req.method === 'GET') {
+    try {
+      const limit = Math.max(5, Math.min(30, parseInt((parsedUrl.searchParams.get('limit') || '12'), 10) || 12));
+      const db = loadProfilesDb();
+      const dedup = new Map();
+      Object.values(db).forEach((entry) => {
+        if (!entry || !entry.profile || typeof entry.profile !== 'object') return;
+        const profile = entry.profile;
+        const uid = sanitizeStr(profile.uid, 128);
+        const name = sanitizeStr(profile.name, 64);
+        const key = uid || (name ? ('name:' + name.toLowerCase()) : '');
+        if (!key) return;
+        const next = {
+          uid,
+          name: name || 'Joueur',
+          avatar: sanitizeStr(profile.avatar, 4096),
+          avatarImg: sanitizeStr(profile.avatarImg, 4096),
+          emoji: sanitizeStr(profile.emoji, 16) || '👤',
+          color: sanitizeStr(profile.color, 32) || '#22c55e',
+          title: sanitizeStr(profile.title, 64),
+          rankLabel: sanitizeStr(profile.rankLabel, 64),
+          elo: Math.max(0, Math.min(999999, parseInt(profile.elo, 10) || 0)),
+          wins: Math.max(0, Math.min(999999, parseInt(profile.wins, 10) || 0)),
+          losses: Math.max(0, Math.min(999999, parseInt(profile.losses, 10) || 0)),
+          gamesPlayed: Math.max(0, Math.min(999999, parseInt(profile.gamesPlayed, 10) || 0)),
+          totalMoney: Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Number(profile.totalMoney) || 0)),
+          updatedAt: Math.max(0, Number(entry.updatedAt || 0)),
+        };
+        const existing = dedup.get(key);
+        if (!existing || next.updatedAt >= existing.updatedAt) dedup.set(key, next);
+      });
+      const allEntries = Array.from(dedup.values());
+      const topElo = allEntries
+        .slice()
+        .sort((a, b) => (b.elo - a.elo) || (b.wins - a.wins) || (b.gamesPlayed - a.gamesPlayed) || (b.updatedAt - a.updatedAt))
+        .slice(0, limit);
+      const topWins = allEntries
+        .slice()
+        .sort((a, b) => (b.wins - a.wins) || (b.elo - a.elo) || (b.gamesPlayed - a.gamesPlayed) || (b.updatedAt - a.updatedAt))
+        .slice(0, limit);
+      sendApiJson(req, res, 200, {
+        ok: true,
+        total: allEntries.length,
+        topElo,
+        topWins,
+        updatedAt: Date.now(),
+      });
     } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }
     return true;
   }

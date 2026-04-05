@@ -325,7 +325,313 @@ const UI_RENDER_CACHE={
   rankKey:'',
   emojiKey:'',
   statsKey:'',
+  leaderboardKey:'',
 };
+
+const GLOBAL_LEADERBOARD_STATE={
+  entries:[],
+  status:'Joueurs connus',
+  loading:false,
+  lastFetchAt:0,
+};
+let globalLeaderboardFetchTimer=null;
+let remoteProfileSyncTimer=null;
+const GLOBAL_LEADERBOARD_FETCH_COOLDOWN_MS=45000;
+
+function normalizeGlobalLeaderboardEntry(raw,source='local'){
+  if(!raw||typeof raw!=='object')return null;
+  const uid=String(raw.uid||'').trim();
+  const name=String(raw.name||'Joueur').trim()||'Joueur';
+  const avatarRaw=String(raw.avatar||'').trim();
+  const avatarImg=String(raw.avatarImg||((/^(data:|blob:|https?:)/i.test(avatarRaw))?avatarRaw:'')||'').trim()||null;
+  const emoji=String(raw.emoji||((!avatarImg&&avatarRaw&&!/^(data:|blob:|https?:)/i.test(avatarRaw))?avatarRaw:'👤')||'👤');
+  const color=safeCssColor(raw.color,'#22c55e');
+  const elo=Math.max(0,parseInt(raw.elo,10)||0);
+  const wins=Math.max(0,parseInt(raw.wins ?? raw.gamesWon,10)||0);
+  const gamesPlayed=Math.max(0,parseInt(raw.gamesPlayed,10)||0);
+  const titleLabel=String(raw.titleLabel||raw.title||'').trim();
+  const rankLabel=String(raw.rankLabel||getEloRankInfo(elo).label||'— Non Rankée');
+  if(!uid&&!name)return null;
+  return {
+    uid,
+    key:uid?('uid:'+uid):('name:'+name.toLowerCase()),
+    name,
+    avatarImg,
+    emoji,
+    color,
+    elo,
+    wins,
+    gamesPlayed,
+    titleLabel,
+    rankLabel,
+    source,
+    updatedAt:Math.max(0,parseInt(raw.updatedAt,10)||0),
+  };
+}
+
+function mergeGlobalLeaderboardEntries(entries){
+  const map=new Map();
+  (Array.isArray(entries)?entries:[]).forEach(raw=>{
+    const entry=normalizeGlobalLeaderboardEntry(raw,raw&&raw.source?raw.source:'local');
+    if(!entry)return;
+    const existing=map.get(entry.key);
+    if(!existing){
+      map.set(entry.key,entry);
+      return;
+    }
+    existing.elo=Math.max(existing.elo,entry.elo);
+    existing.wins=Math.max(existing.wins,entry.wins);
+    existing.gamesPlayed=Math.max(existing.gamesPlayed,entry.gamesPlayed);
+    existing.updatedAt=Math.max(existing.updatedAt||0,entry.updatedAt||0);
+    if(entry.source==='remote')existing.source='remote';
+    ['name','avatarImg','emoji','color','titleLabel','rankLabel'].forEach(field=>{
+      const nextValue=entry[field];
+      if(!nextValue)return;
+      if(entry.source==='remote'||!existing[field]||existing[field]==='Joueur'||existing[field]==='👤'||existing[field]==='— Non Rankée'){
+        existing[field]=nextValue;
+      }
+    });
+  });
+  return Array.from(map.values());
+}
+
+function collectKnownLeaderboardEntries(){
+  const localEntries=[{
+    uid:P.uid,
+    name:P.name,
+    avatarImg:P.avatarImg||null,
+    emoji:P.emoji||'👤',
+    color:P.color,
+    elo:P.elo||0,
+    wins:P.stats?.gamesWon||0,
+    gamesPlayed:P.stats?.gamesPlayed||0,
+    titleLabel:getActiveProfileTitleLabel(P),
+    rankLabel:getEloRankInfo(P.elo||0).label,
+    source:'local',
+    updatedAt:Date.now(),
+  }];
+  if(Array.isArray(P.friends))P.friends.forEach(friend=>{
+    if(!friend||friend.profilePrivate)return;
+    localEntries.push({
+      uid:friend.uid,
+      name:friend.name,
+      avatarImg:friend.avatarImg||null,
+      emoji:friend.emoji||'👤',
+      color:friend.color,
+      elo:friend.elo||0,
+      gamesWon:friend.gamesWon||0,
+      gamesPlayed:friend.gamesPlayed||0,
+      titleLabel:friend.titleLabel||'',
+      rankLabel:friend.rankLabel||'',
+      source:'friend',
+      updatedAt:friend.updatedAt||friend.addedAt||0,
+    });
+  });
+  if(Array.isArray(P.chatLog))P.chatLog.slice(-120).forEach(msg=>{
+    if(!msg||msg.profilePrivate)return;
+    localEntries.push({
+      uid:msg.uid,
+      name:msg.name,
+      avatarImg:msg.avatarImg||null,
+      emoji:msg.emoji||'👤',
+      color:msg.color,
+      elo:msg.elo||0,
+      gamesWon:msg.gamesWon||0,
+      gamesPlayed:msg.gamesPlayed||0,
+      titleLabel:msg.titleLabel||'',
+      rankLabel:msg.rankLabel||'',
+      source:'chat',
+      updatedAt:msg.ts||0,
+    });
+  });
+  return mergeGlobalLeaderboardEntries(localEntries).filter(entry=>entry&&(entry.elo>0||entry.wins>0||entry.gamesPlayed>0||entry.uid===P.uid));
+}
+
+function getGlobalLeaderboardEntries(){
+  return mergeGlobalLeaderboardEntries([...(GLOBAL_LEADERBOARD_STATE.entries||[]),...collectKnownLeaderboardEntries()]);
+}
+
+function renderGlobalLeaderboardList(entries,metric){
+  const rows=(Array.isArray(entries)?entries:[]).slice(0,10);
+  if(!rows.length)return '<div class="global-leaderboard-meta-note">Pas encore de score visible.</div>';
+  const medals=['🥇','🥈','🥉'];
+  const leaderValue=Math.max(1,...rows.map(entry=>Math.max(0,metric==='elo'?entry.elo:entry.wins)));
+  return '<div class="global-leaderboard-list">'+rows.map((entry,idx)=>{
+    const isSelf=!!(entry.uid&&entry.uid===P.uid);
+    const metricValue=metric==='elo'?entry.elo:entry.wins;
+    const ratio=Math.max(8,Math.min(100,Math.round((metricValue/leaderValue)*100)));
+    const podiumClass=idx===0?' podium-1':(idx===1?' podium-2':(idx===2?' podium-3':''));
+    const rankInfo=getEloRankInfo(entry.elo||0);
+    const primaryChip=metric==='elo'?(entry.rankLabel||'— Non Rankée'):('ELO '+(entry.elo||0));
+    const secondaryChip=metric==='elo'
+      ?((entry.wins||0)+' victoire'+((entry.wins||0)>1?'s':''))
+      :(entry.rankLabel||((entry.gamesPlayed||0)+' partie'+((entry.gamesPlayed||0)>1?'s':'')));
+    const rankChip='<span class="global-leaderboard-chip chip-rank">'+escapeHtml((rankInfo.icon||'🏅')+' '+(rankInfo.tier||'Bronze')+(rankInfo.div?(' '+rankInfo.div):''))+'</span>';
+    const titleChip=entry.titleLabel?('<span class="global-leaderboard-chip chip-title">'+escapeHtml(entry.titleLabel)+'</span>'):'';
+    const ribbonLabel=idx===0?'MVP':(idx===1?'ELITE':(idx===2?'PRO':''));
+    const avatarHtml=entry.avatarImg
+      ?('<img src="'+escapeAttr(entry.avatarImg)+'" alt="avatar">')
+      :escapeHtml(entry.emoji||'👤');
+    return '<div class="global-leaderboard-row'+(isSelf?' is-self':'')+podiumClass+'" style="--glb-accent:'+entry.color+';--glb-delay:'+(idx*0.045).toFixed(2)+'s">'
+      +(ribbonLabel?('<span class="global-leaderboard-ribbon">'+ribbonLabel+'</span>'):'')
+      +'<div class="global-leaderboard-pos">'+(medals[idx]||('#'+(idx+1)))+'</div>'
+      +'<div class="global-leaderboard-avatar" style="border-color:'+entry.color+';background:'+(entry.avatarImg?'rgba(15,23,42,.9)':(entry.color+'22'))+'">'+avatarHtml+'</div>'
+      +'<div class="global-leaderboard-main">'
+        +'<div class="global-leaderboard-name" style="color:'+entry.color+'">'+escapeHtml(entry.name||'Joueur')+(isSelf?'<span class="global-leaderboard-you">Vous</span>':'')+'</div>'
+        +'<div class="global-leaderboard-sub">'
+          +'<span class="global-leaderboard-chip">'+escapeHtml(primaryChip)+'</span>'
+          +rankChip
+          +'<span class="global-leaderboard-chip">'+escapeHtml(secondaryChip)+'</span>'
+          +titleChip
+        +'</div>'
+      +'</div>'
+      +'<div class="global-leaderboard-side">'
+        +'<div class="global-leaderboard-metric">'+metricValue+'</div>'
+        +'<div class="global-leaderboard-bar"><span class="global-leaderboard-fill" style="width:'+ratio+'%"></span></div>'
+      +'</div>'
+    +'</div>';
+  }).join('')+'</div>';
+}
+
+function renderGlobalLeaderboardCard(){
+  const host=document.getElementById('global-leaderboard-card');
+  const meta=document.getElementById('global-leaderboard-meta');
+  if(!host)return;
+  const entries=getGlobalLeaderboardEntries();
+  const eloSorted=entries.slice().sort((a,b)=>(b.elo-a.elo)||(b.wins-a.wins)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
+  const winsSorted=entries.slice().sort((a,b)=>(b.wins-a.wins)||(b.elo-a.elo)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
+  const topElo=eloSorted.slice(0,10);
+  const topWins=winsSorted.slice(0,10);
+  const statusLabel=GLOBAL_LEADERBOARD_STATE.loading?'Synchronisation…':(GLOBAL_LEADERBOARD_STATE.status||(GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur global':'Joueurs connus'));
+  if(meta)meta.textContent=statusLabel+' • '+entries.length+' joueur'+(entries.length>1?'s':'');
+  const sig=[statusLabel,entries.length,topElo.map(e=>[e.uid,e.elo,e.wins].join(':')).join('|'),topWins.map(e=>[e.uid,e.wins,e.elo].join(':')).join('|')].join('||');
+  if(sig===UI_RENDER_CACHE.leaderboardKey)return;
+  UI_RENDER_CACHE.leaderboardKey=sig;
+  if(!topElo.length&&!topWins.length){
+    host.innerHTML='<div class="global-leaderboard-meta-note">Aucune donnée globale disponible pour le moment. Connecte-toi ou croise des joueurs dans le chat pour remplir ce top.</div>';
+    return;
+  }
+  const eloLeader=topElo[0]||null;
+  const winsLeader=topWins[0]||null;
+  const eloLeaderRank=eloLeader?getEloRankInfo(eloLeader.elo||0):null;
+  const myEloPos=Math.max(0,eloSorted.findIndex(entry=>entry.uid&&entry.uid===P.uid)+1);
+  const myWinsPos=Math.max(0,winsSorted.findIndex(entry=>entry.uid&&entry.uid===P.uid)+1);
+  host.innerHTML=''
+    +'<div class="global-leaderboard-hero">'
+      +'<div class="global-leaderboard-hero-top">'
+        +'<div>'
+          +'<div class="global-leaderboard-hero-title">👑 Classement ultra premium NeoPoly</div>'
+          +'<div class="global-leaderboard-hero-sub">Leader ELO : '+escapeHtml(eloLeader?.name||'—')+' '+escapeHtml(eloLeaderRank?.label||'')+' • Leader victoires : '+escapeHtml(winsLeader?.name||'—')+'</div>'
+        +'</div>'
+        +'<div class="global-leaderboard-crown">🏆</div>'
+      +'</div>'
+      +'<div class="global-leaderboard-hero-pills">'
+        +'<span class="global-leaderboard-pill primary">⚔️ Arena Elite</span>'
+        +'<span class="global-leaderboard-pill">📈 Meilleur ELO : '+(eloLeader?eloLeader.elo:'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🏆 Meilleures victoires : '+(winsLeader?winsLeader.wins:'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🎯 Votre rang ELO : '+(myEloPos?('#'+myEloPos):'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🔥 Votre rang victoires : '+(myWinsPos?('#'+myWinsPos):'—')+'</span>'
+      +'</div>'
+    +'</div>'
+    +'<div class="global-leaderboard-grid">'
+      +'<div class="global-leaderboard-section">'
+        +'<div class="global-leaderboard-section-title">📊 Top 10 ELO</div>'
+        +renderGlobalLeaderboardList(topElo,'elo')
+      +'</div>'
+      +'<div class="global-leaderboard-section">'
+        +'<div class="global-leaderboard-section-title">🏆 Top 10 victoires</div>'
+        +renderGlobalLeaderboardList(topWins,'wins')
+      +'</div>'
+    +'</div>';
+}
+
+function buildRemoteLeaderboardProfileSnapshot(){
+  const rank=getEloRankInfo(P.elo||0);
+  return {
+    uid:P.uid,
+    googleSub:P.googleSub||'',
+    name:P.name||'Joueur',
+    avatar:P.avatarImg||P.emoji||'👤',
+    avatarImg:P.avatarImg||'',
+    emoji:P.emoji||'👤',
+    color:P.color||'#22c55e',
+    title:getActiveProfileTitleLabel(P),
+    elo:Math.max(0,parseInt(P.elo,10)||0),
+    rankLabel:String(rank.label||'— Non Rankée'),
+    wins:Math.max(0,parseInt(P.stats?.gamesWon,10)||0),
+    losses:Math.max(0,parseInt(P.stats?.gamesLost,10)||0),
+    gamesPlayed:Math.max(0,parseInt(P.stats?.gamesPlayed,10)||0),
+    totalMoney:Math.max(0,parseInt(P.stats?.moneyEarned,10)||0),
+  };
+}
+
+async function syncRemoteProfileSnapshot(){
+  const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/,'');
+  if(!base||!P.googleConnected||!P.googleSessionToken)return false;
+  try{
+    const r=await fetch(base+'/api/profile/upsert',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        uid:P.uid,
+        sessionToken:P.googleSessionToken||'',
+        clientUpdatedAt:Date.now(),
+        profile:buildRemoteLeaderboardProfileSnapshot(),
+      }),
+      cache:'no-store',
+    });
+    const data=await r.json().catch(()=>null);
+    return !!(r.ok&&data&&data.ok);
+  }catch(_){
+    return false;
+  }
+}
+
+function queueRemoteProfileSync(_reason='save'){
+  if(remoteProfileSyncTimer)clearTimeout(remoteProfileSyncTimer);
+  remoteProfileSyncTimer=setTimeout(async()=>{
+    remoteProfileSyncTimer=null;
+    const ok=await syncRemoteProfileSnapshot();
+    if(ok)scheduleGlobalLeaderboardRefresh(true);
+  },450);
+}
+
+function scheduleGlobalLeaderboardRefresh(force=false){
+  renderGlobalLeaderboardCard();
+  if(globalLeaderboardFetchTimer)clearTimeout(globalLeaderboardFetchTimer);
+  globalLeaderboardFetchTimer=setTimeout(async()=>{
+    globalLeaderboardFetchTimer=null;
+    const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/,'');
+    const now=Date.now();
+    if(!base){
+      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?'Mode local':'Hors ligne';
+      renderGlobalLeaderboardCard();
+      return;
+    }
+    if(GLOBAL_LEADERBOARD_STATE.loading)return;
+    if(!force&&(now-GLOBAL_LEADERBOARD_STATE.lastFetchAt)<GLOBAL_LEADERBOARD_FETCH_COOLDOWN_MS)return;
+    GLOBAL_LEADERBOARD_STATE.loading=true;
+    GLOBAL_LEADERBOARD_STATE.status='Synchronisation…';
+    renderGlobalLeaderboardCard();
+    try{
+      const r=await fetch(base+'/api/profile/leaderboard?limit=20',{cache:'no-store'});
+      const data=await r.json().catch(()=>null);
+      if(!r.ok||!data||!data.ok)throw new Error('leaderboard_unavailable');
+      GLOBAL_LEADERBOARD_STATE.entries=mergeGlobalLeaderboardEntries([
+        ...((Array.isArray(data.topElo)?data.topElo:[]).map(entry=>Object.assign({source:'remote'},entry))),
+        ...((Array.isArray(data.topWins)?data.topWins:[]).map(entry=>Object.assign({source:'remote'},entry))),
+      ]);
+      GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
+      GLOBAL_LEADERBOARD_STATE.status=GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur global':'Joueurs connus';
+    }catch(_){
+      GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
+      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?'Mode local':'Hors ligne';
+    }finally{
+      GLOBAL_LEADERBOARD_STATE.loading=false;
+      renderGlobalLeaderboardCard();
+    }
+  },force?40:160);
+}
 
 function checkSecretTitles(showToast=true){
   if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression())return false;
@@ -570,6 +876,8 @@ function renderLobbyProfileTab(){
   if(typeof renderSeasonHubUi==='function')renderSeasonHubUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   if(typeof renderRoulettePanel==='function')renderRoulettePanel();
+  renderGlobalLeaderboardCard();
+  scheduleGlobalLeaderboardRefresh(false);
   const av=document.getElementById('pc-avatar');
   if(av){
     if(P.avatarImg){av.innerHTML=`<img src="${P.avatarImg}" alt="avatar">`;}

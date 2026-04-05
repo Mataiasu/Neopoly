@@ -890,6 +890,7 @@ function addSocialMsg(name,color,text,mine,meta){
   if(P.chatLog.length>200)P.chatLog.shift();
   queueSocialChatPersist();
   queueSocialChatUiRefresh();
+  if(typeof scheduleGlobalLeaderboardRefresh==='function')scheduleGlobalLeaderboardRefresh(false);
 }
 
 function syncSocialAdminUi(){

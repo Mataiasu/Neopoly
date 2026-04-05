@@ -961,6 +961,47 @@ function initUiTooltips(){
   window.addEventListener('resize',hideUiTooltip,{passive:true});
 }
 
+function initGlobalLeaderboardEdgePanel(){
+  const panel=document.getElementById('global-leaderboard-edge');
+  const hotzone=document.getElementById('global-leaderboard-edge-hotzone');
+  const handle=document.getElementById('global-leaderboard-edge-handle');
+  if(!panel||panel.dataset.bound==='1')return;
+  panel.dataset.bound='1';
+  let closeTimer=null;
+  const openNow=()=>{
+    if(closeTimer)clearTimeout(closeTimer);
+    panel.classList.add('is-open');
+    document.body.classList.add('leaderboard-edge-open');
+  };
+  const closeSoon=(delay=140)=>{
+    if(closeTimer)clearTimeout(closeTimer);
+    closeTimer=setTimeout(()=>{
+      if(panel.matches(':hover')||hotzone?.matches(':hover'))return;
+      panel.classList.remove('is-open');
+      document.body.classList.remove('leaderboard-edge-open');
+    },delay);
+  };
+  hotzone?.addEventListener('mouseenter',openNow);
+  hotzone?.addEventListener('mouseleave',()=>closeSoon(120));
+  panel.addEventListener('mouseenter',openNow);
+  panel.addEventListener('mouseleave',()=>closeSoon(120));
+  handle?.addEventListener('click',ev=>{
+    ev.preventDefault();
+    ev.stopPropagation();
+    if(panel.classList.contains('is-open'))closeSoon(0);
+    else openNow();
+  });
+  document.addEventListener('mousemove',ev=>{
+    if(!window.matchMedia('(hover:hover) and (pointer:fine)').matches)return;
+    const x=Number(ev.clientX)||0;
+    if(x<=72)openNow();
+    else if(!panel.matches(':hover')&&x>Math.min(window.innerWidth*0.3,panel.offsetWidth+96))closeSoon(90);
+  },{passive:true});
+  document.addEventListener('keydown',ev=>{
+    if(ev.key==='Escape')closeSoon(0);
+  });
+}
+
 // Sélecteur d'emoji pour pion (tous modes)
 document.addEventListener('DOMContentLoaded',()=>{
   enforceCanonicalLocalOrigin();
@@ -1137,6 +1178,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   initProfileImgZone();
   initDesktopKeyboardShortcuts();
   initModalBackdropClose();
+  initGlobalLeaderboardEdgePanel();
   window.maybeOpenSharedProfileFromUrl?.();
   document.querySelectorAll('.lobby-tab').forEach(btn=>btn.addEventListener('click',()=>switchLobbyTab(btn.dataset.ltab)));
 });
@@ -2348,6 +2390,8 @@ function saveProfileData(){
   if(PROFILE_SYNC_BUS){
     try{PROFILE_SYNC_BUS.postMessage({type:'profile_updated',at:Date.now()});}catch(_){ }
   }
+  if(typeof queueRemoteProfileSync==='function')queueRemoteProfileSync('save');
+  if(typeof scheduleGlobalLeaderboardRefresh==='function')scheduleGlobalLeaderboardRefresh(false);
 }
 
 const DAILY_CHALLENGE_POOL=[
