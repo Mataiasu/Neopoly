@@ -149,10 +149,30 @@ body.debug-tools-window-open #debug-tools-card.is-dragging summary{cursor:grabbi
 .feature-chip:hover{border-color:rgba(34,197,94,.35);transform:translateY(-1px)}
 .filter-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .filter-row select,.filter-row input{min-width:140px}
-.news-grid{display:grid;grid-template-columns:1fr;gap:8px}
-.news-tile{padding:9px 10px;border-radius:10px;border:1px solid var(--border);background:var(--s2)}
-.news-tile b{color:#f8fafc}
-.faq-item{padding:8px 9px;border-radius:10px;border:1px solid var(--border);background:var(--s2)}
+.news-hero{position:relative;padding:14px;border-radius:18px;background:radial-gradient(circle at top left,rgba(59,130,246,.22),transparent 26%),radial-gradient(circle at top right,rgba(239,68,68,.18),transparent 30%),linear-gradient(135deg,rgba(8,18,38,.98),rgba(15,23,42,.96));border:1px solid rgba(96,165,250,.18);box-shadow:0 16px 34px rgba(2,6,23,.28),inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden;animation:newsHeroFloat 6.8s ease-in-out infinite}
+.news-hero::before{content:'';position:absolute;inset:-20% auto auto -15%;width:52%;height:180%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);transform:rotate(14deg);animation:leaderboardHeroSweep 6.5s linear infinite;pointer-events:none}
+.news-hero::after{content:'';position:absolute;right:-40px;top:-40px;width:120px;height:120px;border-radius:999px;background:radial-gradient(circle,rgba(56,189,248,.22),transparent 68%);filter:blur(2px);animation:newsOrbPulse 4.4s ease-in-out infinite;pointer-events:none}
+.news-kicker{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border-radius:999px;background:linear-gradient(135deg,rgba(37,99,235,.22),rgba(239,68,68,.18));border:1px solid rgba(96,165,250,.24);font-size:.58rem;font-weight:900;letter-spacing:.08em;color:#e8f1ff;text-transform:uppercase;box-shadow:0 0 0 0 rgba(96,165,250,.18);animation:newsBadgePulse 2.8s ease-in-out infinite}
+.news-title{position:relative;z-index:1;margin-top:8px;font-size:1rem;font-weight:900;color:#f8fbff;letter-spacing:.01em}
+.news-sub{position:relative;z-index:1;margin-top:5px;font-size:.68rem;line-height:1.5;color:#cbd5e1;max-width:700px}
+.news-pills{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.news-pill{display:inline-flex;align-items:center;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(148,163,184,.16);font-size:.58rem;color:#dbe7ff;font-weight:700;animation:newsPillGlow 3.6s ease-in-out infinite}
+.news-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.news-tile{position:relative;padding:12px 12px 11px;border-radius:14px;border:1px solid rgba(96,165,250,.14);background:linear-gradient(180deg,rgba(10,20,42,.96),rgba(9,15,28,.94));box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 22px rgba(2,6,23,.16);overflow:hidden;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;animation:newsTileIn .52s cubic-bezier(.2,.8,.2,1) both}
+.news-tile:nth-child(2){animation-delay:.04s}.news-tile:nth-child(3){animation-delay:.08s}.news-tile:nth-child(4){animation-delay:.12s}.news-tile:nth-child(5){animation-delay:.16s}.news-tile:nth-child(6){animation-delay:.2s}
+.news-tile:hover{transform:translateY(-2px) scale(1.01);box-shadow:0 12px 26px rgba(2,6,23,.24),0 0 16px rgba(59,130,246,.08);border-color:rgba(96,165,250,.28)}
+.news-tile::before{content:'';position:absolute;inset:0;background:linear-gradient(110deg,transparent 0%,rgba(255,255,255,.08) 35%,transparent 70%);transform:translateX(-120%);transition:transform .45s ease}
+.news-tile:hover::before{transform:translateX(120%)}
+.news-tile::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,rgba(59,130,246,.95),rgba(56,189,248,.7),rgba(239,68,68,.5));opacity:.88}
+.news-badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:rgba(59,130,246,.14);border:1px solid rgba(96,165,250,.22);font-size:.54rem;font-weight:900;letter-spacing:.06em;color:#dbeafe;text-transform:uppercase;margin-bottom:7px}
+.news-tile b{display:block;color:#f8fafc;font-size:.74rem;margin-bottom:4px}
+.news-copy{font-size:.67rem;color:var(--muted);line-height:1.5}
+@keyframes newsHeroFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+@keyframes newsOrbPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.08)}}
+@keyframes newsBadgePulse{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.18)}50%{box-shadow:0 0 0 6px rgba(96,165,250,0)}}
+@keyframes newsPillGlow{0%,100%{border-color:rgba(148,163,184,.16)}50%{border-color:rgba(96,165,250,.3)}}
+@keyframes newsTileIn{0%{opacity:0;transform:translateY(10px) scale(.985)}100%{opacity:1;transform:translateY(0) scale(1)}}
+.faq-item{padding:8px 9px;border-radius:10px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(10,20,42,.9),rgba(10,16,30,.88))}
 .shortcut-pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
 .shortcut-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;background:rgba(59,130,246,.12);border:1px solid rgba(59,130,246,.22);font-size:.62rem;font-weight:700;color:#bfdbfe}
 .kb-chip{display:inline-flex;align-items:center;justify-content:center;min-width:22px;padding:2px 6px;border-radius:6px;background:#0b1220;border:1px solid rgba(148,163,184,.28);font-size:.62rem;color:#f8fafc}
@@ -2282,14 +2302,24 @@ body.streamer-mode #invite-link {
         <div class="lobby-tab-pane" id="news-pane">
           <div class="card" style="padding:10px">
             <div class="card-title">🆕 Patch notes intégrées</div>
-            <div style="font-size:.68rem;color:var(--muted);margin:-2px 0 8px">Mise à jour live • avril 2026</div>
+            <div class="news-hero" style="margin-top:8px;margin-bottom:10px">
+              <div class="news-kicker">✨ Premium update • avril 2026</div>
+              <div class="news-title">NeoPoly reçoit une vitrine plus esports et plus luxueuse</div>
+              <div class="news-sub">Compteur live fiable sur le site, reconnexion online, fenêtre debug premium pour les admins et meilleure lisibilité du plateau : la zone <b>News</b> affiche désormais les derniers gros ajouts dans un style plus haut de gamme.</div>
+              <div class="news-pills">
+                <span class="news-pill">🟢 Présence temps réel</span>
+                <span class="news-pill">🔁 Reconnexion auto</span>
+                <span class="news-pill">🛡️ Debug admin</span>
+                <span class="news-pill">🏟️ Ambiance ranked</span>
+              </div>
+            </div>
             <div class="news-grid">
-              <div class="news-tile"><b>v5.1 • Compteur temps réel</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Le ladder affiche maintenant les <b>joueurs en ligne</b>, les <b>visiteurs sur le site</b> et les <b>salons actifs</b> avec rafraîchissement live.</div></div>
-              <div class="news-tile"><b>Reconnexion multijoueur</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Un joueur déconnecté disparaît de la partie, puis peut revenir via le bouton de reconnexion ou l’auto‑reconnexion après quelques secondes.</div></div>
-              <div class="news-tile"><b>Debug admin amélioré</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Le menu debug s’ouvre désormais en vraie fenêtre flottante, réservée aux admins, avec drag & move et bouton <b>recentrer</b>.</div></div>
-              <div class="news-tile"><b>Lecture du plateau</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Correction visuelle des cases latérales comme <b>Chance</b> et <b>Avenue des Champs‑Élysées</b> pour un texte plus lisible.</div></div>
-              <div class="news-tile"><b>Historique premium</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Nouveaux filtres sur le journal, les transactions et le résumé de fin de tour.</div></div>
-              <div class="news-tile"><b>UX & onboarding</b><div style="font-size:.67rem;color:var(--muted);margin-top:4px">Tutoriel interactif, raccourcis clavier desktop, profil public partageable et aide intégrée.</div></div>
+              <div class="news-tile"><span class="news-badge">Live</span><b>v5.1 • Compteur temps réel</b><div class="news-copy">Le ladder affiche maintenant les <b>joueurs en ligne</b>, les <b>visiteurs sur le site</b> et les <b>salons actifs</b> avec rafraîchissement live plus propre.</div></div>
+              <div class="news-tile"><span class="news-badge">Online</span><b>Reconnexion multijoueur</b><div class="news-copy">Un joueur déconnecté disparaît de la partie, puis peut revenir via le bouton de reconnexion ou l’auto‑reconnexion après quelques secondes.</div></div>
+              <div class="news-tile"><span class="news-badge">Admin</span><b>Debug window premium</b><div class="news-copy">Le menu debug s’ouvre désormais en vraie fenêtre flottante, réservée aux admins, avec drag & move et bouton <b>recentrer</b>.</div></div>
+              <div class="news-tile"><span class="news-badge">UX</span><b>Lecture du plateau</b><div class="news-copy">Correction visuelle des cases latérales comme <b>Chance</b> et <b>Avenue des Champs‑Élysées</b> pour un texte plus lisible.</div></div>
+              <div class="news-tile"><span class="news-badge">Pro</span><b>Historique premium</b><div class="news-copy">Nouveaux filtres sur le journal, les transactions et le résumé de fin de tour pour une lecture plus claire.</div></div>
+              <div class="news-tile"><span class="news-badge">Starter</span><b>UX & onboarding</b><div class="news-copy">Tutoriel interactif, raccourcis clavier desktop, profil public partageable et aide intégrée pour mieux démarrer.</div></div>
             </div>
           </div>
         </div>
