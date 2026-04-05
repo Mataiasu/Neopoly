@@ -493,6 +493,26 @@ function listPublicRooms() {
     });
 }
 
+function getLiveSiteStats() {
+  const publicRooms = listPublicRooms();
+  const onlinePlayers = publicRooms.reduce((sum, room) => sum + Math.max(0, Number(room && room.playerCount) || 0), 0);
+  let siteUsers = 0;
+  try {
+    if (wss && wss.clients) {
+      wss.clients.forEach((client) => {
+        if (client && client.readyState === WebSocket.OPEN) siteUsers += 1;
+      });
+    }
+  } catch (_) {
+    siteUsers = 0;
+  }
+  return {
+    onlinePlayers,
+    siteUsers,
+    publicRooms: publicRooms.length,
+  };
+}
+
 function broadcastToRoom(room, payload) {
   if (!rooms[room]) return;
   const encoded = JSON.stringify(payload);
@@ -1118,6 +1138,7 @@ async function handleApi(req, res, pathname) {
         total: allEntries.length,
         topElo,
         topWins,
+        live: getLiveSiteStats(),
         updatedAt: Date.now(),
       });
     } catch (_) { sendApiJson(req, res, 500, { ok: false, error: 'server_error' }); }

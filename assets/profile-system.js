@@ -420,10 +420,15 @@ const GLOBAL_LEADERBOARD_STATE={
   status:'Ladder local',
   loading:false,
   lastFetchAt:0,
+  onlinePlayers:0,
+  siteUsers:0,
+  publicRooms:0,
 };
 let globalLeaderboardFetchTimer=null;
+let globalLeaderboardLiveTicker=null;
 let remoteProfileSyncTimer=null;
 const GLOBAL_LEADERBOARD_FETCH_COOLDOWN_MS=45000;
+const GLOBAL_LEADERBOARD_LIVE_REFRESH_MS=5000;
 
 function normalizeGlobalLeaderboardEntry(raw,source='local'){
   if(!raw||typeof raw!=='object')return null;
@@ -607,6 +612,9 @@ function renderGlobalLeaderboardProfileModal(entry){
   const eloLeader=topElo[0]||null;
   const totalMatches=entries.reduce((sum,item)=>sum+(parseInt(item.gamesPlayed,10)||0),0);
   const totalWins=entries.reduce((sum,item)=>sum+(parseInt(item.wins,10)||0),0);
+  const onlinePlayers=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.onlinePlayers,10)||0);
+  const siteUsers=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.siteUsers,10)||0);
+  const publicRooms=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.publicRooms,10)||0);
   const focusStatus=focusEloPos===1
     ?'👑 Seed #1'
     :(focusWinsPos===1
@@ -622,7 +630,7 @@ function renderGlobalLeaderboardProfileModal(entry){
       +'<div class="global-leaderboard-hero-top">'
         +'<div>'
           +'<div class="global-leaderboard-hero-title">🏟️ NeoPoly Ranked Arena</div>'
-          +'<div class="global-leaderboard-hero-sub">Ladder esports officiel • Top 10 ELO + victoires • '+entries.length+' joueurs suivis</div>'
+          +'<div class="global-leaderboard-hero-sub">Ladder esports officiel • Top 10 ELO + victoires • '+entries.length+' joueurs suivis • '+onlinePlayers+' en ligne</div>'
         +'</div>'
         +'<div class="global-leaderboard-crown">💎</div>'
       +'</div>'
@@ -630,6 +638,9 @@ function renderGlobalLeaderboardProfileModal(entry){
         +'<span class="global-leaderboard-pill primary">🎯 Ranked Esports</span>'
         +'<span class="global-leaderboard-pill">👑 Leader ELO : '+escapeHtml(eloLeader?.name||'—')+'</span>'
         +'<span class="global-leaderboard-pill">🏆 Leader victoires : '+escapeHtml(winsLeader?.name||'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🟢 En ligne : '+onlinePlayers+'</span>'
+        +'<span class="global-leaderboard-pill">🌐 Sur le site : '+siteUsers+'</span>'
+        +'<span class="global-leaderboard-pill">🏠 Salons ouverts : '+publicRooms+'</span>'
         +'<span class="global-leaderboard-pill">🎮 Matchs classés : '+totalMatches+'</span>'
         +'<span class="global-leaderboard-pill">⚔️ Wins ladder : '+totalWins+'</span>'
         +'<span class="global-leaderboard-pill">🎯 Votre rang ELO : '+(myEloPos?('#'+myEloPos):'—')+'</span>'
@@ -804,9 +815,12 @@ function renderGlobalLeaderboardCard(){
   const winsSorted=entries.slice().sort((a,b)=>(b.wins-a.wins)||(b.elo-a.elo)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
   const topElo=eloSorted.slice(0,10);
   const topWins=winsSorted.slice(0,10);
+  const onlinePlayers=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.onlinePlayers,10)||0);
+  const siteUsers=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.siteUsers,10)||0);
+  const publicRooms=Math.max(0,parseInt(GLOBAL_LEADERBOARD_STATE.publicRooms,10)||0);
   const statusLabel=GLOBAL_LEADERBOARD_STATE.loading?'Synchronisation…':(GLOBAL_LEADERBOARD_STATE.status||(GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur ranked':'Ladder local'));
-  if(meta)meta.textContent=statusLabel+' • '+entries.length+' joueur'+(entries.length>1?'s':'');
-  const sig=[statusLabel,entries.length,topElo.map(e=>[e.uid,e.elo,e.wins].join(':')).join('|'),topWins.map(e=>[e.uid,e.wins,e.elo].join(':')).join('|')].join('||');
+  if(meta)meta.textContent=statusLabel+' • '+entries.length+' joueur'+(entries.length>1?'s':'')+' • '+onlinePlayers+' en ligne';
+  const sig=[statusLabel,entries.length,onlinePlayers,siteUsers,publicRooms,topElo.map(e=>[e.uid,e.elo,e.wins].join(':')).join('|'),topWins.map(e=>[e.uid,e.wins,e.elo].join(':')).join('|')].join('||');
   if(sig===UI_RENDER_CACHE.leaderboardKey)return;
   UI_RENDER_CACHE.leaderboardKey=sig;
   if(!topElo.length&&!topWins.length){
@@ -824,7 +838,7 @@ function renderGlobalLeaderboardCard(){
       +'<div class="global-leaderboard-hero-top">'
         +'<div>'
           +'<div class="global-leaderboard-hero-title">🏟️ Ladder Ranked NeoPoly</div>'
-          +'<div class="global-leaderboard-hero-sub">Seed ELO #1 : '+escapeHtml(eloLeader?.name||'—')+' '+escapeHtml(eloLeaderRank?.label||'')+' • Seed wins #1 : '+escapeHtml(winsLeader?.name||'—')+'</div>'
+          +'<div class="global-leaderboard-hero-sub">Seed ELO #1 : '+escapeHtml(eloLeader?.name||'—')+' '+escapeHtml(eloLeaderRank?.label||'')+' • Seed wins #1 : '+escapeHtml(winsLeader?.name||'—')+' • '+siteUsers+' sur le site</div>'
         +'</div>'
         +'<div class="global-leaderboard-crown">🏆</div>'
       +'</div>'
@@ -832,6 +846,9 @@ function renderGlobalLeaderboardCard(){
         +'<span class="global-leaderboard-pill primary">🎯 Ranked Esports</span>'
         +'<span class="global-leaderboard-pill">📈 Meilleur ELO : '+(eloLeader?eloLeader.elo:'—')+'</span>'
         +'<span class="global-leaderboard-pill">🏆 Meilleures victoires : '+(winsLeader?winsLeader.wins:'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🟢 Joueurs en ligne : '+onlinePlayers+'</span>'
+        +'<span class="global-leaderboard-pill">🌐 Joueurs sur le site : '+siteUsers+'</span>'
+        +'<span class="global-leaderboard-pill">🏠 Salons actifs : '+publicRooms+'</span>'
         +'<span class="global-leaderboard-pill">🎯 Votre rang ELO : '+(myEloPos?('#'+myEloPos):'—')+'</span>'
         +'<span class="global-leaderboard-pill">🔥 Votre rang victoires : '+(myWinsPos?('#'+myWinsPos):'—')+'</span>'
         +'<span class="global-leaderboard-pill">🏅 Division : '+escapeHtml(myDivision.shortLabel||'Placement')+'</span>'
@@ -902,6 +919,22 @@ function queueRemoteProfileSync(_reason='save'){
   },450);
 }
 
+function ensureGlobalLeaderboardLiveTicker(){
+  if(globalLeaderboardLiveTicker)return;
+  globalLeaderboardLiveTicker=setInterval(()=>{
+    const inLobby=!!document.getElementById('app-wrap')?.classList.contains('in-lobby');
+    if(document.visibilityState!=='visible'||!inLobby)return;
+    scheduleGlobalLeaderboardRefresh(true);
+  },GLOBAL_LEADERBOARD_LIVE_REFRESH_MS);
+  if(typeof document!=='undefined'&&!document.body?.dataset?.leaderboardLiveBound){
+    if(document.body?.dataset)document.body.dataset.leaderboardLiveBound='1';
+    document.addEventListener('visibilitychange',()=>{
+      const inLobby=!!document.getElementById('app-wrap')?.classList.contains('in-lobby');
+      if(document.visibilityState==='visible'&&inLobby)scheduleGlobalLeaderboardRefresh(true);
+    });
+  }
+}
+
 function scheduleGlobalLeaderboardRefresh(force=false){
   renderGlobalLeaderboardCard();
   if(globalLeaderboardFetchTimer)clearTimeout(globalLeaderboardFetchTimer);
@@ -929,9 +962,15 @@ function scheduleGlobalLeaderboardRefresh(force=false){
         ...((Array.isArray(data.topElo)?data.topElo:[]).map(entry=>Object.assign({source:'remote'},entry))),
         ...((Array.isArray(data.topWins)?data.topWins:[]).map(entry=>Object.assign({source:'remote'},entry))),
       ]);
+      GLOBAL_LEADERBOARD_STATE.onlinePlayers=Math.max(0,parseInt(data?.live?.onlinePlayers,10)||0);
+      GLOBAL_LEADERBOARD_STATE.siteUsers=Math.max(0,parseInt(data?.live?.siteUsers,10)||0);
+      GLOBAL_LEADERBOARD_STATE.publicRooms=Math.max(0,parseInt(data?.live?.publicRooms,10)||0);
       GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
       GLOBAL_LEADERBOARD_STATE.status=GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur ranked':'Ladder local';
     }catch(_){
+      GLOBAL_LEADERBOARD_STATE.onlinePlayers=0;
+      GLOBAL_LEADERBOARD_STATE.siteUsers=0;
+      GLOBAL_LEADERBOARD_STATE.publicRooms=0;
       GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
       GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?fallbackLabel:'Hors ligne';
     }finally{
@@ -1184,6 +1223,7 @@ function renderLobbyProfileTab(){
   if(typeof renderSeasonHubUi==='function')renderSeasonHubUi();
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   if(typeof renderRoulettePanel==='function')renderRoulettePanel();
+  ensureGlobalLeaderboardLiveTicker();
   renderGlobalLeaderboardCard();
   scheduleGlobalLeaderboardRefresh(false);
   const av=document.getElementById('pc-avatar');
