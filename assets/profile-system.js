@@ -31,6 +31,93 @@ function getEloRankInfo(elo){
   return{label:'— Non Rankée',cls:'er-unranked',tier:'Non Rankée',div:'',icon:'—'};
 }
 
+function getRankedDivisionSystemInfo(elo){
+  const e=Math.max(0,parseInt(elo,10)||0);
+  const rank=getEloRankInfo(e);
+  if(e<100){
+    return {
+      cls:'er-unranked',
+      icon:'🎯',
+      tier:'Placement',
+      div:'',
+      label:'🎯 Placement',
+      shortLabel:'Placement',
+      currentMin:0,
+      nextMin:100,
+      progressPct:Math.max(4,Math.min(100,Math.round((e/100)*100))),
+      pointsToNext:Math.max(0,100-e),
+      nextLabel:'Bronze IV',
+    };
+  }
+  const tierIndex=ELO_TIERS.findIndex(t=>t.name===rank.tier);
+  const tier=tierIndex>=0?ELO_TIERS[tierIndex]:ELO_TIERS[ELO_TIERS.length-1];
+  const prevTier=tierIndex>0?ELO_TIERS[tierIndex-1]:null;
+  if(!rank.div){
+    const currentMin=tier?.min||0;
+    const nextMin=prevTier?.min||currentMin;
+    const span=Math.max(1,nextMin-currentMin||400);
+    return {
+      cls:rank.cls||'er-unranked',
+      icon:rank.icon||'🏅',
+      tier:rank.tier||'Bronze',
+      div:'',
+      label:rank.label||'—',
+      shortLabel:rank.tier||'Bronze',
+      currentMin,
+      nextMin,
+      progressPct:prevTier?Math.max(8,Math.min(100,Math.round(((e-currentMin)/span)*100))):100,
+      pointsToNext:prevTier?Math.max(0,nextMin-e):0,
+      nextLabel:prevTier?prevTier.name:'Cap max',
+    };
+  }
+  const tierFloor=tier?.min||0;
+  const tierCeil=prevTier?.min||(tierFloor+400);
+  const tierSpan=Math.max(4,tierCeil-tierFloor);
+  const divSpan=Math.max(1,Math.floor(tierSpan/4));
+  const divIndex=Math.max(0,ELO_DIV_NAMES.indexOf(rank.div));
+  const currentMin=tierFloor+(divIndex*divSpan);
+  const finalDivision=divIndex>=ELO_DIV_NAMES.length-1;
+  const nextMin=finalDivision?tierCeil:Math.min(tierCeil,currentMin+divSpan);
+  const nextLabel=!finalDivision
+    ?((rank.tier||'Bronze')+' '+ELO_DIV_NAMES[Math.min(ELO_DIV_NAMES.length-1,divIndex+1)])
+    :(prevTier?(prevTier.name+(tierIndex>2?' IV':'')):'Cap max');
+  return {
+    cls:rank.cls||'er-unranked',
+    icon:rank.icon||'🏅',
+    tier:rank.tier||'Bronze',
+    div:rank.div||'',
+    label:rank.label||'—',
+    shortLabel:(rank.tier||'Bronze')+(rank.div?(' '+rank.div):''),
+    currentMin,
+    nextMin,
+    progressPct:Math.max(6,Math.min(100,Math.round(((e-currentMin)/Math.max(1,nextMin-currentMin))*100))),
+    pointsToNext:Math.max(0,nextMin-e),
+    nextLabel,
+  };
+}
+
+function renderRankedDivisionPanel(info,title,subtitle){
+  const data=info&&typeof info==='object'?info:getRankedDivisionSystemInfo(0);
+  const progress=Math.max(0,Math.min(100,parseInt(data.progressPct,10)||0));
+  const footLabel=data.pointsToNext>0
+    ?(data.pointsToNext+' ELO avant '+(data.nextLabel||'la promo'))
+    :'Division max atteinte';
+  return ''
+    +'<div class="ranked-division-panel '+String(data.cls||'er-unranked')+'">'
+      +'<div class="ranked-division-top">'
+        +'<div>'
+          +'<div class="ranked-division-kicker">'+escapeHtml(title||'🏅 Division ranked')+'</div>'
+          +'<div class="ranked-division-name">'+escapeHtml((data.icon||'🏅')+' '+(data.shortLabel||data.label||'Placement'))+'</div>'
+        +'</div>'
+        +'<div class="ranked-division-badge">'+escapeHtml(data.div?('DIV '+data.div):(data.tier||'TOP'))+'</div>'
+      +'</div>'
+      +(subtitle?('<div class="ranked-division-sub">'+escapeHtml(subtitle)+'</div>'):'')
+      +'<div class="ranked-division-track"><span class="ranked-division-fill" style="width:'+progress+'%"></span></div>'
+      +'<div class="ranked-division-meta"><span>'+escapeHtml(String(data.currentMin||0)+' ELO')+'</span><span>'+escapeHtml(String(data.nextMin||data.currentMin||0)+' ELO')+'</span></div>'
+      +'<div class="ranked-division-foot">'+escapeHtml(footLabel)+'</div>'
+    +'</div>';
+}
+
 function renderLobbyVictoryStars(){
   const wrap=document.getElementById('lobby-victory-stars');
   if(!wrap)return;
@@ -330,7 +417,7 @@ const UI_RENDER_CACHE={
 
 const GLOBAL_LEADERBOARD_STATE={
   entries:[],
-  status:'Joueurs connus',
+  status:'Ladder local',
   loading:false,
   lastFetchAt:0,
 };
@@ -349,6 +436,11 @@ function normalizeGlobalLeaderboardEntry(raw,source='local'){
   const elo=Math.max(0,parseInt(raw.elo,10)||0);
   const wins=Math.max(0,parseInt(raw.wins ?? raw.gamesWon,10)||0);
   const gamesPlayed=Math.max(0,parseInt(raw.gamesPlayed,10)||0);
+  const gamesLost=Math.max(0,parseInt(raw.gamesLost ?? raw.losses,10)||0);
+  const propertiesBought=Math.max(0,parseInt(raw.propertiesBought,10)||0);
+  const moneyEarned=Math.max(0,parseInt(raw.moneyEarned ?? raw.totalMoney,10)||0);
+  const titlesCount=Math.max(0,parseInt(raw.titlesCount,10)||(Array.isArray(raw.unlockedTitles)?raw.unlockedTitles.length:0));
+  const emojiCount=Math.max(1,parseInt(raw.emojiCount,10)||1);
   const titleLabel=String(raw.titleLabel||raw.title||'').trim();
   const rankLabel=String(raw.rankLabel||getEloRankInfo(elo).label||'— Non Rankée');
   if(!uid&&!name)return null;
@@ -362,8 +454,15 @@ function normalizeGlobalLeaderboardEntry(raw,source='local'){
     elo,
     wins,
     gamesPlayed,
+    gamesLost,
+    propertiesBought,
+    moneyEarned,
+    titlesCount,
+    emojiCount,
     titleLabel,
     rankLabel,
+    profilePrivate:!!raw.profilePrivate,
+    googleConnected:!!raw.googleConnected,
     source,
     updatedAt:Math.max(0,parseInt(raw.updatedAt,10)||0),
   };
@@ -382,6 +481,13 @@ function mergeGlobalLeaderboardEntries(entries){
     existing.elo=Math.max(existing.elo,entry.elo);
     existing.wins=Math.max(existing.wins,entry.wins);
     existing.gamesPlayed=Math.max(existing.gamesPlayed,entry.gamesPlayed);
+    existing.gamesLost=Math.max(existing.gamesLost||0,entry.gamesLost||0);
+    existing.propertiesBought=Math.max(existing.propertiesBought||0,entry.propertiesBought||0);
+    existing.moneyEarned=Math.max(existing.moneyEarned||0,entry.moneyEarned||0);
+    existing.titlesCount=Math.max(existing.titlesCount||0,entry.titlesCount||0);
+    existing.emojiCount=Math.max(existing.emojiCount||1,entry.emojiCount||1);
+    existing.profilePrivate=!!(existing.profilePrivate||entry.profilePrivate);
+    existing.googleConnected=!!(existing.googleConnected||entry.googleConnected);
     existing.updatedAt=Math.max(existing.updatedAt||0,entry.updatedAt||0);
     if(entry.source==='remote')existing.source='remote';
     ['name','avatarImg','emoji','color','titleLabel','rankLabel'].forEach(field=>{
@@ -405,8 +511,15 @@ function collectKnownLeaderboardEntries(){
     elo:P.elo||0,
     wins:P.stats?.gamesWon||0,
     gamesPlayed:P.stats?.gamesPlayed||0,
+    gamesLost:P.stats?.gamesLost||0,
+    propertiesBought:P.stats?.propertiesBought||0,
+    moneyEarned:P.stats?.moneyEarned||0,
+    titlesCount:Array.isArray(P.titles)?P.titles.length:0,
+    emojiCount:(P.emojiUnlocks&&typeof P.emojiUnlocks==='object')?Object.keys(P.emojiUnlocks).length:1,
     titleLabel:getActiveProfileTitleLabel(P),
     rankLabel:getEloRankInfo(P.elo||0).label,
+    googleConnected:!!P.googleConnected,
+    profilePrivate:!!P.chatProfilePrivate,
     source:'local',
     updatedAt:Date.now(),
   }];
@@ -421,8 +534,14 @@ function collectKnownLeaderboardEntries(){
       elo:friend.elo||0,
       gamesWon:friend.gamesWon||0,
       gamesPlayed:friend.gamesPlayed||0,
+      gamesLost:friend.gamesLost||0,
+      propertiesBought:friend.propertiesBought||0,
+      moneyEarned:friend.moneyEarned||0,
+      titlesCount:friend.titlesCount||0,
+      emojiCount:friend.emojiCount||1,
       titleLabel:friend.titleLabel||'',
       rankLabel:friend.rankLabel||'',
+      googleConnected:!!friend.googleConnected,
       source:'friend',
       updatedAt:friend.updatedAt||friend.addedAt||0,
     });
@@ -438,8 +557,14 @@ function collectKnownLeaderboardEntries(){
       elo:msg.elo||0,
       gamesWon:msg.gamesWon||0,
       gamesPlayed:msg.gamesPlayed||0,
+      gamesLost:msg.gamesLost||0,
+      propertiesBought:msg.propertiesBought||0,
+      moneyEarned:msg.moneyEarned||0,
+      titlesCount:msg.titlesCount||0,
+      emojiCount:msg.emojiCount||1,
       titleLabel:msg.titleLabel||'',
       rankLabel:msg.rankLabel||'',
+      googleConnected:!!msg.googleConnected,
       source:'chat',
       updatedAt:msg.ts||0,
     });
@@ -451,7 +576,181 @@ function getGlobalLeaderboardEntries(){
   return mergeGlobalLeaderboardEntries([...(GLOBAL_LEADERBOARD_STATE.entries||[]),...collectKnownLeaderboardEntries()]);
 }
 
-function renderGlobalLeaderboardList(entries,metric){
+function renderGlobalLeaderboardProfileModal(entry){
+  const body=document.getElementById('global-profile-modal-body');
+  if(!body)return;
+  const entries=getGlobalLeaderboardEntries();
+  if(!entries.length){
+    body.innerHTML='<div class="leaderboard-profile-note">Aucune donnée de classement disponible pour le moment.</div>';
+    return;
+  }
+  const eloSorted=entries.slice().sort((a,b)=>(b.elo-a.elo)||(b.wins-a.wins)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
+  const winsSorted=entries.slice().sort((a,b)=>(b.wins-a.wins)||(b.elo-a.elo)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
+  const topElo=eloSorted.slice(0,10);
+  const topWins=winsSorted.slice(0,10);
+  const selectedKey=String(entry&&entry.key||'').trim();
+  const focus=entries.find(item=>String(item.key||'')===selectedKey)||(P.uid?entries.find(item=>item.uid===P.uid):null)||topElo[0]||entries[0];
+  const focusUid=String(focus&&focus.uid||'').trim();
+  const focusIsSelf=!!(focusUid&&focusUid===P.uid);
+  const focusRank=getEloRankInfo(focus?.elo||0);
+  const focusColor=safeCssColor(focus?.color,'#22c55e');
+  const focusAvatar=(focus&&focus.avatarImg)
+    ?'<img src="'+escapeAttr(focus.avatarImg)+'" alt="avatar">'
+    :escapeHtml(focus?.emoji||'👤');
+  const focusEloPos=Math.max(0,eloSorted.findIndex(item=>String(item.key||'')===String(focus?.key||''))+1);
+  const focusWinsPos=Math.max(0,winsSorted.findIndex(item=>String(item.key||'')===String(focus?.key||''))+1);
+  const myEloPos=Math.max(0,eloSorted.findIndex(item=>item.uid&&item.uid===P.uid)+1);
+  const myWinsPos=Math.max(0,winsSorted.findIndex(item=>item.uid&&item.uid===P.uid)+1);
+  const focusDivision=getRankedDivisionSystemInfo(focus?.elo||0);
+  const myDivision=getRankedDivisionSystemInfo(P.elo||0);
+  const winsLeader=topWins[0]||null;
+  const eloLeader=topElo[0]||null;
+  const totalMatches=entries.reduce((sum,item)=>sum+(parseInt(item.gamesPlayed,10)||0),0);
+  const totalWins=entries.reduce((sum,item)=>sum+(parseInt(item.wins,10)||0),0);
+  const focusStatus=focusEloPos===1
+    ?'👑 Seed #1'
+    :(focusWinsPos===1
+      ?'🏆 Clutch Player'
+      :(((focusEloPos&&focusEloPos<=3)||(focusWinsPos&&focusWinsPos<=3))
+        ?'🔥 Top Seed'
+        :'⚡ Ranked Contender'));
+  const focusSummary=(focus?.gamesPlayed||0)>0
+    ?((focus?.wins||0)+' victoire'+((focus?.wins||0)>1?'s':'')+' • '+Math.round(((focus?.wins||0)/Math.max(1,focus?.gamesPlayed||0))*100)+'% winrate')
+    :'Aucune partie enregistrée pour le moment';
+  body.innerHTML=''
+    +'<div class="global-leaderboard-hero">'
+      +'<div class="global-leaderboard-hero-top">'
+        +'<div>'
+          +'<div class="global-leaderboard-hero-title">🏟️ NeoPoly Ranked Arena</div>'
+          +'<div class="global-leaderboard-hero-sub">Ladder esports officiel • Top 10 ELO + victoires • '+entries.length+' joueurs suivis</div>'
+        +'</div>'
+        +'<div class="global-leaderboard-crown">💎</div>'
+      +'</div>'
+      +'<div class="global-leaderboard-hero-pills">'
+        +'<span class="global-leaderboard-pill primary">🎯 Ranked Esports</span>'
+        +'<span class="global-leaderboard-pill">👑 Leader ELO : '+escapeHtml(eloLeader?.name||'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🏆 Leader victoires : '+escapeHtml(winsLeader?.name||'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🎮 Matchs classés : '+totalMatches+'</span>'
+        +'<span class="global-leaderboard-pill">⚔️ Wins ladder : '+totalWins+'</span>'
+        +'<span class="global-leaderboard-pill">🎯 Votre rang ELO : '+(myEloPos?('#'+myEloPos):'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🔥 Votre rang victoires : '+(myWinsPos?('#'+myWinsPos):'—')+'</span>'
+      +'</div>'
+    +'</div>'
+    +'<div class="leaderboard-premium-focus">'
+      +'<div class="leaderboard-profile-hero">'
+        +'<div class="leaderboard-profile-avatar" style="border-color:'+focusColor+';background:'+(focus?.avatarImg?'rgba(15,23,42,.9)':(focusColor+'22'))+'">'+focusAvatar+'</div>'
+        +'<div class="leaderboard-profile-meta">'
+          +'<div class="leaderboard-profile-kicker">'+escapeHtml(focusStatus)+'</div>'
+          +'<div class="leaderboard-profile-name" style="color:'+focusColor+'">'+escapeHtml(focus?.name||'Joueur')+(focusIsSelf?'<span class="global-leaderboard-you">Vous</span>':'')+'</div>'
+          +'<div class="leaderboard-profile-sub">'+escapeHtml(focusSummary)+' • position ELO '+(focusEloPos?('#'+focusEloPos):'—')+' • position victoires '+(focusWinsPos?('#'+focusWinsPos):'—')+'</div>'
+          +'<div class="leaderboard-profile-badges">'
+            +'<span class="elo-rank-badge '+String(focusRank.cls||'er-unranked')+'">'+escapeHtml(focus?.rankLabel||focusRank.label||'— Non Rankée')+'</span>'
+            +'<span class="global-leaderboard-chip chip-rank">'+escapeHtml((focusRank.icon||'🏅')+' '+(focusRank.tier||'Bronze')+(focusRank.div?(' '+focusRank.div):''))+'</span>'
+            +(focus?.titleLabel?('<span class="leaderboard-profile-tag">'+escapeHtml(focus.titleLabel)+'</span>'):'')
+          +'</div>'
+        +'</div>'
+      +'</div>'
+    +'</div>'
+    +'<div class="leaderboard-profile-grid">'
+      +'<div class="leaderboard-profile-stat super"><div class="leaderboard-profile-stat-val">'+entries.length+'</div><div class="leaderboard-profile-stat-label">🌐 Joueurs visibles</div></div>'
+      +'<div class="leaderboard-profile-stat super"><div class="leaderboard-profile-stat-val">'+(eloLeader?eloLeader.elo:'—')+'</div><div class="leaderboard-profile-stat-label">📈 Meilleur ELO</div></div>'
+      +'<div class="leaderboard-profile-stat super"><div class="leaderboard-profile-stat-val">'+(winsLeader?winsLeader.wins:'—')+'</div><div class="leaderboard-profile-stat-label">🏆 Meilleures victoires</div></div>'
+      +'<div class="leaderboard-profile-stat"><div class="leaderboard-profile-stat-val">'+(focus?.elo||0)+'</div><div class="leaderboard-profile-stat-label">🎖️ ELO focus</div></div>'
+      +'<div class="leaderboard-profile-stat"><div class="leaderboard-profile-stat-val">'+(focus?.wins||0)+'</div><div class="leaderboard-profile-stat-label">⚔️ Victoires focus</div></div>'
+      +'<div class="leaderboard-profile-stat"><div class="leaderboard-profile-stat-val">'+(focus?.gamesPlayed||0)+'</div><div class="leaderboard-profile-stat-label">🎮 Parties focus</div></div>'
+    +'</div>'
+    +'<div class="ranked-division-wrap">'
+      +renderRankedDivisionPanel(focusDivision,'🏅 Division du joueur focus',focusIsSelf?'Votre progression classée':'Progression du seed sélectionné')
+      +renderRankedDivisionPanel(myDivision,'🎯 Votre division actuelle','Suivi de votre promotion ranked')
+    +'</div>'
+    +'<div class="leaderboard-profile-note">Clique sur une ligne pour changer le joueur mis en avant, tout en gardant la vue grand format du ladder ranked.</div>'
+    +'<div class="global-leaderboard-grid">'
+      +'<div class="global-leaderboard-section premium-elo">'
+        +'<div class="global-leaderboard-section-title">📊 Top 10 ELO</div>'
+        +renderGlobalLeaderboardList(topElo,'elo',{highlightKey:String(focus?.key||'')})
+      +'</div>'
+      +'<div class="global-leaderboard-section premium-wins">'
+        +'<div class="global-leaderboard-section-title">🏆 Top 10 victoires</div>'
+        +renderGlobalLeaderboardList(topWins,'wins',{highlightKey:String(focus?.key||'')})
+      +'</div>'
+    +'</div>'
+    +'<div class="leaderboard-profile-actions">'
+      +(focusUid?'<button class="btn btn-secondary btn-sm" type="button" id="global-profile-copy-btn">📋 Copier le code</button>':'')
+      +(!focusIsSelf&&focusUid?'<button class="btn btn-blue btn-sm" type="button" id="global-profile-friend-btn">👫 Ajouter / gérer</button>':'')
+      +'<button class="btn btn-primary btn-sm" type="button" onclick="closeModal(\'modal-global-profile\')">Fermer</button>'
+    +'</div>';
+
+  bindGlobalLeaderboardInteractions(body);
+  const copyBtn=document.getElementById('global-profile-copy-btn');
+  if(copyBtn&&focusUid)copyBtn.onclick=()=>{
+    if(typeof copyChatUserUid==='function')copyChatUserUid(focusUid);
+    else navigator.clipboard?.writeText(focusUid).catch(()=>{});
+  };
+  const friendBtn=document.getElementById('global-profile-friend-btn');
+  if(friendBtn&&focusUid){
+    const alreadyFriend=(typeof hasFriendUid==='function')?hasFriendUid(focusUid):false;
+    friendBtn.textContent=alreadyFriend?'❌ Retirer des amis':'👫 Ajouter en ami';
+    friendBtn.className='btn '+(alreadyFriend?'btn-secondary':'btn-blue')+' btn-sm';
+    friendBtn.onclick=()=>{
+      if(alreadyFriend&&typeof removeFriend==='function'){
+        removeFriend(focusUid);
+        friendBtn.textContent='👫 Ajouter en ami';
+        friendBtn.className='btn btn-blue btn-sm';
+        toast('👫 Ami retiré','i');
+      }else if(typeof addFriendFromProfile==='function'){
+        addFriendFromProfile({
+          uid:focusUid,
+          name:focus?.name||'Joueur',
+          emoji:focus?.emoji||'👤',
+          avatarImg:focus?.avatarImg||null,
+          color:focusColor,
+          elo:focus?.elo||0,
+          rankLabel:focus?.rankLabel||focusRank.label||'',
+          titleLabel:focus?.titleLabel||'',
+          gamesWon:focus?.wins||0,
+          gamesPlayed:focus?.gamesPlayed||0,
+          gamesLost:focus?.gamesLost||0,
+          propertiesBought:focus?.propertiesBought||0,
+          moneyEarned:focus?.moneyEarned||0,
+          titlesCount:focus?.titlesCount||0,
+          emojiCount:focus?.emojiCount||1,
+          googleConnected:!!focus?.googleConnected,
+        },{silent:false});
+      }
+    };
+  }
+}
+
+function openGlobalLeaderboardEntryProfile(event,entryKey){
+  const key=String(entryKey||'').trim();
+  const entry=getGlobalLeaderboardEntries().find(item=>String(item.key||'')===key);
+  if(!entry){toast('Profil introuvable.','w');return;}
+  if(event&&typeof event.preventDefault==='function')event.preventDefault();
+  if(event&&typeof event.stopPropagation==='function')event.stopPropagation();
+  if(typeof closeChatUserMenu==='function')closeChatUserMenu();
+  renderGlobalLeaderboardProfileModal(entry);
+  if(typeof openModal==='function')openModal('modal-global-profile');
+}
+
+function bindGlobalLeaderboardInteractions(root){
+  const host=root||document;
+  host.querySelectorAll('.global-leaderboard-row[data-entry-key]').forEach(row=>{
+    const key=String(row.dataset.entryKey||'').trim();
+    if(!key||row.dataset.bound==='1')return;
+    row.dataset.bound='1';
+    row.addEventListener('click',ev=>openGlobalLeaderboardEntryProfile(ev,key));
+    row.addEventListener('keydown',ev=>{
+      if(ev.key==='Enter'||ev.key===' '){
+        ev.preventDefault();
+        openGlobalLeaderboardEntryProfile(ev,key);
+      }
+    });
+  });
+}
+
+function renderGlobalLeaderboardList(entries,metric,opts){
+  const options=opts&&typeof opts==='object'?opts:{};
+  const highlightKey=String(options.highlightKey||'').trim();
   const rows=(Array.isArray(entries)?entries:[]).slice(0,10);
   if(!rows.length)return '<div class="global-leaderboard-meta-note">Pas encore de score visible.</div>';
   const medals=['🥇','🥈','🥉'];
@@ -467,12 +766,14 @@ function renderGlobalLeaderboardList(entries,metric){
       ?((entry.wins||0)+' victoire'+((entry.wins||0)>1?'s':''))
       :(entry.rankLabel||((entry.gamesPlayed||0)+' partie'+((entry.gamesPlayed||0)>1?'s':'')));
     const rankChip='<span class="global-leaderboard-chip chip-rank">'+escapeHtml((rankInfo.icon||'🏅')+' '+(rankInfo.tier||'Bronze')+(rankInfo.div?(' '+rankInfo.div):''))+'</span>';
+    const divisionChip=rankInfo.div?('<span class="global-leaderboard-chip chip-division">DIV '+escapeHtml(rankInfo.div)+'</span>'):'';
     const titleChip=entry.titleLabel?('<span class="global-leaderboard-chip chip-title">'+escapeHtml(entry.titleLabel)+'</span>'):'';
-    const ribbonLabel=idx===0?'MVP':(idx===1?'ELITE':(idx===2?'PRO':''));
+    const ribbonLabel=idx===0?'MVP':(idx===1?'ACE':(idx===2?'CLUTCH':''));
     const avatarHtml=entry.avatarImg
       ?('<img src="'+escapeAttr(entry.avatarImg)+'" alt="avatar">')
       :escapeHtml(entry.emoji||'👤');
-    return '<div class="global-leaderboard-row'+(isSelf?' is-self':'')+podiumClass+'" style="--glb-accent:'+entry.color+';--glb-delay:'+(idx*0.045).toFixed(2)+'s">'
+    const focusClass=(highlightKey&&highlightKey===String(entry.key||''))?' focus-selected':'';
+    return '<div class="global-leaderboard-row'+(isSelf?' is-self':'')+focusClass+podiumClass+'" style="--glb-accent:'+entry.color+';--glb-delay:'+(idx*0.045).toFixed(2)+'s" data-entry-key="'+escapeAttr(entry.key)+'" role="button" tabindex="0" title="Voir le ladder ranked">'
       +(ribbonLabel?('<span class="global-leaderboard-ribbon">'+ribbonLabel+'</span>'):'')
       +'<div class="global-leaderboard-pos">'+(medals[idx]||('#'+(idx+1)))+'</div>'
       +'<div class="global-leaderboard-avatar" style="border-color:'+entry.color+';background:'+(entry.avatarImg?'rgba(15,23,42,.9)':(entry.color+'22'))+'">'+avatarHtml+'</div>'
@@ -481,6 +782,7 @@ function renderGlobalLeaderboardList(entries,metric){
         +'<div class="global-leaderboard-sub">'
           +'<span class="global-leaderboard-chip">'+escapeHtml(primaryChip)+'</span>'
           +rankChip
+          +divisionChip
           +'<span class="global-leaderboard-chip">'+escapeHtml(secondaryChip)+'</span>'
           +titleChip
         +'</div>'
@@ -502,7 +804,7 @@ function renderGlobalLeaderboardCard(){
   const winsSorted=entries.slice().sort((a,b)=>(b.wins-a.wins)||(b.elo-a.elo)||(b.gamesPlayed-a.gamesPlayed)||String(a.name||'').localeCompare(String(b.name||'')));
   const topElo=eloSorted.slice(0,10);
   const topWins=winsSorted.slice(0,10);
-  const statusLabel=GLOBAL_LEADERBOARD_STATE.loading?'Synchronisation…':(GLOBAL_LEADERBOARD_STATE.status||(GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur global':'Joueurs connus'));
+  const statusLabel=GLOBAL_LEADERBOARD_STATE.loading?'Synchronisation…':(GLOBAL_LEADERBOARD_STATE.status||(GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur ranked':'Ladder local'));
   if(meta)meta.textContent=statusLabel+' • '+entries.length+' joueur'+(entries.length>1?'s':'');
   const sig=[statusLabel,entries.length,topElo.map(e=>[e.uid,e.elo,e.wins].join(':')).join('|'),topWins.map(e=>[e.uid,e.wins,e.elo].join(':')).join('|')].join('||');
   if(sig===UI_RENDER_CACHE.leaderboardKey)return;
@@ -516,33 +818,37 @@ function renderGlobalLeaderboardCard(){
   const eloLeaderRank=eloLeader?getEloRankInfo(eloLeader.elo||0):null;
   const myEloPos=Math.max(0,eloSorted.findIndex(entry=>entry.uid&&entry.uid===P.uid)+1);
   const myWinsPos=Math.max(0,winsSorted.findIndex(entry=>entry.uid&&entry.uid===P.uid)+1);
+  const myDivision=getRankedDivisionSystemInfo(P.elo||0);
   host.innerHTML=''
     +'<div class="global-leaderboard-hero">'
       +'<div class="global-leaderboard-hero-top">'
         +'<div>'
-          +'<div class="global-leaderboard-hero-title">👑 Classement ultra premium NeoPoly</div>'
-          +'<div class="global-leaderboard-hero-sub">Leader ELO : '+escapeHtml(eloLeader?.name||'—')+' '+escapeHtml(eloLeaderRank?.label||'')+' • Leader victoires : '+escapeHtml(winsLeader?.name||'—')+'</div>'
+          +'<div class="global-leaderboard-hero-title">🏟️ Ladder Ranked NeoPoly</div>'
+          +'<div class="global-leaderboard-hero-sub">Seed ELO #1 : '+escapeHtml(eloLeader?.name||'—')+' '+escapeHtml(eloLeaderRank?.label||'')+' • Seed wins #1 : '+escapeHtml(winsLeader?.name||'—')+'</div>'
         +'</div>'
         +'<div class="global-leaderboard-crown">🏆</div>'
       +'</div>'
       +'<div class="global-leaderboard-hero-pills">'
-        +'<span class="global-leaderboard-pill primary">⚔️ Arena Elite</span>'
+        +'<span class="global-leaderboard-pill primary">🎯 Ranked Esports</span>'
         +'<span class="global-leaderboard-pill">📈 Meilleur ELO : '+(eloLeader?eloLeader.elo:'—')+'</span>'
         +'<span class="global-leaderboard-pill">🏆 Meilleures victoires : '+(winsLeader?winsLeader.wins:'—')+'</span>'
         +'<span class="global-leaderboard-pill">🎯 Votre rang ELO : '+(myEloPos?('#'+myEloPos):'—')+'</span>'
         +'<span class="global-leaderboard-pill">🔥 Votre rang victoires : '+(myWinsPos?('#'+myWinsPos):'—')+'</span>'
+        +'<span class="global-leaderboard-pill">🏅 Division : '+escapeHtml(myDivision.shortLabel||'Placement')+'</span>'
       +'</div>'
     +'</div>'
+    +renderRankedDivisionPanel(myDivision,'🏅 Votre division actuelle','Progression vers '+(myDivision.nextLabel||'la prochaine promotion'))
     +'<div class="global-leaderboard-grid">'
-      +'<div class="global-leaderboard-section">'
+      +'<div class="global-leaderboard-section premium-elo">'
         +'<div class="global-leaderboard-section-title">📊 Top 10 ELO</div>'
         +renderGlobalLeaderboardList(topElo,'elo')
       +'</div>'
-      +'<div class="global-leaderboard-section">'
+      +'<div class="global-leaderboard-section premium-wins">'
         +'<div class="global-leaderboard-section-title">🏆 Top 10 victoires</div>'
         +renderGlobalLeaderboardList(topWins,'wins')
       +'</div>'
     +'</div>';
+  bindGlobalLeaderboardInteractions(host);
 }
 
 function buildRemoteLeaderboardProfileSnapshot(){
@@ -603,8 +909,10 @@ function scheduleGlobalLeaderboardRefresh(force=false){
     globalLeaderboardFetchTimer=null;
     const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/,'');
     const now=Date.now();
+    const hostedOnline=(String(window.location.protocol||'').toLowerCase()==='https:')||/\.onrender\.com$/i.test(String(window.location.hostname||''));
+    const fallbackLabel=hostedOnline?'En ligne':'Mode local';
     if(!base){
-      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?'Mode local':'Hors ligne';
+      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?fallbackLabel:'Hors ligne';
       renderGlobalLeaderboardCard();
       return;
     }
@@ -622,10 +930,10 @@ function scheduleGlobalLeaderboardRefresh(force=false){
         ...((Array.isArray(data.topWins)?data.topWins:[]).map(entry=>Object.assign({source:'remote'},entry))),
       ]);
       GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
-      GLOBAL_LEADERBOARD_STATE.status=GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur global':'Joueurs connus';
+      GLOBAL_LEADERBOARD_STATE.status=GLOBAL_LEADERBOARD_STATE.entries.length?'Serveur ranked':'Ladder local';
     }catch(_){
       GLOBAL_LEADERBOARD_STATE.lastFetchAt=Date.now();
-      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?'Mode local':'Hors ligne';
+      GLOBAL_LEADERBOARD_STATE.status=collectKnownLeaderboardEntries().length?fallbackLabel:'Hors ligne';
     }finally{
       GLOBAL_LEADERBOARD_STATE.loading=false;
       renderGlobalLeaderboardCard();
@@ -1035,7 +1343,7 @@ function resetProfileProgress(options){
   P.weeklyMissions={weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false};
   P.rareRewards=[];
   P.rareTokenCount=0;
-  P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]};
   if(opts.source==='admin')P.lastAdminStatsResetAt=Math.max(parseInt(P.lastAdminStatsResetAt,10)||0,resetAt);
   saveProfileData();
   renderLobbyProfileTab();

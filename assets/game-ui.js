@@ -832,6 +832,35 @@ function wsLog(msg){
   queueWsLogRender();
 }
 
+function isHostedOnlineUiContext(){
+  const host=String(window.location.hostname||'').trim().toLowerCase();
+  const protocol=String(window.location.protocol||'').trim().toLowerCase();
+  return protocol==='https:'||/\.onrender\.com$/i.test(host);
+}
+
+function updateSidebarConnectionIndicator(){
+  const wsDot=document.getElementById('ws-dot');
+  const wsLabel=document.getElementById('ws-label');
+  if(!wsDot||!wsLabel)return;
+  if(G.wsOk){
+    wsDot.style.background='var(--accent)';
+    wsLabel.textContent='En ligne';
+    return;
+  }
+  if(G.room){
+    wsDot.style.background='#f59e0b';
+    wsLabel.textContent='Hors ligne';
+    return;
+  }
+  if(isHostedOnlineUiContext()){
+    wsDot.style.background='#38bdf8';
+    wsLabel.textContent='Web';
+    return;
+  }
+  wsDot.style.background='#6b7280';
+  wsLabel.textContent='Local';
+}
+
 function connectWs(url,room,onOpen){
   const requestedUrl=String(url||'').trim();
   const urls=getWsFallbackUrls(requestedUrl||getDefaultWsUrl());
@@ -855,8 +884,7 @@ function connectWs(url,room,onOpen){
       opened=true;
       G.wsOk=true;
       if(typeof rememberRenderOrigin==='function')rememberRenderOrigin(wsUrlToHttpBase(candidate));
-      document.getElementById('ws-dot').style.background='var(--accent)';
-      document.getElementById('ws-label').textContent='En ligne';
+      updateSidebarConnectionIndicator();
       document.getElementById('disc-btn').disabled=false;
       wsLog('Connecté à '+candidate);
       if(onOpen)onOpen();
@@ -959,8 +987,7 @@ function connectWs(url,room,onOpen){
     G.ws.onclose=()=>{
       G.wsOk=false;
       G.ws=null;
-      document.getElementById('ws-dot').style.background='#6b7280';
-      document.getElementById('ws-label').textContent='Hors ligne';
+      updateSidebarConnectionIndicator();
       document.getElementById('disc-btn').disabled=true;
       if(!opened&&index+1<urls.length){
         wsLog('Déconnecté, bascule auto vers '+urls[index+1]);
@@ -994,10 +1021,7 @@ function disconnectWs(){
     try{ws.onopen=null;ws.onmessage=null;ws.onerror=null;ws.onclose=null;}catch(_e){}
     try{if(ws.readyState<=WebSocket.OPEN)ws.close();}catch(_e){}
   }
-  const wsDot=document.getElementById('ws-dot');
-  if(wsDot)wsDot.style.background='#6b7280';
-  const wsLabel=document.getElementById('ws-label');
-  if(wsLabel)wsLabel.textContent=G.room?'Hors ligne':'Local';
+  updateSidebarConnectionIndicator();
   const discBtn=document.getElementById('disc-btn');
   if(discBtn)discBtn.disabled=true;
 }

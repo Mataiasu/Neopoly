@@ -1179,6 +1179,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   initDesktopKeyboardShortcuts();
   initModalBackdropClose();
   initGlobalLeaderboardEdgePanel();
+  if(typeof updateSidebarConnectionIndicator==='function')updateSidebarConnectionIndicator();
   window.maybeOpenSharedProfileFromUrl?.();
   document.querySelectorAll('.lobby-tab').forEach(btn=>btn.addEventListener('click',()=>switchLobbyTab(btn.dataset.ltab)));
 });
@@ -2262,7 +2263,7 @@ let P={
   weeklyMissions:{weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false},
   rareRewards:[],
   rareTokenCount:0,
-  seasonData:{seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]},
+  seasonData:{seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]},
   mutedUsers:[],
   blockedUsers:[],
   chatProfilePrivate:false,
@@ -2359,9 +2360,13 @@ function loadProfile(opts){
   if(!P.weeklyMissions||typeof P.weeklyMissions!=='object')P.weeklyMissions={weekKey:'',streak:0,lastCompletedWeek:'',items:[],fullRewarded:false};
   if(!Array.isArray(P.rareRewards))P.rareRewards=[];
   P.rareTokenCount=Math.max(0,parseInt(P.rareTokenCount,10)||0);
-  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]};
   if(!Array.isArray(P.seasonData.claimedTiers))P.seasonData.claimedTiers=[];
   if(!Array.isArray(P.seasonData.history))P.seasonData.history=[];
+  P.seasonData.bestRankedElo=Math.max(0,parseInt(P.seasonData.bestRankedElo,10)||0);
+  P.seasonData.bestRankedLabel=String(P.seasonData.bestRankedLabel||'');
+  P.seasonData.lastDivisionRewardText=String(P.seasonData.lastDivisionRewardText||'');
+  P.seasonData.lastDivisionRewardAt=Math.max(0,parseInt(P.seasonData.lastDivisionRewardAt,10)||0);
   if(typeof P.chatProfilePrivate!=='boolean')P.chatProfilePrivate=!!P.chatProfilePrivate;
   P.lastAdminStatsResetAt=Math.max(0,parseInt(P.lastAdminStatsResetAt,10)||0);
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
@@ -2448,6 +2453,73 @@ const SEASON_LEAGUES=[
   {min:420,label:'Élite',icon:'💎',cls:'elite'},
   {min:620,label:'Légende',icon:'👑',cls:'legend'},
 ];
+const RANKED_DIVISION_BONUS={IV:1,III:2,II:4,I:6};
+const RANKED_SEASON_REWARD_TIERS=[
+  {tiers:['Placement','Non Rankée'],icon:'🎯',rewards:[{type:'rouletteCoins',qty:3}]},
+  {tiers:['Bronze'],icon:'🥉',rewards:[{type:'rouletteCoins',qty:6}]},
+  {tiers:['Argent'],icon:'🥈',rewards:[{type:'rouletteCoins',qty:10},{type:'antiJail',qty:1}]},
+  {tiers:['Or'],icon:'🥇',rewards:[{type:'rouletteCoins',qty:14},{type:'diceBoost',qty:1}]},
+  {tiers:['Platine'],icon:'💎',rewards:[{type:'rouletteCoins',qty:18},{type:'diceBoost',qty:1},{type:'mortgageDiscount',qty:1}]},
+  {tiers:['Diamant'],icon:'💠',rewards:[{type:'rouletteCoins',qty:24},{type:'rareToken',qty:1},{type:'rareReward',key:'aurora_shard',fallback:{type:'rouletteCoins',qty:12}}]},
+  {tiers:['Légendaire'],icon:'👑',rewards:[{type:'rouletteCoins',qty:30},{type:'rareToken',qty:2},{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:16}}]},
+  {tiers:['Maître Absolu'],icon:'✨',rewards:[{type:'rouletteCoins',qty:36},{type:'rareToken',qty:3},{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}]},
+];
+
+function cloneRewardPayload(reward){
+  const copy=Object.assign({},reward||{});
+  if(copy.fallback&&typeof copy.fallback==='object')copy.fallback=Object.assign({},copy.fallback);
+  return copy;
+}
+
+function getSafeRankedDivisionInfo(elo){
+  if(typeof getRankedDivisionSystemInfo==='function')return getRankedDivisionSystemInfo(elo);
+  if(typeof getEloRankInfo==='function'){
+    const rank=getEloRankInfo(elo);
+    return {
+      cls:rank.cls||'er-unranked',
+      icon:rank.icon||'🏅',
+      tier:rank.tier||'Placement',
+      div:rank.div||'',
+      label:rank.label||'—',
+      shortLabel:(rank.tier||'Placement')+(rank.div?(' '+rank.div):''),
+    };
+  }
+  return {cls:'er-unranked',icon:'🎯',tier:'Placement',div:'',label:'Placement',shortLabel:'Placement'};
+}
+
+function getRankedSeasonRewardInfo(elo){
+  const info=getSafeRankedDivisionInfo(elo);
+  const tierName=String(info.tier||'Placement');
+  const def=RANKED_SEASON_REWARD_TIERS.find(entry=>Array.isArray(entry.tiers)&&entry.tiers.includes(tierName))||RANKED_SEASON_REWARD_TIERS[0];
+  const rewards=(def?.rewards||[]).map(cloneRewardPayload);
+  const divBonus=RANKED_DIVISION_BONUS[String(info.div||'').toUpperCase()]||0;
+  if(rewards[0]&&rewards[0].type==='rouletteCoins')rewards[0].qty=Math.max(1,(parseInt(rewards[0].qty,10)||0)+divBonus);
+  const rewardText=rewards.map(getRewardText).join(' • ');
+  return Object.assign({
+    rewards,
+    rewardText,
+    rewardLabel:(def?.icon||info.icon||'🏅')+' '+(info.shortLabel||info.label||'Placement'),
+    divisionBonus:divBonus,
+  },info,{icon:def?.icon||info.icon||'🏅'});
+}
+
+function awardSeasonDivisionRewards(closedSeasonData){
+  if(!closedSeasonData||typeof closedSeasonData!=='object'||!canUseAccountProgression())return null;
+  const bestElo=Math.max(0,parseInt(closedSeasonData.bestRankedElo,10)||parseInt(P.elo,10)||0);
+  const rewardInfo=getRankedSeasonRewardInfo(bestElo);
+  if(!rewardInfo||!Array.isArray(rewardInfo.rewards)||!rewardInfo.rewards.length)return null;
+  rewardInfo.rewards.forEach(reward=>grantProfileReward(cloneRewardPayload(reward)));
+  const summary=rewardInfo.rewardLabel+' • '+rewardInfo.rewardText;
+  toast('🏁 Fin de saison : '+summary,'a');
+  if(typeof glog==='function')glog('🏁 Fin de saison : '+summary,'a');
+  return {
+    summary,
+    label:rewardInfo.shortLabel||rewardInfo.label||'Placement',
+    rewardText:rewardInfo.rewardText,
+    icon:rewardInfo.icon||'🏅',
+    bestElo,
+  };
+}
 
 const MATCH_OBJECTIVE_POOL=[
   {id:'collector',title:'Collection discrète',desc:'Achète 3 propriétés pendant cette partie.',target:3,reward:{type:'diceBoost',qty:1}},
@@ -2547,13 +2619,31 @@ function getSeasonLeagueInfo(score){
 }
 
 function ensureSeasonData(forceReset=false){
-  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',history:[]};
+  if(!P.seasonData||typeof P.seasonData!=='object')P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]};
   const info=getCurrentSeasonInfo();
   const data=P.seasonData;
+  if(!Array.isArray(data.claimedTiers))data.claimedTiers=[];
+  if(!Array.isArray(data.history))data.history=[];
+  data.bestRankedElo=Math.max(0,parseInt(data.bestRankedElo,10)||0);
+  data.bestRankedLabel=String(data.bestRankedLabel||'');
+  data.lastDivisionRewardText=String(data.lastDivisionRewardText||'');
+  data.lastDivisionRewardAt=Math.max(0,parseInt(data.lastDivisionRewardAt,10)||0);
   let changed=false;
-  if(forceReset||data.seasonKey!==info.key){
-    if(data.seasonKey&&data.label){
-      data.history.unshift({seasonKey:data.seasonKey,label:data.label,score:parseInt(data.score,10)||0,xp:parseInt(data.xp,10)||0,closedAt:Date.now()});
+  const seasonChanged=!!(data.seasonKey&&data.seasonKey!==info.key);
+  if(forceReset||seasonChanged||!data.seasonKey){
+    let rewardSummary=null;
+    if(seasonChanged&&data.label){
+      rewardSummary=awardSeasonDivisionRewards(data);
+      data.history.unshift({
+        seasonKey:data.seasonKey,
+        label:data.label,
+        score:parseInt(data.score,10)||0,
+        xp:parseInt(data.xp,10)||0,
+        bestLeague:String(data.bestLeague||''),
+        bestRankedLabel:String(data.bestRankedLabel||''),
+        rewardSummary:String(rewardSummary?.summary||''),
+        closedAt:Date.now()
+      });
       if(data.history.length>6)data.history.length=6;
     }
     data.seasonKey=info.key;
@@ -2561,10 +2651,31 @@ function ensureSeasonData(forceReset=false){
     data.xp=0;
     data.score=0;
     data.claimedTiers=[];
+    data.bestLeague='';
+    data.bestRankedElo=Math.max(0,parseInt(P.elo,10)||0);
+    data.bestRankedLabel=getRankedSeasonRewardInfo(data.bestRankedElo).shortLabel||'Placement';
+    if(rewardSummary){
+      data.lastDivisionRewardText=rewardSummary.summary;
+      data.lastDivisionRewardAt=Date.now();
+    }
     changed=true;
   }
   const league=getSeasonLeagueInfo(data.score||0);
-  if(!data.bestLeague||league.label!==data.bestLeague)data.bestLeague=league.label;
+  if(!data.bestLeague||league.label!==data.bestLeague){
+    data.bestLeague=league.label;
+    changed=true;
+  }
+  const currentElo=Math.max(0,parseInt(P.elo,10)||0);
+  if(currentElo>(parseInt(data.bestRankedElo,10)||0)){
+    data.bestRankedElo=currentElo;
+    changed=true;
+  }
+  const rankedBest=getRankedSeasonRewardInfo(data.bestRankedElo||currentElo);
+  const nextBestLabel=String(rankedBest.shortLabel||rankedBest.label||'Placement');
+  if(nextBestLabel!==String(data.bestRankedLabel||'')){
+    data.bestRankedLabel=nextBestLabel;
+    changed=true;
+  }
   if(changed)saveProfileData();
   return data;
 }
@@ -2884,12 +2995,15 @@ function renderSeasonHubUi(){
   }
   const data=ensureSeasonData(false);
   const league=getSeasonLeagueInfo(data.score||0);
+  const rankedReward=getRankedSeasonRewardInfo(Math.max(parseInt(data.bestRankedElo,10)||0,parseInt(P.elo,10)||0));
   const nextReward=SEASON_PASS_REWARDS.find(step=>(parseInt(data.xp,10)||0)<step.xp)||null;
   const targetXp=nextReward?nextReward.xp:(SEASON_PASS_REWARDS[SEASON_PASS_REWARDS.length-1]?.xp||1);
   const pct=Math.max(6,Math.min(100,Math.round(((parseInt(data.xp,10)||0)/Math.max(1,targetXp))*100)));
   const addons=typeof readPackManagerFallbackState==='function'?readPackManagerFallbackState():null;
   const seasonsFlag=addons?.seasons?'ON':'OFF';
   const eventsFlag=addons?.events?'ON':'OFF';
+  const divisionBonusNote=rankedReward.div?(' • bonus '+rankedReward.div+' : +'+(parseInt(rankedReward.divisionBonus,10)||0)+' jeton'+((parseInt(rankedReward.divisionBonus,10)||0)>1?'s':'')):' • bonus placement inclus';
+  const lastRewardText=String(data.lastDivisionRewardText||'Aucune récompense finale encore reçue sur ce compte.');
   body.innerHTML=''+
     '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:.74rem;font-weight:800">'+escapeUiText(data.label||getCurrentSeasonInfo().label)+'</div><div style="font-size:.64rem;color:var(--muted)">'+league.icon+' '+escapeUiText(league.label)+'</div></div>'+
@@ -2897,9 +3011,16 @@ function renderSeasonHubUi(){
       '<div style="height:8px;margin-top:7px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#f59e0b,#eab308,#2dd4bf)"></div></div>'+
       '<div style="display:flex;justify-content:space-between;gap:8px;font-size:.64rem;color:var(--muted);margin-top:6px"><span>XP: '+(parseInt(data.xp,10)||0)+'</span><span>'+(nextReward?('Prochain palier '+nextReward.tier+' à '+nextReward.xp+' XP'):'Pass saison complété')+'</span></div>'+
     '</div>'+
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">'+
+    '<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px">'+
       '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Meilleure ligue</div><div style="font-size:.88rem;font-weight:800">'+league.icon+' '+escapeUiText(P.seasonData.bestLeague||league.label)+'</div></div>'+
+      '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Division max</div><div style="font-size:.88rem;font-weight:800">'+escapeUiText(rankedReward.rewardLabel||data.bestRankedLabel||'🎯 Placement')+'</div></div>'+
       '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Paliers obtenus</div><div style="font-size:.88rem;font-weight:800">'+((P.seasonData.claimedTiers||[]).length)+' / '+SEASON_PASS_REWARDS.length+'</div></div>'+
+      '<div style="padding:8px 9px;border-radius:10px;background:var(--s2);border:1px solid var(--border)"><div style="font-size:.62rem;color:var(--muted)">Récompense finale</div><div style="font-size:.72rem;font-weight:800;line-height:1.35">'+escapeUiText(rankedReward.rewardText||'Bonus à venir')+'</div></div>'+
+    '</div>'+
+    '<div style="margin-top:7px;padding:9px 10px;border-radius:10px;background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(239,68,68,.12));border:1px solid rgba(96,165,250,.24)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><div style="font-size:.7rem;font-weight:800">🏁 Récompenses de fin de saison par division</div><div style="font-size:.62rem;color:#dbeafe">'+escapeUiText(rankedReward.shortLabel||data.bestRankedLabel||'Placement')+'</div></div>'+
+      '<div style="font-size:.64rem;color:var(--muted);margin-top:4px">Si la saison se termine maintenant, tu reçois : '+escapeUiText(rankedReward.rewardText||'bonus à définir')+escapeUiText(divisionBonusNote)+'</div>'+
+      '<div style="font-size:.62rem;color:#dbeafe;margin-top:6px">Dernier versement : '+escapeUiText(lastRewardText)+'</div>'+
     '</div>';
 }
 
