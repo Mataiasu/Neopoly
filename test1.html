@@ -1827,8 +1827,8 @@ body.streamer-mode #invite-link {
 #lobby-panel{display:none;flex:1;flex-direction:column;min-height:0;overflow:hidden}
 #app-wrap.in-lobby #lobby-panel{display:flex}
 #app-wrap.in-lobby .tabs,#app-wrap.in-lobby .tab-pane{display:none!important}
-.lobby-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0}
-.lobby-tab{flex:1;padding:8px 2px;background:none;border:none;color:var(--muted);font-size:.65rem;cursor:pointer;transition:.15s;border-bottom:2px solid transparent}
+.lobby-tabs{display:flex;border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.lobby-tab{flex:1 0 64px;padding:8px 2px;background:none;border:none;color:var(--muted);font-size:.65rem;cursor:pointer;transition:.15s;border-bottom:2px solid transparent;white-space:nowrap}
 .lobby-tab.active{color:var(--accent);border-bottom-color:var(--accent)}
 .lobby-tab:hover{color:var(--text)}
 .lobby-tab.tab-locked{opacity:.45;filter:saturate(.45);cursor:not-allowed}
@@ -2125,6 +2125,7 @@ body.streamer-mode #invite-link {
         </div>
         <div class="lobby-tabs">
           <button class="lobby-tab active" data-ltab="profil-pane">👤 Profil</button>
+          <button class="lobby-tab" data-ltab="shop-pane">🛍️ Boutique</button>
           <button class="lobby-tab" data-ltab="amis-pane">👫 Amis</button>
           <button class="lobby-tab" data-ltab="social-pane">💬 Chat</button>
           <button class="lobby-tab" data-ltab="news-pane">🆕 News</button>
@@ -2134,8 +2135,14 @@ body.streamer-mode #invite-link {
         <div class="lobby-tab-pane active" id="profil-pane">
           <!-- Google connect -->
           <div id="google-connect-area"></div>
-          <div class="card" style="padding:10px">
-            <div id="roulette-lobby-card"></div>
+          <div class="card" style="padding:10px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(168,85,247,.12));border:1px solid rgba(96,165,250,.2)">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <div>
+                <div class="card-title" style="margin:0">🛍️ Boutique</div>
+                <div style="font-size:.66rem;color:var(--muted);margin-top:4px">Retrouve le casino et la boutique jetons rares dans un onglet dédié.</div>
+              </div>
+              <button class="btn btn-yellow btn-sm" type="button" onclick="switchLobbyTab('shop-pane')">Ouvrir</button>
+            </div>
           </div>
           <!-- Stats -->
           <div class="card" style="padding:10px">
@@ -2155,10 +2162,6 @@ body.streamer-mode #invite-link {
               <div id="weekly-missions-meta" style="font-size:.66rem;color:var(--muted);font-weight:700">Reset hebdo</div>
             </div>
             <div id="weekly-missions-list" style="display:flex;flex-direction:column;gap:6px"></div>
-            <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">
-              <div style="font-size:.66rem;color:var(--muted);font-weight:700;margin-bottom:6px">💎 Récompenses rares</div>
-              <div id="rare-rewards-list" style="display:flex;flex-direction:column;gap:6px"></div>
-            </div>
           </div>
           <div class="card" style="padding:10px">
             <div class="card-title">🏆 Saison & ligue</div>
@@ -2244,6 +2247,20 @@ body.streamer-mode #invite-link {
             </div>
             <div style="font-size:.62rem;color:var(--muted);margin-top:6px">Indices cachés dans les <b>défis</b>, la <b>roulette</b>, les <b>news</b> et la <b>ligue ranked</b>.</div>
           </details>
+        </div>
+        <div class="lobby-tab-pane" id="shop-pane">
+          <div class="card" style="padding:10px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(168,85,247,.12));border:1px solid rgba(96,165,250,.2)">
+            <div class="card-title" style="margin-bottom:4px">🛍️ Boutique premium</div>
+            <div style="font-size:.68rem;color:var(--muted)">Tout le casino et la boutique jetons rares sont regroupés ici.</div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">🎰 Casino</div>
+            <div id="roulette-lobby-card"></div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div class="card-title">💠 Jetons rares</div>
+            <div id="rare-rewards-list" style="display:flex;flex-direction:column;gap:6px"></div>
+          </div>
         </div>
         <!-- AMIS -->
         <div class="lobby-tab-pane" id="amis-pane">

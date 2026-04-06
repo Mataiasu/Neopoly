@@ -18,17 +18,34 @@ function normalizeOriginUrl(origin){
   return String(origin||'').trim().replace(/\/$/,'');
 }
 
-function isRenderOrigin(origin){
-  try{
-    return /\.onrender\.com$/i.test(new URL(normalizeOriginUrl(origin)).hostname||'');
-  }catch(_){
-    return false;
+function coerceAbsoluteOriginUrl(origin){
+  const normalized=normalizeOriginUrl(origin);
+  if(!normalized)return '';
+  if(/^[a-z][a-z0-9+.-]*:\/\//i.test(normalized))return normalized;
+  const stripped=normalized.replace(/^\/\//,'');
+  if(/^(localhost|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9.-]+\.[a-z]{2,})(?::\d+)?$/i.test(stripped)){
+    const protocol=/\.onrender\.com(?::\d+)?$/i.test(stripped)
+      ?'https:'
+      :((window.location&&window.location.protocol&&window.location.protocol!=='file:')?window.location.protocol:'http:');
+    return protocol+'//'+stripped;
   }
+  return normalized;
+}
+
+function isRenderOrigin(origin){
+  const normalized=coerceAbsoluteOriginUrl(origin);
+  if(!normalized)return false;
+  const host=normalized
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//i,'')
+    .replace(/^\/\//,'')
+    .split(/[/?#]/,1)[0]
+    .toLowerCase();
+  return /\.onrender\.com(?::\d+)?$/i.test(host);
 }
 
 function getStoredRenderOrigin(){
   try{
-    const stored=normalizeOriginUrl(localStorage.getItem(RENDER_PREFERRED_ORIGIN_KEY)||'');
+    const stored=coerceAbsoluteOriginUrl(localStorage.getItem(RENDER_PREFERRED_ORIGIN_KEY)||'');
     return isRenderOrigin(stored)?stored:'';
   }catch(_){
     return '';
@@ -36,7 +53,7 @@ function getStoredRenderOrigin(){
 }
 
 function rememberRenderOrigin(origin){
-  const normalized=normalizeOriginUrl(origin);
+  const normalized=coerceAbsoluteOriginUrl(origin);
   if(!isRenderOrigin(normalized))return '';
   window.NEOPOLY_API_BASE=normalized;
   try{localStorage.setItem(RENDER_PREFERRED_ORIGIN_KEY,normalized);}catch(_){ }
@@ -44,21 +61,21 @@ function rememberRenderOrigin(origin){
 }
 
 function getCanonicalRenderOrigin(){
-  const configured=normalizeOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
-  if(configured)return configured;
-  const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
+  const configured=coerceAbsoluteOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
+  if(isRenderOrigin(configured))return configured;
+  const active=coerceAbsoluteOriginUrl(window.NEOPOLY_API_BASE||'');
   if(isRenderOrigin(active))return active;
   const stored=getStoredRenderOrigin();
   if(stored)return stored;
-  const current=normalizeOriginUrl(window.location.origin||'');
+  const current=coerceAbsoluteOriginUrl(window.location.origin||'');
   if(isRenderOrigin(current))return current;
   return '';
 }
 
 function getRenderOriginCandidates(){
-  const current=normalizeOriginUrl(window.location.origin||'');
-  const configured=normalizeOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
-  const active=normalizeOriginUrl(window.NEOPOLY_API_BASE||'');
+  const current=coerceAbsoluteOriginUrl(window.location.origin||'');
+  const configured=coerceAbsoluteOriginUrl(window.NEOPOLY_CANONICAL_ORIGIN||'');
+  const active=coerceAbsoluteOriginUrl(window.NEOPOLY_API_BASE||'');
   const stored=getStoredRenderOrigin();
   const onRenderHost=/\.onrender\.com$/i.test(String(window.location.hostname||''));
   const wantsRender=onRenderHost||isRenderOrigin(configured)||isRenderOrigin(active)||isRenderOrigin(stored)||isRenderOrigin(current);
@@ -118,7 +135,7 @@ function ensurePreferredRenderOrigin(force=false){
 }
 
 function getGoogleApiBase(){
-  const configured=(window.NEOPOLY_API_BASE||'').trim();
+  const configured=coerceAbsoluteOriginUrl(window.NEOPOLY_API_BASE||'').trim();
   if(configured)return configured.replace(/\/$/, '');
   const origin=(window.location.origin&&window.location.origin!=='null')?window.location.origin.replace(/\/$/,''):'';
   const p=String(window.location.port||'');
@@ -2503,6 +2520,21 @@ const RARE_REWARD_DEFS={
   season_sigil:{label:'Sceau Nebula',icon:'🪐',rarity:'mythique',desc:'Récompense secrète des quêtes et saisons qui débloque Saturne mystique et une traînée stellaire.',emojiKey:'season_saturn',secretKey:'fx_stardust',titleKey:'season_oracle'},
 };
 
+const CASINO_TO_RARE_TOKEN_OFFERS=[
+  {id:'chip_trade_small',casinoCost:25,rareGain:1,label:'Échange léger'},
+  {id:'chip_trade_medium',casinoCost:60,rareGain:3,label:'Échange premium'},
+  {id:'chip_trade_big',casinoCost:100,rareGain:5,label:'Échange jackpot'},
+];
+
+const RARE_TOKEN_SHOP_ITEMS=[
+  {id:'rare_shop_aurora',icon:'✨',name:'Éclat Aurora',cost:2,desc:'Débloque l’aura Elite et un style plus lumineux.',reward:{type:'rareReward',key:'aurora_shard',fallback:{type:'seasonXp',qty:45}}},
+  {id:'rare_shop_vault',icon:'🗝️',name:'Clé du Coffre',cost:3,desc:'Pack premium utile pour les parties longues.',reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:2}}},
+  {id:'rare_shop_phoenix',icon:'🔥',name:'Cœur Phénix',cost:4,desc:'Récompense légendaire cosmétique.',reward:{type:'rareReward',key:'phoenix_core',fallback:{type:'rareToken',qty:1}}},
+  {id:'rare_shop_starlight',icon:'🌠',name:'Jeton Astral',cost:5,desc:'Halo jackpot + bonus premium du casino.',reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:18}}},
+  {id:'rare_shop_nebula',icon:'🪐',name:'Sceau Nebula',cost:6,desc:'Récompense mythique liée aux saisons et secrets.',reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
+  {id:'rare_shop_bundle',icon:'🎁',name:'Pack tactique',cost:2,desc:'Bundle immédiat pour mieux tenir en ranked.',reward:{type:'diceBoost',qty:2},extraRewards:[{type:'antiJail',qty:1},{type:'mortgageDiscount',qty:1}]},
+];
+
 const SEASON_ROTATION=[
   {id:'aurora',label:'Saison Aurora',icon:'🌅'},
   {id:'solstice',label:'Saison Solstice',icon:'☀️'},
@@ -2816,6 +2848,68 @@ function recordRareReward(key,silent=false){
   return true;
 }
 
+function getRareTokenShopRewards(item){
+  if(!item||typeof item!=='object')return [];
+  return [item.reward].concat(Array.isArray(item.extraRewards)?item.extraRewards:[]).filter(Boolean);
+}
+
+function spendRareTokens(amount,reason=''){
+  if(!canUseAccountProgression())return false;
+  const cost=Math.max(0,parseInt(amount,10)||0);
+  if(!cost)return true;
+  const tokens=Math.max(0,parseInt(P.rareTokenCount,10)||0);
+  if(tokens<cost){toast('Pas assez de jetons rares.','w');return false;}
+  P.rareTokenCount=Math.max(0,tokens-cost);
+  if(reason){
+    const msg='💠 -'+cost+' jeton'+(cost>1?'s':'')+' • '+reason;
+    if(typeof glog==='function')glog(msg,'i');
+  }
+  return true;
+}
+
+function convertCasinoToRareTokens(casinoCost,rareGain){
+  const casino=Math.max(1,parseInt(casinoCost,10)||0);
+  const rare=Math.max(1,parseInt(rareGain,10)||0);
+  if(!canUseAccountProgression()){showInviteAccountLock?.('La conversion premium');return false;}
+  if((parseInt(P.rouletteCoins,10)||0)<casino){toast('Pas assez de jetons casino.','w');return false;}
+  if(!spendRouletteCoins(casino,'conversion vers jetons rares',{silent:true,skipRender:true,skipSave:true}))return false;
+  P.rareTokenCount=Math.max(0,(parseInt(P.rareTokenCount,10)||0)+rare);
+  saveProfileData();
+  renderRareRewardsUi?.();
+  renderRoulettePanel?.();
+  if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  toast('💠 Conversion réussie : -'+casino+' jetons casino → +'+rare+' jeton'+(rare>1?'s rares':' rare'),'a');
+  return true;
+}
+
+function buyRareTokenShopItem(itemId){
+  const item=(RARE_TOKEN_SHOP_ITEMS||[]).find(entry=>entry&&entry.id===itemId);
+  if(!item){toast('Objet introuvable.','w');return false;}
+  if(!spendRareTokens(item.cost,item.name))return false;
+  const rewards=getRareTokenShopRewards(item);
+  const granted=[];
+  let success=false;
+  rewards.forEach(reward=>{
+    if(!reward)return;
+    const payload=typeof cloneRewardPayload==='function'?cloneRewardPayload(reward):Object.assign({},reward);
+    const ok=grantProfileReward(payload);
+    if(ok){success=true;granted.push(typeof getRewardText==='function'?getRewardText(reward):(reward.type||'bonus'));}
+  });
+  if(!success){
+    P.rareTokenCount=Math.max(0,(parseInt(P.rareTokenCount,10)||0)+(parseInt(item.cost,10)||0));
+    toast('Objet déjà possédé ou indisponible pour le moment.','i');
+    renderRareRewardsUi?.();
+    return false;
+  }
+  saveProfileData();
+  renderInventoryUi?.();
+  renderPartyEmojiPickers?.();
+  renderRareRewardsUi?.();
+  if(typeof renderLobbyProfileTab==='function')setTimeout(()=>renderLobbyProfileTab(),0);
+  toast(item.icon+' Achat premium : '+item.name+(granted.length?(' • '+granted.join(' • ')):''),'a');
+  return true;
+}
+
 function syncSeasonPassRewards(shouldPersist=true){
   const data=ensureSeasonData(false);
   let changed=false;
@@ -3084,15 +3178,48 @@ function renderRareRewardsUi(){
   if(!list)return;
   const rewards=Array.isArray(P.rareRewards)?P.rareRewards.slice(0,4):[];
   const tokens=Math.max(0,parseInt(P.rareTokenCount,10)||0);
-  if(!rewards.length){
-    list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">Aucune récompense rare pour le moment. Jetons : <b>'+tokens+'</b></div>';
+  const casinoTokens=Math.max(0,parseInt(P.rouletteCoins,10)||0);
+  if(!canUseAccountProgression()){
+    list.innerHTML='<div style="font-size:.68rem;color:var(--muted)">'+escapeUiText(getInviteAccountLockText())+'</div>';
     return;
   }
-  list.innerHTML=rewards.map(entry=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
-      '<span style="font-size:1rem">'+escapeUiText(entry.icon||'💎')+'</span>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:700">'+escapeUiText(entry.label||'Récompense')+'</div><div style="font-size:.62rem;color:var(--muted)">'+escapeUiText(entry.rarity||'rare')+'</div></div>'+
-    '</div>').join('')+
-    '<div style="font-size:.64rem;color:var(--muted)">Jetons rares : <b>'+tokens+'</b></div>';
+  const recentRewardsHtml=rewards.length
+    ? rewards.map(entry=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
+        '<span style="font-size:1rem">'+escapeUiText(entry.icon||'💎')+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:700">'+escapeUiText(entry.label||'Récompense')+'</div><div style="font-size:.62rem;color:var(--muted)">'+escapeUiText((entry.rarity||'rare')+(entry.desc?(' • '+entry.desc):''))+'</div></div>'+
+      '</div>').join('')
+    : '<div style="font-size:.68rem;color:var(--muted)">Aucune récompense rare obtenue pour le moment.</div>';
+  const conversionHtml=(CASINO_TO_RARE_TOKEN_OFFERS||[]).map(offer=>{
+    const canAfford=casinoTokens>=(parseInt(offer.casinoCost,10)||0);
+    return '<button class="btn '+(canAfford?'btn-yellow':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="convertCasinoToRareTokens('+parseInt(offer.casinoCost,10)+','+parseInt(offer.rareGain,10)+')">'+
+      escapeUiText((offer.label||'Échange')+' • '+offer.casinoCost+' 🎰 → '+offer.rareGain+' 💠')+
+    '</button>';
+  }).join('');
+  const shopHtml=(RARE_TOKEN_SHOP_ITEMS||[]).map(item=>{
+    const cost=Math.max(1,parseInt(item.cost,10)||1);
+    const canAfford=tokens>=cost;
+    const rewardText=getRareTokenShopRewards(item).map(getRewardText).join(' • ');
+    return '<div style="padding:8px 9px;border-radius:10px;background:linear-gradient(180deg,rgba(10,20,42,.92),rgba(9,14,28,.9));border:1px solid rgba(96,165,250,.14)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+        '<div style="font-size:.72rem;font-weight:800">'+escapeUiText((item.icon||'💠')+' '+(item.name||'Offre premium'))+'</div>'+
+        '<div style="font-size:.64rem;color:#facc15;font-weight:800">'+cost+' 💠</div>'+
+      '</div>'+
+      '<div style="font-size:.63rem;color:var(--muted);margin-top:4px">'+escapeUiText(item.desc||'Récompense premium')+'</div>'+
+      '<div style="font-size:.62rem;color:#dbeafe;margin-top:5px">Butin : '+escapeUiText(rewardText||'Bonus surprise')+'</div>'+
+      '<div style="margin-top:7px"><button class="btn '+(canAfford?'btn-blue':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="buyRareTokenShopItem(\''+String(item.id||'')+'\')">Acheter</button></div>'+
+    '</div>';
+  }).join('');
+  list.innerHTML=''+
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border-radius:10px;background:linear-gradient(135deg,rgba(37,99,235,.16),rgba(168,85,247,.14));border:1px solid rgba(96,165,250,.24)">'+
+      '<div><div style="font-size:.72rem;font-weight:800">💠 Boutique Jetons rares</div><div style="font-size:.62rem;color:var(--muted)">Utilise tes jetons rares ou convertis tes gains casino.</div></div>'+
+      '<div style="text-align:right;font-size:.63rem;color:#dbeafe"><div>Rares : <b>'+tokens+'</b></div><div>Casino : <b>'+casinoTokens+'</b></div></div>'+
+    '</div>'+
+    '<div style="font-size:.64rem;color:var(--muted);margin-top:6px;font-weight:700">🔄 Conversion casino → rare</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+conversionHtml+'</div>'+
+    '<div style="font-size:.64rem;color:var(--muted);margin-top:9px;font-weight:700">🛍️ Offres premium</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px;margin-top:6px">'+shopHtml+'</div>'+
+    '<div style="font-size:.64rem;color:var(--muted);margin-top:9px;font-weight:700">💎 Récompenses rares obtenues</div>'+
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">'+recentRewardsHtml+'</div>';
 }
 
 function renderSeasonHubUi(){

@@ -10,6 +10,16 @@ const WebSocket = require('ws');
 const PORT = Number(process.env.PORT || process.env.HTTP_PORT || process.env.WS_PORT || 3000);
 const ROOT_DIR = __dirname;
 const GOOGLE_CONFIG_PATH = path.join(ROOT_DIR, 'assets', 'google-config.js');
+const DEFAULT_ALLOWED_ORIGINS = [
+  'https://neopoly.onrender.com',
+  'https://neopoly-eu.onrender.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:5500',
+  'http://127.0.0.1:5500',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 
 // ── Profile persistent storage ────────────────────────────────────────────────
 const DATA_DIR = path.join(ROOT_DIR, 'data');
@@ -752,8 +762,7 @@ function getCorsOrigin(req) {
     buildRequestOrigin(req),
     'http://localhost:' + PORT,
     'http://127.0.0.1:' + PORT,
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
+    ...DEFAULT_ALLOWED_ORIGINS,
   ].filter(Boolean));
   String(process.env.ALLOWED_ORIGINS || '')
     .split(',')
