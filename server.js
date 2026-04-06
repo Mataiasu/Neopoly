@@ -25,6 +25,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 const DATA_DIR = path.join(ROOT_DIR, 'data');
 const PROFILES_DB_PATH = path.join(DATA_DIR, 'profiles.json');
 const MODERATION_DB_PATH = path.join(DATA_DIR, 'moderation.json');
+const FEEDBACK_DB_PATH = path.join(DATA_DIR, 'feedback.json');
 
 function loadProfilesDb() {
   try {
@@ -176,6 +177,71 @@ function saveModerationDb(db) {
     fs.writeFileSync(tmp, JSON.stringify(db, null, 2), 'utf8');
     fs.renameSync(tmp, MODERATION_DB_PATH);
   } catch (_) {}
+}
+
+function loadFeedbackDb() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(FEEDBACK_DB_PATH)) return { items: [] };
+    const parsed = JSON.parse(fs.readFileSync(FEEDBACK_DB_PATH, 'utf8')) || {};
+    const items = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed) ? parsed : []);
+    return { items: items.filter((item) => item && typeof item === 'object') };
+  } catch (_) {
+    return { items: [] };
+  }
+}
+
+function saveFeedbackDb(db) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = FEEDBACK_DB_PATH + '.tmp';
+    const safeDb = { items: Array.isArray(db && db.items) ? db.items : [] };
+    fs.writeFileSync(tmp, JSON.stringify(safeDb, null, 2), 'utf8');
+    fs.renameSync(tmp, FEEDBACK_DB_PATH);
+  } catch (_) {}
+}
+
+function sanitizeFeedbackPayload(raw) {
+  const allowedTypes = new Set(['bug', 'improvement', 'balance', 'ux', 'other']);
+  const requestedType = sanitizeStr(raw && raw.type, 32);
+  return {
+    type: allowedTypes.has(requestedType) ? requestedType : 'other',
+    subject: sanitizeStr(raw && raw.subject, 160),
+    message: sanitizeStr(raw && raw.message, 4000),
+    contact: sanitizeStr(raw && raw.contact, 160),
+    page: sanitizeStr(raw && raw.page, 500),
+    playerName: sanitizeStr(raw && raw.playerName, 64),
+    playerUid: sanitizeStr(raw && raw.playerUid, 128),
+    accountMode: sanitizeStr(raw && raw.accountMode, 32),
+    matchMode: sanitizeStr(raw && raw.matchMode, 32),
+  };
+}
+
+function appendFeedbackEntry(raw, session) {
+  const payload = sanitizeFeedbackPayload(raw);
+  if (!String(payload.message || '').trim()) return null;
+  const now = Date.now();
+  const db = loadFeedbackDb();
+  const entry = {
+    id: crypto.randomBytes(8).toString('hex'),
+    createdAt: now,
+    type: payload.type,
+    subject: payload.subject,
+    message: payload.message,
+    contact: payload.contact || normalizeEmail(session && session.email),
+    page: payload.page,
+    playerName: payload.playerName,
+    playerUid: payload.playerUid,
+    accountMode: payload.accountMode,
+    matchMode: payload.matchMode,
+    sessionEmail: normalizeEmail(session && session.email),
+    googleSub: sanitizeStr(session && session.sub, 128),
+  };
+  db.items = Array.isArray(db.items) ? db.items : [];
+  db.items.unshift(entry);
+  if (db.items.length > 1000) db.items = db.items.slice(0, 1000);
+  saveFeedbackDb(db);
+  return entry;
 }
 
 function getModerationKeys(identity) {
@@ -1413,6 +1479,22 @@ async function handleApi(req, res, pathname) {
       sendApiJson(req, res, 200, { ok: true, live: getLiveSiteStats() });
     } catch (_) {
       sendApiJson(req, res, 400, { ok: false, error: 'invalid_presence_payload' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/feedback' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const session = getTrustedSession(body);
+      const entry = appendFeedbackEntry(body, session);
+      if (!entry) {
+        sendApiJson(req, res, 400, { ok: false, error: 'message_required' });
+        return true;
+      }
+      sendApiJson(req, res, 200, { ok: true, feedbackId: entry.id, storedAt: entry.createdAt });
+    } catch (_) {
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
     }
     return true;
   }

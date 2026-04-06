@@ -1126,7 +1126,8 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   document.querySelectorAll('.emoji-drop-zone').forEach(zone=>{
     const inputId=zone.getAttribute('data-for');
-    const input=document.getElementById(inputId);
+    const input=inputId?document.getElementById(inputId):null;
+    if(!input) return;
     const hint=zone.querySelector('.emoji-drop-hint');
     zone.addEventListener('dragover',e=>{
       e.preventDefault();
@@ -1143,7 +1144,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       e.preventDefault();
       zone.style.borderColor='var(--border)';
       zone.style.background='var(--s2)';
-      const file=e.dataTransfer.files[0];
+      const file=e.dataTransfer?.files?.[0];
       if(file && file.type.startsWith('image/')){
         const reader=new FileReader();
         reader.onload=ev=>{
@@ -1161,7 +1162,7 @@ document.addEventListener('DOMContentLoaded',()=>{
       const picker=document.createElement('input');
       picker.type='file';picker.accept='image/*';
       picker.onchange=ev=>{
-        const file=ev.target.files[0];
+        const file=ev.target?.files?.[0];
         if(file && file.type.startsWith('image/')){
           const reader=new FileReader();
           reader.onload=ev2=>{
@@ -4667,28 +4668,39 @@ function buildFeedbackPayload(){
   const typeMap={bug:'Bug',improvement:'Amélioration',balance:'Équilibrage',ux:'UX / Interface',other:'Autre'};
   const typeKey=String(draft.type||'bug');
   const typeLabel=typeMap[typeKey]||'Retour';
-  const subject=String(draft.subject||'').trim()||('Retour joueur • '+typeLabel);
+  const cleanSubject=String(draft.subject||'').trim()||('Retour joueur • '+typeLabel);
   const message=String(draft.message||'').trim();
+  const contact=String(draft.contact||'').trim();
   const playerName=String(P?.name||'Joueur').trim()||'Joueur';
   const playerUid=String(P?.uid||'').trim();
   const accountMode=P?.googleConnected?'Google':'Invité';
   const matchMode=String(G?.matchType||'normal')==='ranked'?'Ranked':'Normal';
+  const page=String(window.location.href||'');
   const lines=[
     'Type : '+typeLabel,
-    'Sujet : '+subject,
+    'Sujet : '+cleanSubject,
     'Pseudo : '+playerName+(playerUid?(' ['+playerUid+']'):''),
     'Compte : '+accountMode,
     'Mode actuel : '+String(G?.mode||'lobby')+' / '+matchMode,
-    draft.contact?('Contact : '+draft.contact):'',
-    'Page : '+String(window.location.href||''),
+    contact?('Contact : '+contact):'',
+    'Page : '+page,
     '',
     'Message :',
     message,
   ].filter(Boolean);
   return {
-    subject:'[NeoPoly '+typeLabel+'] '+subject,
+    type:typeKey,
+    typeLabel,
+    subject:'[NeoPoly '+typeLabel+'] '+cleanSubject,
+    cleanSubject,
     body:lines.join('\n'),
     message,
+    contact,
+    page,
+    playerName,
+    playerUid,
+    accountMode,
+    matchMode,
   };
 }
 
@@ -4705,18 +4717,47 @@ function copyFeedbackDraft(){
     .catch(()=>toast('Impossible de copier le feedback.','w'));
 }
 
-function submitFeedbackDraft(){
+async function submitFeedbackDraft(){
   const payload=buildFeedbackPayload();
   if(!payload.message){toast('Décris d’abord ton retour ou le bug rencontré.','w');return;}
-  copyTextToClipboard(payload.body).catch(()=>{});
-  const mailto='mailto:'+encodeURIComponent(FEEDBACK_EMAIL)
-    +'?subject='+encodeURIComponent(payload.subject)
-    +'&body='+encodeURIComponent(payload.body);
   try{
-    window.location.href=mailto;
-    toast('✉️ Merci ! Ton feedback est prêt à être envoyé.','a');
+    const res=await fetch('/api/feedback',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        type:payload.type,
+        subject:payload.cleanSubject,
+        message:payload.message,
+        contact:payload.contact,
+        page:payload.page,
+        playerName:payload.playerName,
+        playerUid:payload.playerUid,
+        accountMode:payload.accountMode,
+        matchMode:payload.matchMode,
+        sessionToken:P?.googleSessionToken||''
+      })
+    });
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||!data?.ok)throw new Error(data?.error||'feedback_store_failed');
+    const els=getFeedbackDraftElements();
+    if(els.type)els.type.value='bug';
+    if(els.subject)els.subject.value='';
+    if(els.message)els.message.value='';
+    if(els.contact)els.contact.value=P?.googleEmail?String(P.googleEmail):'';
+    try{localStorage.removeItem(FEEDBACK_DRAFT_KEY);}catch(_){ }
+    closeModal('modal-feedback');
+    toast('✅ Merci ! Ton feedback a bien été enregistré.','a');
   }catch(_){
-    toast('Feedback copié : colle-le dans ton mail ou message.','i');
+    copyTextToClipboard(payload.body).catch(()=>{});
+    const mailto='mailto:'+encodeURIComponent(FEEDBACK_EMAIL)
+      +'?subject='+encodeURIComponent(payload.subject)
+      +'&body='+encodeURIComponent(payload.body);
+    try{
+      window.location.href=mailto;
+      toast('Serveur indisponible : feedback préparé par mail.','i');
+    }catch(_err){
+      toast('Impossible d’envoyer. Feedback copié dans le presse-papiers.','w');
+    }
   }
 }
 
