@@ -165,8 +165,9 @@ body.debug-tools-window-open #debug-tools-card.is-dragging summary{cursor:grabbi
 .news-tile:hover::before{transform:translateX(120%)}
 .news-tile::after{content:'';position:absolute;left:0;right:0;bottom:0;height:2px;background:linear-gradient(90deg,rgba(59,130,246,.95),rgba(56,189,248,.7),rgba(239,68,68,.5));opacity:.88}
 .news-badge{display:inline-flex;align-items:center;padding:3px 7px;border-radius:999px;background:rgba(59,130,246,.14);border:1px solid rgba(96,165,250,.22);font-size:.54rem;font-weight:900;letter-spacing:.06em;color:#dbeafe;text-transform:uppercase;margin-bottom:7px}
-.news-tile b{display:block;color:#f8fafc;font-size:.74rem;margin-bottom:4px}
-.news-copy{font-size:.67rem;color:var(--muted);line-height:1.5}
+.news-tile > b{display:block;color:#f8fafc;font-size:.74rem;margin-bottom:4px;line-height:1.35}
+.news-copy{font-size:.67rem;color:var(--muted);line-height:1.55}
+.news-copy b{display:inline;color:#f8fafc;font-size:inherit;margin:0;font-weight:800}
 @keyframes newsHeroFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 @keyframes newsOrbPulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.9;transform:scale(1.08)}}
 @keyframes newsBadgePulse{0%,100%{box-shadow:0 0 0 0 rgba(96,165,250,.18)}50%{box-shadow:0 0 0 6px rgba(96,165,250,0)}}
@@ -2332,10 +2333,10 @@ body.streamer-mode #invite-link {
               </div>
             </div>
             <div class="news-grid">
-              <div class="news-tile"><span class="news-badge">Live</span><b>v5.1 • Compteur temps réel</b><div class="news-copy">Le ladder affiche maintenant les <b>joueurs en ligne</b>, les <b>visiteurs sur le site</b> et les <b>salons actifs</b> avec rafraîchissement live plus propre.</div></div>
-              <div class="news-tile"><span class="news-badge">Online</span><b>Reconnexion multijoueur</b><div class="news-copy">Un joueur déconnecté disparaît de la partie, puis peut revenir via le bouton de reconnexion ou l’auto‑reconnexion après quelques secondes.</div></div>
-              <div class="news-tile"><span class="news-badge">Admin</span><b>Debug window premium</b><div class="news-copy">Le menu debug s’ouvre désormais en vraie fenêtre flottante, réservée aux admins, avec drag & move et bouton <b>recentrer</b>.</div></div>
-              <div class="news-tile"><span class="news-badge">UX</span><b>Lecture du plateau</b><div class="news-copy">Correction visuelle des cases latérales comme <b>Chance</b> et <b>Avenue des Champs‑Élysées</b> pour un texte plus lisible.</div></div>
+              <div class="news-tile"><span class="news-badge">Live</span><b>v5.1 • Compteur temps réel</b><div class="news-copy">Le ladder affiche maintenant les <b>joueurs en ligne</b>, les <b>visiteurs du site</b> et les <b>salons actifs</b> avec un rafraîchissement plus propre.</div></div>
+              <div class="news-tile"><span class="news-badge">Online</span><b>Reconnexion multijoueur</b><div class="news-copy">Un joueur déconnecté peut revenir rapidement grâce au bouton de reconnexion et à l’auto‑reconnexion après quelques secondes.</div></div>
+              <div class="news-tile"><span class="news-badge">Admin</span><b>Debug window premium</b><div class="news-copy">Le menu debug s’ouvre désormais dans une vraie fenêtre flottante, réservée aux admins, avec glisser‑déposer et bouton <b>Recentrer</b>.</div></div>
+              <div class="news-tile"><span class="news-badge">UX</span><b>Lecture du plateau</b><div class="news-copy">Correction visuelle des cases latérales comme <b>Chance</b> et <b>Avenue des Champs‑Élysées</b> pour une lecture plus nette.</div></div>
               <div class="news-tile"><span class="news-badge">Pro</span><b>Historique premium</b><div class="news-copy">Nouveaux filtres sur le journal, les transactions et le résumé de fin de tour pour une lecture plus claire.</div></div>
               <div class="news-tile"><span class="news-badge">Starter</span><b>UX & onboarding</b><div class="news-copy">Tutoriel interactif, raccourcis clavier desktop, profil public partageable et aide intégrée pour mieux démarrer.</div></div>
               <div class="news-tile"><span class="news-badge">Secret</span><b>5 nouveaux codes cachés</b><div class="news-copy">Le casino murmure <b>888</b>, le <b>vault</b> respecte les bâtisseurs, l’<b>aurore</b> aime les gros paliers ELO, la <b>nuit parisienne</b> garde un mot de passe, et le <b>capital fantôme</b> vise les fortunes.</div></div>
