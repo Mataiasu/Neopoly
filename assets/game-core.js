@@ -2264,7 +2264,7 @@ let connectionZoneSilentPending=false;
 let connectionZoneSilentTimer=null;
 let P={
   uid:null,name:'Joueur',emoji:'🎲',avatarImg:null,color:'#22c55e',
-  googleEmail:null,googleName:null,googleConnected:false,googleSub:null,googleVerifiedAt:0,googleSessionToken:null,
+  googleEmail:null,googleName:null,googleAvatarUrl:null,googleConnected:false,googleSub:null,googleVerifiedAt:0,googleSessionToken:null,
   isAdmin:false,
   moderation:{muted:false,banned:false,reason:'',updatedAt:0},
   stats:{gamesPlayed:0,gamesWon:0,gamesLost:0,moneyEarned:0,propertiesBought:0,totalTurns:0,bankruptcies:0},
@@ -2377,6 +2377,7 @@ function loadProfile(opts){
   if(!('selectedTitle' in P))P.selectedTitle=null;
   if(typeof P.isAdmin!=='boolean')P.isAdmin=false;
   P.googleSessionToken=P.googleSessionToken?String(P.googleSessionToken):null;
+  P.googleAvatarUrl=P.googleAvatarUrl?String(P.googleAvatarUrl):null;
   if(!P.moderation||typeof P.moderation!=='object')P.moderation=getDefaultModerationState();
   P.moderation.muted=!!P.moderation.muted;
   P.moderation.banned=!!P.moderation.banned;
@@ -2438,6 +2439,12 @@ function isDefaultHostedAvatar(value){
   return raw.includes('dicebear.com')||raw.includes('googleusercontent.com')||raw.includes('gstatic.com');
 }
 
+function isDefaultProfileName(value){
+  const raw=String(value||'').trim();
+  if(!raw)return true;
+  return /^joueur(?:\s+\d+)?$/i.test(raw);
+}
+
 async function hydrateRemoteProfileSnapshot(){
   const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/, '');
   if(!base||!P.googleConnected||!P.googleSessionToken||!P.uid||remoteProfileHydrationInFlight)return false;
@@ -2455,12 +2462,15 @@ async function hydrateRemoteProfileSnapshot(){
     let changed=false;
     const remoteAvatar=String(remote.avatarImg||remote.avatar||'').trim();
     const localAvatar=String(P.avatarImg||'').trim();
-    if(remoteAvatar&&(!localAvatar||isDefaultHostedAvatar(localAvatar))&&remoteAvatar!==localAvatar){
+    const googleAvatar=String(P.googleAvatarUrl||'').trim();
+    if(remoteAvatar&&(!localAvatar||isDefaultHostedAvatar(localAvatar)||(googleAvatar&&localAvatar===googleAvatar))&&remoteAvatar!==localAvatar){
       P.avatarImg=remoteAvatar;
       changed=true;
     }
     const remoteName=String(remote.name||'').trim();
-    if(remoteName&&(!P.name||P.name==='Joueur')){
+    const localName=String(P.name||'').trim();
+    const googleName=String(P.googleName||'').trim();
+    if(remoteName&&(!localName||isDefaultProfileName(localName)||(googleName&&localName===googleName))&&remoteName!==localName){
       P.name=remoteName;
       changed=true;
     }
@@ -5072,19 +5082,21 @@ function applyGoogleIdentity(email,name,avatarUrl,googleSub,isVerified,sessionTo
   const finalName=name||accountDefaultName||'Joueur';
   const avatarSeed=encodeURIComponent(email.toLowerCase());
   const fallbackAvatar=`https://api.dicebear.com/9.x/initials/svg?seed=${avatarSeed}`;
+  const existingName=String(P.name||'').trim();
   const existingAvatar=String(P.avatarImg||'').trim();
   const nextHostedAvatar=avatarUrl||fallbackAvatar;
 
   P.googleConnected=true;
   P.googleEmail=email;
   P.googleName=finalName;
+  P.googleAvatarUrl=nextHostedAvatar;
   P.googleSub=googleSub||null;
   P.googleSessionToken=sessionToken?String(sessionToken):null;
   P.googleVerifiedAt=isVerified?Date.now():0;
   P.isAdmin=isKnownAdminEmail(email);
   P.moderation=P.moderation&&typeof P.moderation==='object'?P.moderation:getDefaultModerationState();
-  P.name=finalName;
-  P.avatarImg=(existingAvatar&&!isDefaultHostedAvatar(existingAvatar))?existingAvatar:nextHostedAvatar;
+  P.name=(existingName&&!isDefaultProfileName(existingName))?existingName:finalName;
+  P.avatarImg=existingAvatar||nextHostedAvatar;
   syncUidWithGoogleIdentity(false);
   saveProfileData();renderLobbyProfileTab();renderSocialChat();
   if(typeof queueRemoteProfileHydration==='function')queueRemoteProfileHydration('login');
@@ -5115,7 +5127,7 @@ function revokeGoogleGrant(){
 }
 function disconnectGoogle(){
   revokeGoogleGrant();
-  P.googleConnected=false;P.googleEmail=null;P.googleName=null;P.googleSub=null;P.googleSessionToken=null;P.googleVerifiedAt=0;
+  P.googleConnected=false;P.googleEmail=null;P.googleName=null;P.googleAvatarUrl=null;P.googleSub=null;P.googleSessionToken=null;P.googleVerifiedAt=0;
   P.isAdmin=false;
   P.moderation=getDefaultModerationState();
   saveProfileData();renderLobbyProfileTab();renderSocialChat();
