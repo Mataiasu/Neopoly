@@ -2346,6 +2346,7 @@ function loadProfile(opts){
   if(!Array.isArray(P.titles))P.titles=[];
   if(!P.titleMeta||typeof P.titleMeta!=='object')P.titleMeta={};
   if(!P.secretUnlocks||typeof P.secretUnlocks!=='object')P.secretUnlocks={};
+  if(!P.redeemedSecretCodes||typeof P.redeemedSecretCodes!=='object')P.redeemedSecretCodes={};
   if(!P.emojiUnlocks||typeof P.emojiUnlocks!=='object')P.emojiUnlocks={};
   if(typeof P.stats.gamesLost!=='number')P.stats.gamesLost=parseInt(P.stats.gamesLost,10)||0;
   if(typeof P.elo!=='number'||isNaN(P.elo))P.elo=0;
@@ -2471,8 +2472,10 @@ const DAILY_CHALLENGE_POOL=[
   {id:'buy_4',label:'Acheter 4 propriétés',stat:'propertiesBought',amount:4,reward:{type:'antiJail',qty:1}},
   {id:'turns_12',label:'Jouer 12 tours',stat:'totalTurns',amount:12,reward:{type:'rouletteCoins',qty:6}},
   {id:'quest_turns_18',label:'Tenir 18 tours aujourd’hui',stat:'totalTurns',amount:18,reward:{type:'unlockTitle',key:'quest_scout',fallback:{type:'rouletteCoins',qty:8}}},
-  {id:'quest_spin_3',label:'Tourner 3 fois la roulette',stat:'rouletteSpinCount',amount:3,reward:{type:'unlockSecret',key:'fx_jackpot',fallback:{type:'rouletteCoins',qty:12}}},
-  {id:'quest_season_120',label:'Gagner 120 XP de saison',stat:'seasonData.xp',amount:120,reward:{type:'rareToken',qty:1}},
+  {id:'quest_spin_3',label:'Tourner 3 fois la roulette • indice: les triples 8 portent chance.',stat:'rouletteSpinCount',amount:3,reward:{type:'unlockSecret',key:'fx_jackpot',fallback:{type:'rouletteCoins',qty:12}}},
+  {id:'quest_season_120',label:'Gagner 120 XP de saison • indice: l’aurore aime 1600.',stat:'seasonData.xp',amount:120,reward:{type:'rareToken',qty:1}},
+  {id:'hint_roulette_888',label:'Indice secret du casino : après 8 spins, pense à 888.',stat:'rouletteSpinCount',amount:8,reward:{type:'rouletteCoins',qty:10}},
+  {id:'hint_night_shift',label:'Indice nocturne : certains secrets répondent après minuit.',stat:'totalTurns',amount:8,reward:{type:'antiJail',qty:1}},
   {id:'win_1',label:'Gagner 1 partie',stat:'gamesWon',amount:1,reward:{type:'diceBoost',qty:2}},
   {id:'earn_600',label:'Encaisser 600$',stat:'moneyEarned',amount:600,reward:{type:'rouletteCoins',qty:8}},
 ];
@@ -2480,11 +2483,14 @@ const DAILY_CHALLENGE_POOL=[
 const WEEKLY_MISSION_POOL=[
   {id:'week_play_5',label:'Jouer 5 parties cette semaine',stat:'gamesPlayed',amount:5,reward:{type:'rouletteCoins',qty:18}},
   {id:'week_win_3',label:'Gagner 3 parties cette semaine',stat:'gamesWon',amount:3,reward:{type:'rareReward',key:'crown_neon'}},
-  {id:'week_buy_18',label:'Acheter 18 propriétés',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn',fallback:{type:'rareToken',qty:1}}},
+  {id:'week_buy_18',label:'Acheter 18 propriétés • rumeur: le vault aime le nombre 40.',stat:'propertiesBought',amount:18,reward:{type:'unlockEmoji',key:'rare_unicorn',fallback:{type:'rareToken',qty:1}}},
   {id:'week_turns_80',label:'Jouer 80 tours',stat:'totalTurns',amount:80,reward:{type:'rareReward',key:'quest_palette'}},
   {id:'week_spin_12',label:'Effectuer 12 tours de roulette',stat:'rouletteSpinCount',amount:12,reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:20}}},
   {id:'week_season_450',label:'Cumuler 450 XP saison',stat:'seasonData.xp',amount:450,reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
-  {id:'week_money_5000',label:'Cumuler 5000$ gagnés',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura',fallback:{type:'seasonXp',qty:90}}},
+  {id:'week_money_5000',label:'Cumuler 5000$ gagnés • indice: le capital fantôme vise 25 000$.',stat:'moneyEarned',amount:5000,reward:{type:'unlockSecret',key:'fx_aura',fallback:{type:'seasonXp',qty:90}}},
+  {id:'hint_aurora_1600',label:'Rumeur ranked : l’aurore s’éveille vers 1600 ELO.',stat:'elo',amount:1600,reward:{type:'seasonXp',qty:70}},
+  {id:'hint_vault_40',label:'Le coffre du bâtisseur respecte les joueurs à 40 propriétés.',stat:'propertiesBought',amount:40,reward:{type:'mortgageDiscount',qty:1}},
+  {id:'hint_capital_25k',label:'Le capital fantôme observe ceux qui dépassent 25 000$ gagnés.',stat:'moneyEarned',amount:25000,reward:{type:'rareToken',qty:1}},
 ];
 
 const RARE_REWARD_DEFS={

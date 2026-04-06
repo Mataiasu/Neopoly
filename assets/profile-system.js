@@ -217,6 +217,11 @@ const TITLE_DEFS={
   s_marathon:  {label:'🏃 Marathonien',        cls:'vt-s7', cond:'Jouer 1500 tours cumulés'},
   s_ascendant: {label:'🪐 Ascendant',          cls:'vt-s8', cond:'Atteindre 3200 ELO'},
   s_collection:{label:'🧠 Collectionneur',     cls:'vt-s9', cond:'Acheter 120 propriétés cumulées'},
+  secret_triple8:{label:'🎰 Triple Huit', cls:'vt-s2', cond:'Entrer le code lucky888 après 8 tours de roulette'},
+  secret_vaultkeeper:{label:'🗝️ Gardien du Vault', cls:'vt-s7', cond:'Entrer le code vault40 après 40 propriétés achetées'},
+  secret_afterglow:{label:'🌌 Afterglow Ranked', cls:'vt-legend', cond:'Entrer le code aurora1600 avec 1600 ELO'},
+  secret_nightshift:{label:'🌙 Shift de Minuit', cls:'vt-s4', cond:'Entrer le code nightshift entre 00:00 et 04:59 (Paris)'},
+  secret_capital:{label:'💼 Capital Fantôme', cls:'vt-m2', cond:'Entrer le code capital25k après 25 000$ gagnés'},
   season_contender:{label:'👑 Prétendant saisonnier', cls:'vt-legend', cond:'Obtenir la Couronne Néon'},
   quest_scout:{label:'🧭 Éclaireur des quêtes', cls:'vt-s4', cond:'Compléter un défi quotidien cosmétique'},
   quest_architect:{label:'🏗️ Architecte mystique', cls:'vt-s7', cond:'Réussir une mission secrète du bâtisseur'},
@@ -404,6 +409,11 @@ const _S={
   b:btoa('np2026'),
   d:btoa('nebula'),
   e:btoa('8bit'),
+  f:btoa('lucky888'),
+  g:btoa('vault40'),
+  h:btoa('aurora1600'),
+  i:btoa('nightshift'),
+  j:btoa('capital25k'),
 };
 
 const UI_RENDER_CACHE={
@@ -1508,6 +1518,7 @@ function resetProfileProgress(options){
   P.rareRewards=[];
   P.rareTokenCount=0;
   P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]};
+  P.redeemedSecretCodes={};
   if(opts.source==='admin')P.lastAdminStatsResetAt=Math.max(parseInt(P.lastAdminStatsResetAt,10)||0,resetAt);
   saveProfileData();
   renderLobbyProfileTab();
@@ -1534,6 +1545,35 @@ function debugRemoveWinnerLooser(){
   toast('🗑️ Titre "Winner Looser" retiré.','w');
 }
 
+function ensureRedeemedSecretCodesStore(){
+  if(!P.redeemedSecretCodes||typeof P.redeemedSecretCodes!=='object')P.redeemedSecretCodes={};
+  return P.redeemedSecretCodes;
+}
+
+function redeemSecretRewardBundle(codeKey,rewards,successText){
+  const store=ensureRedeemedSecretCodesStore();
+  if(store[codeKey]){
+    toast('Code déjà utilisé.','i');
+    return true;
+  }
+  const bundle=Array.isArray(rewards)?rewards:[];
+  const granted=[];
+  bundle.forEach(reward=>{
+    if(!reward||typeof grantProfileReward!=='function')return;
+    if(grantProfileReward(reward)){
+      granted.push(typeof getRewardText==='function'?getRewardText(reward):(reward.type||'bonus'));
+    }
+  });
+  store[codeKey]=Date.now();
+  saveProfileData();
+  if(typeof ensureEmojiUnlocks==='function')ensureEmojiUnlocks(false);
+  renderLobbyProfileTab();
+  if(typeof renderFriendsList==='function')renderFriendsList();
+  if(typeof renderSocialChat==='function')renderSocialChat();
+  toast((successText||'✨ Code secret activé !')+(granted.length?(' • '+granted.join(' • ')):''),'a');
+  return true;
+}
+
 function redeemSecretCode(){
   if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression()){
     showInviteAccountLock?.('Les codes de progression');
@@ -1541,12 +1581,12 @@ function redeemSecretCode(){
   }
   const inp=document.getElementById('secret-code-inp');
   if(!inp)return;
-  const code=inp.value.trim();
+  const code=String(inp.value||'').trim().toLowerCase();
   inp.value='';
   if(code==='12/23/26'){
     const losses=parseInt(P.stats?.gamesLost,10)||0;
     if(losses<50){
-      toast('❌ Conditions non remplies.','w');
+      toast('❌ Il faut au moins 50 défaites.','w');
       return;
     }
     if(!Array.isArray(P.titles))P.titles=[];
@@ -1573,6 +1613,45 @@ function redeemSecretCode(){
     if(!unlockSecretFeature('fx_arcade','🕹️ Fonction secrète débloquée : Arcade Pulse'))toast('Secret déjà obtenu.','i');
     ensureEmojiUnlocks(true);
     renderLobbyProfileTab();
+  } else if(code===atob(_S.f)){
+    const spins=parseInt(P.rouletteSpinCount,10)||0;
+    if(spins<8){toast('❌ Il faut au moins 8 tours de roulette.','w');return;}
+    redeemSecretRewardBundle('lucky888',[
+      {type:'unlockTitle',key:'secret_triple8',fallback:{type:'rouletteCoins',qty:8}},
+      {type:'rouletteCoins',qty:18}
+    ],'🎰 Triple Huit révélé !');
+  } else if(code===atob(_S.g)){
+    const bought=parseInt(P.stats?.propertiesBought,10)||0;
+    if(bought<40){toast('❌ Il faut acheter 40 propriétés au total.','w');return;}
+    redeemSecretRewardBundle('vault40',[
+      {type:'unlockTitle',key:'secret_vaultkeeper',fallback:{type:'rareToken',qty:1}},
+      {type:'mortgageDiscount',qty:2},
+      {type:'rareToken',qty:1}
+    ],'🗝️ Le vault du bâtisseur s’ouvre !');
+  } else if(code===atob(_S.h)){
+    const elo=parseInt(P.elo,10)||0;
+    if(elo<1600){toast('❌ Il faut atteindre 1600 ELO.','w');return;}
+    redeemSecretRewardBundle('aurora1600',[
+      {type:'unlockTitle',key:'secret_afterglow',fallback:{type:'seasonXp',qty:50}},
+      {type:'unlockSecret',key:'fx_aura',fallback:{type:'seasonXp',qty:70}}
+    ],'🌌 L’aurore classée répond !');
+  } else if(code===atob(_S.i)){
+    const franceNow=(typeof getTimeZoneDateParts==='function')?getTimeZoneDateParts(new Date(),'Europe/Paris'):null;
+    const hour=Math.max(0,parseInt(franceNow?.hour,10)||0);
+    if(hour<0||hour>=5){toast('❌ Ce code ne répond qu’entre 00:00 et 04:59 (Paris).','w');return;}
+    redeemSecretRewardBundle('nightshift',[
+      {type:'unlockTitle',key:'secret_nightshift',fallback:{type:'antiJail',qty:1}},
+      {type:'unlockEmoji',key:'roulette_joker',fallback:{type:'antiJail',qty:1}},
+      {type:'unlockSecret',key:'fx_arcade',fallback:{type:'diceBoost',qty:1}}
+    ],'🌙 Le quart de nuit est validé !');
+  } else if(code===atob(_S.j)){
+    const earned=parseInt(P.stats?.moneyEarned,10)||0;
+    if(earned<25000){toast('❌ Il faut cumuler 25 000$ gagnés.','w');return;}
+    redeemSecretRewardBundle('capital25k',[
+      {type:'unlockTitle',key:'secret_capital',fallback:{type:'rareToken',qty:1}},
+      {type:'rareToken',qty:2},
+      {type:'antiJail',qty:1}
+    ],'💼 Le capital fantôme te reconnaît !');
   } else if(code.length>0){
     toast('Code invalide.','w');
   }
