@@ -1244,8 +1244,8 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
     display:none !important;
   }
   
-  /* Réduire la sidebar */
-  .sidebar{
+  /* Sidebar portable : lobby compact, partie plus grande */
+  #app-wrap.in-lobby .sidebar{
     max-height:35svh !important;
   }
   
@@ -1257,13 +1257,14 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
     width: var(--size);
     height: var(--size);
   }
-  /* En partie : sidebar occupe le reste */
+  /* En partie : sidebar plus grande sur portable */
   #app-wrap:not(.in-lobby) .sidebar{
-    flex:0 0 auto; max-height:44svh;
+    flex:0 0 auto;
+    max-height:52svh !important;
   }
   /* En lobby : sidebar compacte */
   #app-wrap.in-lobby #screens-wrap{ flex:1 1 auto; }
-  #app-wrap.in-lobby .sidebar{ flex:0 0 auto; max-height:36svh; }
+  #app-wrap.in-lobby .sidebar{ flex:0 0 auto; max-height:36svh !important; }
   
   /* Sidebar ouverte en partie : partage l'écran, pas plein écran */
   #app-wrap:not(.in-lobby):not(.mobile-sidebar-collapsed) .sidebar{
@@ -1308,14 +1309,14 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
   .board-area{ flex:1 1 auto; width:auto; min-width:0; padding:6px; }
   .board{
     --corner:38px;
-    --size: min(calc(100svh - 10px), calc(100vw - 200px));
+    --size: min(calc(100svh - 10px), calc(100vw - 232px));
     width: var(--size);
     height: var(--size);
   }
   .sidebar{
-    flex:0 0 200px !important;
-    width:200px !important;
-    min-width:200px !important;
+    flex:0 0 232px !important;
+    width:232px !important;
+    min-width:232px !important;
     max-height:100svh !important;
     border-top:none !important;
     border-left:1px solid var(--border) !important;
