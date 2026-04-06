@@ -2513,7 +2513,7 @@ const RARE_REWARD_DEFS={
   phoenix_core:{label:'Cœur Phénix',icon:'🔥',rarity:'légendaire',desc:'Débloque l’emoji Phénix.',emojiKey:'rare_phoenix'},
   aurora_shard:{label:'Éclat Aurora',icon:'✨',rarity:'rare',desc:'Débloque l’aura Elite.',secretKey:'fx_aura'},
   quest_palette:{label:'Palette Prismatique',icon:'🎨',rarity:'épique',desc:'Débloque un lotus astral et un titre cosmétique exclusif.',emojiKey:'quest_orchid',titleKey:'quest_curator'},
-  vault_key:{label:'Clé du Coffre',icon:'🗝️',rarity:'épique',desc:'Offre des objets premium.',itemBonus:{diceBoost:2,mortgageDiscount:1}},
+  vault_key:{label:'Clé du Coffre',icon:'🗝️',rarity:'épique',desc:'Offre +2 diceBoost et +1 mortgageDiscount, idéal pour les parties longues et stratégiques.',itemBonus:{diceBoost:2,mortgageDiscount:1}},
   starlight_chip:{label:'Jeton Astral',icon:'🌠',rarity:'légendaire',desc:'Débloque un halo jackpot secret et un titre occulte du casino.',secretKey:'fx_jackpot',titleKey:'casino_oracle',itemBonus:{diceBoost:2,antiJail:1}},
   season_sigil:{label:'Sceau Nebula',icon:'🪐',rarity:'mythique',desc:'Récompense secrète des quêtes et saisons qui débloque Saturne mystique et une traînée stellaire.',emojiKey:'season_saturn',secretKey:'fx_stardust',titleKey:'season_oracle'},
 };
@@ -2526,7 +2526,7 @@ const CASINO_TO_RARE_TOKEN_OFFERS=[
 
 const RARE_TOKEN_SHOP_ITEMS=[
   {id:'rare_shop_aurora',icon:'✨',name:'Éclat Aurora',cost:4,desc:'Débloque l’aura Elite et un style plus lumineux.',reward:{type:'rareReward',key:'aurora_shard',fallback:{type:'seasonXp',qty:45}}},
-  {id:'rare_shop_vault',icon:'🗝️',name:'Clé du Coffre',cost:6,desc:'Pack premium utile pour les parties longues.',reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:2}}},
+  {id:'rare_shop_vault',icon:'🗝️',name:'Clé du Coffre',cost:6,desc:'Donne +2 diceBoost et +1 mortgageDiscount pour mieux tenir les parties longues.',reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:2}}},
   {id:'rare_shop_phoenix',icon:'🔥',name:'Cœur Phénix',cost:8,desc:'Récompense légendaire cosmétique.',reward:{type:'rareReward',key:'phoenix_core',fallback:{type:'rareToken',qty:1}}},
   {id:'rare_shop_starlight',icon:'🌠',name:'Jeton Astral',cost:10,desc:'Halo jackpot + bonus premium du casino.',reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:18}}},
   {id:'rare_shop_nebula',icon:'🪐',name:'Sceau Nebula',cost:12,desc:'Récompense mythique liée aux saisons et secrets.',reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
