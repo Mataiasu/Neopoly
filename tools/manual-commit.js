@@ -67,7 +67,7 @@ function buildCommitMessage() {
 }
 
 function printUsage() {
-  console.log(`Usage:\n  npm run commit:now -- \"ton message\"\n  npm run commit:local -- \"sauvegarde locale\"\n  npm run prompt:tick\n\nOptions:\n  --no-push   commit sans push\n  --amend     remplace le dernier commit\n  --help      affiche cette aide\n\nAstuce:\n  utilise \"npm run prompt:tick\" après chaque demande ; au 3e passage, le commit part tout seul.`);
+  console.log(`Usage:\n  npm run commit:now -- \"ton message\"\n  npm run commit:local -- \"sauvegarde locale\"\n  npm run prompt:tick\n\nOptions:\n  --no-push   commit sans push\n  --amend     remplace le dernier commit\n  --help      affiche cette aide\n\nAstuce:\n  utilise \"npm run prompt:tick\" après chaque demande ; au 5e passage, le commit+push part tout seul.`);
 }
 
 function hasGitLock() {

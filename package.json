@@ -14,10 +14,10 @@
     "commit:now": "node tools/manual-commit.js",
     "commit:local": "node tools/manual-commit.js --no-push",
     "commit:major": "node tools/manual-commit.js \"feat: sortie de la maj majeure NeoPoly\"",
-    "prompt:tick": "node tools/prompt-commit.js",
-    "prompt:major": "node tools/prompt-commit.js \"feat: sortie de la maj majeure NeoPoly\"",
-    "prompt:status": "node tools/prompt-commit.js --status",
-    "prompt:reset": "node tools/prompt-commit.js --reset"
+    "prompt:tick": "node tools/prompt-commit.js --threshold=5",
+    "prompt:major": "node tools/prompt-commit.js --threshold=5 \"feat: sortie de la maj majeure NeoPoly\"",
+    "prompt:status": "node tools/prompt-commit.js --threshold=5 --status",
+    "prompt:reset": "node tools/prompt-commit.js --threshold=5 --reset"
   },
   "engines": {
     "node": ">=18"

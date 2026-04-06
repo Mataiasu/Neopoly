@@ -2233,9 +2233,7 @@ function renderRoulettePanel(){
 }
 
 function openRouletteModal(){
-  syncPendingRoulettePayouts();
-  renderRoulettePanel();
-  openModal('modal-roulette');
+  openShopModal();
 }
 
 // ═══════════════════════════════════════
@@ -4555,7 +4553,19 @@ const TUTORIAL_STEPS=[
   {title:'4. Astuce perf mobile',body:'Sur mobile modeste, NeoPoly réduit automatiquement les effets visuels pour rester fluide.'},
 ];
 
+function openShopModal(){
+  syncPendingRoulettePayouts();
+  renderRoulettePanel?.();
+  renderRareRewardsUi?.();
+  openModal('modal-roulette');
+}
+
 function switchLobbyTab(name){
+  if(name==='shop-pane'){
+    const fallbackTab=document.querySelector('.lobby-tab.active')?.dataset.ltab||'profil-pane';
+    openShopModal();
+    name=fallbackTab==='shop-pane'?'profil-pane':fallbackTab;
+  }
   if(name==='amis-pane'&&!(P&&P.googleConnected)){
     toast('👫 Le mode amis est réservé aux comptes Google.','w');
     if(typeof openGoogleLoginModal==='function')openGoogleLoginModal();

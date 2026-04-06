@@ -10,7 +10,7 @@ const rawArgs = process.argv.slice(2);
 const flagArgs = new Set(rawArgs.filter(arg => arg.startsWith('--')));
 const thresholdArg = rawArgs.find(arg => arg.startsWith('--threshold='));
 const messageArg = rawArgs.filter(arg => !arg.startsWith('--')).join(' ').trim();
-const threshold = Math.max(1, parseInt((thresholdArg || '').split('=').pop(), 10) || Number(process.env.PROMPT_COMMIT_THRESHOLD || 3) || 3);
+const threshold = Math.max(1, parseInt((thresholdArg || '').split('=').pop(), 10) || Number(process.env.PROMPT_COMMIT_THRESHOLD || 5) || 5);
 
 function nowLabel() {
   return new Date().toLocaleString('fr-FR', {
@@ -74,7 +74,7 @@ function buildCommitMessage() {
 }
 
 function printUsage() {
-  console.log(`Usage:\n  npm run prompt:tick\n  npm run prompt:tick -- \"message optionnel\"\n  npm run prompt:status\n  npm run prompt:reset\n\nOptions:\n  --threshold=3  change le seuil de déclenchement\n  --no-push      commit sans push\n  --amend        remplace le dernier commit quand le seuil est atteint\n  --status       affiche le compteur actuel\n  --reset        remet le compteur à zéro\n  --help         affiche cette aide`);
+  console.log(`Usage:\n  npm run prompt:tick\n  npm run prompt:tick -- \"message optionnel\"\n  npm run prompt:status\n  npm run prompt:reset\n\nOptions:\n  --threshold=5  change le seuil de déclenchement\n  --no-push      commit sans push\n  --amend        remplace le dernier commit quand le seuil est atteint\n  --status       affiche le compteur actuel\n  --reset        remet le compteur à zéro\n  --help         affiche cette aide`);
 }
 
 try {
