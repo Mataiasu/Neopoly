@@ -817,12 +817,16 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 }
 
 .pawn.arriving {
-  animation: pawnPop .3s cubic-bezier(.34,1.56,.64,1);
+  transform-origin:center bottom;
+  animation: pawnJump .48s cubic-bezier(.22,1,.36,1);
 }
 
-@keyframes pawnPop {
-  from { transform: scale(0) translateY(-6px); opacity: 0; }
-  to   { transform: scale(1) translateY(0);    opacity: 1; }
+@keyframes pawnJump {
+  0%   { transform: scale(.82) translateY(0); opacity: .82; }
+  22%  { transform: scale(1.06,.94) translateY(0); opacity: 1; }
+  48%  { transform: scale(.98,1.03) translateY(-12px); opacity: 1; }
+  72%  { transform: scale(1.03,.97) translateY(0); opacity: 1; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -2032,6 +2036,7 @@ body.streamer-mode #invite-link {
     <button class="feature-chip" type="button" onclick="openNewsPane()" data-tip="Affiche les nouveautés et les derniers ajouts intégrés au jeu.">🆕 Nouveautés live</button>
     <button class="feature-chip" type="button" onclick="openHelpPane()" data-tip="Ouvre le centre d’aide et les raccourcis utiles.">❓ FAQ / Aide</button>
     <button class="feature-chip" type="button" onclick="openMyPublicProfilePreview()" data-tip="Prévisualise puis partage ton profil public NeoPoly.">🔗 Profil public</button>
+    <button class="feature-chip" type="button" onclick="openFeedbackModal()" data-tip="Propose une amélioration ou signale un bug directement depuis le jeu.">📝 Retour / Feedback</button>
     <button class="feature-chip" id="lobby-reconnect-btn" type="button" onclick="reconnectOnlineRoom()" style="display:none" data-tip="Retourne rapidement dans ta dernière salle online si la connexion a sauté.">🔄 Reconnexion</button>
   </div>
   <div id="lobby-reconnect-meta" style="display:none;font-size:.72rem;color:var(--muted);margin-top:8px"></div>
@@ -2674,6 +2679,10 @@ body.streamer-mode #invite-link {
               </select>
               <div id="cfg-team-mode-note" style="font-size:.66rem;color:var(--muted);margin-top:4px">Visible ici et dans la roue d'options.</div>
             </div>
+            <div class="opt-row" style="margin-top:8px" data-tip="Met fin à la partie dès que toutes les cases achetables ont un propriétaire.">
+              <input type="checkbox" id="cfg-no-space-chk" onchange="setNoSpaceEnabled(this.checked)"/>
+              <label for="cfg-no-space-chk">🧱 No Space : fin si tout est acheté</label>
+            </div>
             <div id="party-quick-summary" style="font-size:.68rem;color:var(--muted);margin-top:6px">Départ 1500$ • Bonus 200$ • Amende 50$</div>
           </div>
         </div>
@@ -2759,6 +2768,44 @@ body.streamer-mode #invite-link {
     <div class="modal-title">🏟️ NeoPoly Ranked</div>
     <div class="modal-sub">Ladder esports officiel • Top 10 ELO et victoires</div>
     <div id="global-profile-modal-body"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-feedback">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('modal-feedback')">✕</button>
+    <div class="modal-title">📝 Retour / Feedback</div>
+    <div class="modal-sub">Propose une amélioration ou signale un bug à l’équipe NeoPoly.</div>
+    <div class="fgroup">
+      <div>
+        <label>Type de retour</label>
+        <select id="feedback-type" onchange="persistFeedbackDraft()">
+          <option value="bug">🐞 Bug</option>
+          <option value="improvement">💡 Amélioration</option>
+          <option value="ux">🎨 UX / Interface</option>
+          <option value="balance">⚖️ Équilibrage</option>
+          <option value="other">🗂️ Autre</option>
+        </select>
+      </div>
+      <div>
+        <label>Sujet</label>
+        <input id="feedback-subject" maxlength="120" placeholder="Ex. bug de partie ranked / idée d'amélioration" oninput="persistFeedbackDraft()" />
+      </div>
+      <div>
+        <label>Message</label>
+        <textarea id="feedback-message" rows="7" placeholder="Décris le bug, l'idée ou l'amélioration proposée…" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:.74rem;padding:10px;resize:vertical" oninput="persistFeedbackDraft()"></textarea>
+      </div>
+      <div>
+        <label>Contact (optionnel)</label>
+        <input id="feedback-contact" maxlength="160" placeholder="Email, Discord ou autre moyen de contact" oninput="persistFeedbackDraft()" />
+      </div>
+      <div style="font-size:.68rem;color:var(--muted)">Le pseudo, le mode de jeu et la page actuelle sont ajoutés automatiquement pour aider au diagnostic.</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" type="button" onclick="submitFeedbackDraft()">✉️ Envoyer</button>
+      <button class="btn btn-blue" type="button" onclick="copyFeedbackDraft()">📋 Copier</button>
+      <button class="btn btn-secondary" type="button" onclick="clearFeedbackDraft()">🧹 Effacer</button>
+    </div>
   </div>
 </div>
 
@@ -3086,6 +3133,7 @@ body.streamer-mode #invite-link {
           <div class="opt-field" data-tip="Fixe une limite de tours pour forcer une fin de partie. 0 = illimité."><label>Max tours (0 = infini)</label><input id="pw-max-turns" type="number" min="0" max="300" value="0" onchange="setMaxTurns(this.value)"/></div>
           <div class="opt-field" data-tip="Déclare le gagnant dès qu’un joueur atteint cette fortune. 0 = désactivé."><label>Objectif fortune (0 = désactivé)</label><input id="pw-goal-money" type="number" min="0" max="50000" value="0" onchange="setGoalMoney(this.value)"/></div>
           <div class="opt-field" data-tip="Condition de victoire basée sur le nombre de groupes complets possédés."><label>Domination quartiers (groupes)</label><input id="pw-domination-groups" type="number" min="0" max="8" value="0" onchange="setDominationTarget(this.value)"/></div>
+          <div class="opt-row" data-tip="Met fin à la partie dès que toutes les propriétés, gares et compagnies sont possédées."><input type="checkbox" id="pw-no-space-chk" onchange="setNoSpaceEnabled(this.checked)"/><label for="pw-no-space-chk">Mode No Space (fin si tout est acheté)</label></div>
           <div class="opt-field" data-tip="Active un format coopératif 2v2 ou 2v2v2 si le nombre de joueurs correspond.">
             <label>Mode équipes</label>
             <select id="pw-team-mode" onchange="setTeamModePreset(this.value)">

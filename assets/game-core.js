@@ -1461,7 +1461,8 @@ const COLORS=['#67f7d7','#8aa1ff','#ff9b74','#ff647c','#d36bff','#ffd166'];
 // ═══════════════════════════════════════
 const G={
   players:[],board:[],cur:0,started:false,rolled:false,
-  doublesCount:0,pendingBuy:null,jailTurns:{},
+  doublesCount:0,pendingBuy:null,financialRescue:null,jailTurns:{},
+  isAnimatingMove:false,moveAnimTimer:null,moveAnimRunId:0,
   txns:[],undoStack:[],
   ws:null,wsOk:false,room:'',mode:'local',myId:null,roomHostId:null,
   matchType:'normal',rankedContext:null,
@@ -1473,6 +1474,7 @@ const G={
   maxTurns:0,
   goalMoney:0,
   dominationTarget:0,
+  noSpaceEnabled:false,
   globalTimerSec:0,
   globalTimerLeft:0,
   globalTimerTick:null,
@@ -1543,6 +1545,12 @@ const NET_TRADE={
   incoming:null,
   incomingTimer:null,
   timeoutMs:30000,
+  limitPerTurn:5,
+  sessionKey:'',
+  turnKey:'',
+  sentThisTurn:0,
+  refusedByTarget:{},
+  blockedTargets:{},
 };
 
 const ROULETTE_SPIN_COST=8;
@@ -2245,6 +2253,8 @@ function openRouletteModal(){
 const PROFILE_KEY='neopoly_profile_v2';
 const PROFILE_SYNC_CHANNEL='neopoly_profile_sync';
 const DEBUG_OWNER_IP_KEY='neopoly_debug_owner_ip_v1';
+const FEEDBACK_EMAIL='matprize055@gmail.com';
+const FEEDBACK_DRAFT_KEY='neopoly_feedback_draft_v1';
 const PROFILE_SYNC_BUS=(typeof BroadcastChannel!=='undefined')?new BroadcastChannel(PROFILE_SYNC_CHANNEL):null;
 let googleTokenClient=null;
 let googleAccessToken=null;
@@ -3708,6 +3718,7 @@ function renderPartyModePreview(){
   if(rematch!=='standard')addChip('🔁','Revanche '+getRematchModeLabel(rematch),'info');
   if(quests!=='off')addChip('🎯','Quêtes '+getMatchQuestModeLabel(quests),'reward');
   if(fog!=='off')addChip('🌫️','Brouillard '+getFogModeLabel(fog),'warn');
+  if(G.noSpaceEnabled)addChip('🧱','No Space','warn');
   if(G.tutorialHintsEnabled)addChip('🧭','Coach visuel','info');
   if(G.endTurnSummaryEnabled)addChip('📋','Résumé fin tour','info');
   const intensityScore=(draft!=='off'?1:0)+(events==='wild'?2:(events!=='off'?1:0))+(survival!=='off'?2:0)+(boss!=='off'?1:0)+(powers==='chaos'?2:(powers!=='off'?1:0))+(fog!=='off'?1:0);
@@ -4600,7 +4611,117 @@ function switchLobbyTab(name){
 }
 function openNewsPane(){switchLobbyTab('news-pane');}
 function openHelpPane(){switchLobbyTab('help-pane');}
+
+function getFeedbackDraftElements(){
+  return {
+    type:document.getElementById('feedback-type'),
+    subject:document.getElementById('feedback-subject'),
+    message:document.getElementById('feedback-message'),
+    contact:document.getElementById('feedback-contact'),
+  };
+}
+
+function loadFeedbackDraft(){
+  const els=getFeedbackDraftElements();
+  if(!els.type||!els.subject||!els.message||!els.contact)return null;
+  try{
+    const raw=localStorage.getItem(FEEDBACK_DRAFT_KEY)||'';
+    const draft=raw?JSON.parse(raw):null;
+    if(draft&&typeof draft==='object'){
+      els.type.value=String(draft.type||els.type.value||'bug');
+      els.subject.value=String(draft.subject||'');
+      els.message.value=String(draft.message||'');
+      els.contact.value=String(draft.contact||'');
+    }
+  }catch(_){ }
+  if(!String(els.contact.value||'').trim()&&P?.googleEmail)els.contact.value=String(P.googleEmail||'');
+  return true;
+}
+
+function persistFeedbackDraft(){
+  const els=getFeedbackDraftElements();
+  if(!els.type||!els.subject||!els.message||!els.contact)return null;
+  const draft={
+    type:String(els.type.value||'bug'),
+    subject:String(els.subject.value||'').slice(0,120),
+    message:String(els.message.value||'').slice(0,4000),
+    contact:String(els.contact.value||'').slice(0,160),
+    updatedAt:Date.now(),
+  };
+  try{localStorage.setItem(FEEDBACK_DRAFT_KEY,JSON.stringify(draft));}catch(_){ }
+  return draft;
+}
+
+function clearFeedbackDraft(){
+  const els=getFeedbackDraftElements();
+  if(els.type)els.type.value='bug';
+  if(els.subject)els.subject.value='';
+  if(els.message)els.message.value='';
+  if(els.contact)els.contact.value=P?.googleEmail?String(P.googleEmail):'';
+  try{localStorage.removeItem(FEEDBACK_DRAFT_KEY);}catch(_){ }
+  toast('Brouillon feedback effacé.','i');
+}
+
+function buildFeedbackPayload(){
+  const draft=persistFeedbackDraft()||{};
+  const typeMap={bug:'Bug',improvement:'Amélioration',balance:'Équilibrage',ux:'UX / Interface',other:'Autre'};
+  const typeKey=String(draft.type||'bug');
+  const typeLabel=typeMap[typeKey]||'Retour';
+  const subject=String(draft.subject||'').trim()||('Retour joueur • '+typeLabel);
+  const message=String(draft.message||'').trim();
+  const playerName=String(P?.name||'Joueur').trim()||'Joueur';
+  const playerUid=String(P?.uid||'').trim();
+  const accountMode=P?.googleConnected?'Google':'Invité';
+  const matchMode=String(G?.matchType||'normal')==='ranked'?'Ranked':'Normal';
+  const lines=[
+    'Type : '+typeLabel,
+    'Sujet : '+subject,
+    'Pseudo : '+playerName+(playerUid?(' ['+playerUid+']'):''),
+    'Compte : '+accountMode,
+    'Mode actuel : '+String(G?.mode||'lobby')+' / '+matchMode,
+    draft.contact?('Contact : '+draft.contact):'',
+    'Page : '+String(window.location.href||''),
+    '',
+    'Message :',
+    message,
+  ].filter(Boolean);
+  return {
+    subject:'[NeoPoly '+typeLabel+'] '+subject,
+    body:lines.join('\n'),
+    message,
+  };
+}
+
+function openFeedbackModal(){
+  loadFeedbackDraft();
+  openModal('modal-feedback');
+}
+
+function copyFeedbackDraft(){
+  const payload=buildFeedbackPayload();
+  if(!payload.message){toast('Décris d’abord ton retour ou le bug rencontré.','w');return;}
+  copyTextToClipboard(payload.body)
+    .then(()=>toast('📋 Feedback copié. Merci !','a'))
+    .catch(()=>toast('Impossible de copier le feedback.','w'));
+}
+
+function submitFeedbackDraft(){
+  const payload=buildFeedbackPayload();
+  if(!payload.message){toast('Décris d’abord ton retour ou le bug rencontré.','w');return;}
+  copyTextToClipboard(payload.body).catch(()=>{});
+  const mailto='mailto:'+encodeURIComponent(FEEDBACK_EMAIL)
+    +'?subject='+encodeURIComponent(payload.subject)
+    +'&body='+encodeURIComponent(payload.body);
+  try{
+    window.location.href=mailto;
+    toast('✉️ Merci ! Ton feedback est prêt à être envoyé.','a');
+  }catch(_){
+    toast('Feedback copié : colle-le dans ton mail ou message.','i');
+  }
+}
+
 function renderTutorialStep(){
+
   const title=document.getElementById('tutorial-step-title');
   const body=document.getElementById('tutorial-step-body');
   const meta=document.getElementById('tutorial-step-meta');
@@ -5896,6 +6017,13 @@ function animPawnArrive(pos){
   el.style.background='rgba(34,197,94,.3)';
   setTimeout(()=>{el.style.background='';el.classList.remove('landed');},1000);
   refreshPawns();
+  const pawns=el.querySelectorAll('.pawn');
+  pawns.forEach(pawn=>{
+    pawn.classList.remove('arriving');
+    void pawn.offsetWidth;
+    pawn.classList.add('arriving');
+    setTimeout(()=>pawn.classList.remove('arriving'),520);
+  });
 }
 
 // ═══════════════════════════════════════
@@ -5962,11 +6090,13 @@ function updBtns(){
     buyBar.classList.remove('open');
   }
   const playerUnavailable=isPlayerUnavailable(p)||(G.mode==='online'&&!G.wsOk);
-  document.getElementById('roll-btn').disabled=G.rolled||playerUnavailable;
-  document.getElementById('end-btn').disabled=playerUnavailable||!G.rolled||!!G.pendingBuy;
+  const rescueActive=!!(p&&!p.bust&&(Number(p.money||0)<0||getFinancialRescueState(p)));
+  const animating=!!G.isAnimatingMove;
+  document.getElementById('roll-btn').disabled=G.rolled||playerUnavailable||rescueActive||animating;
+  document.getElementById('end-btn').disabled=playerUnavailable||!G.rolled||!!G.pendingBuy||rescueActive||animating;
   const skipBtn=document.getElementById('skip-btn');
   if(skipBtn){
-    skipBtn.style.display=(p&&p.jailed&&!G.rolled)?'inline-flex':'none';
+    skipBtn.style.display=(p&&p.jailed&&!G.rolled&&!animating)?'inline-flex':'none';
     skipBtn.textContent=(p&&(p.jailCards||0)>0)?'🃏 Sortir':'🔓 '+G.jailFine+' $';
   }
   refreshPowerupsUi();
@@ -6017,6 +6147,7 @@ function updateCenterActionsPopup(){
   }
 
   const isMobile=window.DEVICE==='mobile';
+  const animating=!!G.isAnimatingMove;
   let html='';
   if(isMobile){
     if(title)title.textContent='Commandes de jeu';
@@ -6026,26 +6157,26 @@ function updateCenterActionsPopup(){
       html += centerActionButton('✅ Acheter','btn-primary btn-sm','confirmBuy()',false);
       html += centerActionButton('❌ Passer','btn-secondary btn-sm','declineBuy()',false);
     }else{
-      html += centerActionButton('🎲 Lancer','btn-primary','doRoll()',G.rolled);
-      html += centerActionButton('➡️ Fin tour','btn-secondary','doNextTurn()',!G.rolled);
-      if(p.jailed&&!G.rolled){
+      html += centerActionButton('🎲 Lancer','btn-primary','doRoll()',G.rolled||animating);
+      html += centerActionButton('➡️ Fin tour','btn-secondary','doNextTurn()',!G.rolled||animating);
+      if(p.jailed&&!G.rolled&&!animating){
         html += centerActionButton('🔓 Payer '+G.jailFine+' $','btn-yellow btn-sm','payJailFine()',false);
       }
     }
-    html += centerActionButton('⚡ Booster dé','btn-yellow btn-sm','useDiceBoostItem()',false);
-    if(isPowerupsAddonEnabled())html += centerActionButton('🛒 Shop','btn-blue btn-sm','openShop()',!!G.pendingBuy);
-    html += centerActionButton('🏠 Maison','btn-blue btn-sm','openHouseModal()',false);
-    html += centerActionButton('🤝 Echange','btn-blue btn-sm','openTradeModal()',false);
-    html += centerActionButton('🏦 Hypo','btn-secondary btn-sm','openMortgageModal()',false);
+    html += centerActionButton('⚡ Booster dé','btn-yellow btn-sm','useDiceBoostItem()',animating);
+    if(isPowerupsAddonEnabled())html += centerActionButton('🛒 Shop','btn-blue btn-sm','openShop()',!!G.pendingBuy||animating);
+    html += centerActionButton('🏠 Maison','btn-blue btn-sm','openHouseModal()',animating);
+    html += centerActionButton('🤝 Echange','btn-blue btn-sm','openTradeModal()',animating);
+    html += centerActionButton('🏦 Hypo','btn-secondary btn-sm','openMortgageModal()',animating);
   }else if(G.pendingBuy){
     if(title)title.textContent='Actions possibles';
     html += centerActionButton('✅ Acheter','btn-primary btn-sm','confirmBuy()',false);
     html += centerActionButton('❌ Passer','btn-secondary btn-sm','declineBuy()',false);
   }else{
     if(title)title.textContent='Actions possibles';
-    html += centerActionButton('🎲 Lancer','btn-primary','doRoll()',G.rolled);
-    html += centerActionButton('➡️ Fin tour','btn-secondary','doNextTurn()',!G.rolled);
-    if(p.jailed&&!G.rolled){
+    html += centerActionButton('🎲 Lancer','btn-primary','doRoll()',G.rolled||animating);
+    html += centerActionButton('➡️ Fin tour','btn-secondary','doNextTurn()',!G.rolled||animating);
+    if(p.jailed&&!G.rolled&&!animating){
       html += centerActionButton('🔓 '+G.jailFine+' $','btn-yellow btn-sm','payJailFine()',false);
     }
   }
@@ -6056,6 +6187,7 @@ function updateCenterActionsPopup(){
     rolled:!!G.rolled,
     pendingBuy:!!G.pendingBuy,
     jailed:!!p.jailed,
+    animating,
     shop:isPowerupsAddonEnabled(),
     html
   });
@@ -6309,7 +6441,7 @@ function stopGlobalTimer(){
 //  ROLL
 // ═══════════════════════════════════════
 function doRoll(){
-  if(!G.started||G.rolled)return;
+  if(!G.started||G.rolled||G.isAnimatingMove)return;
   const p=G.players[G.cur];
   if(isPlayerUnavailable(p))return;
   saveUndo();
@@ -6359,12 +6491,11 @@ function doRoll(){
   const boost=(G.pendingRollBoostFor===p.id)?2:0;if(boost)G.pendingRollBoostFor=null;
   if(boost)toast('⚡ Booster dé: +'+boost,'a');
   movePlayer(p,a+b+boost);
-  renderPlayers();updBtns();broadcast();
 }
 
 function payJailFine(){
   const p=G.players[G.cur];if(!p||!p.jailed
-  ||G.rolled)return;
+  ||G.rolled||G.isAnimatingMove)return;
   if((p.jailCards||0)>0){
     p.jailCards=Math.max(0,(p.jailCards||0)-1);
     p.jailed=false;delete G.jailTurns[p.id];G.doublesCount=0;
@@ -6386,26 +6517,58 @@ function payJailFine(){
 //  MOVE
 // ═══════════════════════════════════════
 function movePlayer(p,steps){
-  if(!steps||steps<=0)return;
+  const totalSteps=Math.max(0,parseInt(steps,10)||0);
+  if(!p||totalSteps<=0)return;
+  if(G.moveAnimTimer){clearTimeout(G.moveAnimTimer);G.moveAnimTimer=null;}
+  const runId=(parseInt(G.moveAnimRunId,10)||0)+1;
+  G.moveAnimRunId=runId;
+  G.isAnimatingMove=true;
   const old=p.pos;
-  p.pos=(old+steps)%40;
-  if(old+steps>=40){
-    ensurePlayerMatchStats(p).passedGo=(ensurePlayerMatchStats(p).passedGo||0)+1;
-    let passBonus=G.passGoBonus;
-    const ev=getActiveBoardEvent();
-    if(ev?.goBonusMultiplier)passBonus=Math.round(passBonus*ev.goBonusMultiplier);
-    p.money+=passBonus;recordTxn(p,passBonus,'Passage Départ');
-    glog(p.name+' passe par Départ → +'+passBonus+'$.','a');toast('🚦 +'+passBonus+'$ !','a');
-    const powerMode=normalizeSpecialPowersMode(G.specialPowersMode);
-    const passItemChance=powerMode==='chaos'?0.22:(powerMode==='normal'?0.12:0);
-    if(passItemChance>0&&Math.random()<passItemChance)grantRandomMatchItem(p,'passage départ');
-  }
-  const cell=G.board[p.pos];
-  animPawnArrive(p.pos);
-  glog(p.name+' → '+cell.n+'.');
-  toast('📍 '+p.name+' arrive sur '+cell.n,'i');
-  resolveCell(p,cell);
-  updateSecretObjectiveProgress();
+  const lowFx=!!document.documentElement?.classList?.contains('mobile-lowfx');
+  const stepDelay=lowFx?90:(totalSteps>=10?115:135);
+  let progressed=0;
+
+  const finishMove=()=>{
+    if(G.moveAnimRunId!==runId)return;
+    G.isAnimatingMove=false;
+    G.moveAnimTimer=null;
+    const cell=G.board[p.pos];
+    renderPlayers();updBtns();broadcast();
+    glog(p.name+' → '+cell.n+'.');
+    toast('📍 '+p.name+' arrive sur '+cell.n,'i');
+    resolveCell(p,cell);
+    updateSecretObjectiveProgress();
+  };
+
+  const stepForward=()=>{
+    if(G.moveAnimRunId!==runId)return;
+    progressed++;
+    const absolutePos=old+progressed;
+    p.pos=((absolutePos%40)+40)%40;
+    if(absolutePos>=40&&absolutePos-1<40){
+      ensurePlayerMatchStats(p).passedGo=(ensurePlayerMatchStats(p).passedGo||0)+1;
+      let passBonus=G.passGoBonus;
+      const ev=getActiveBoardEvent();
+      if(ev?.goBonusMultiplier)passBonus=Math.round(passBonus*ev.goBonusMultiplier);
+      p.money+=passBonus;recordTxn(p,passBonus,'Passage Départ');
+      glog(p.name+' passe par Départ → +'+passBonus+'$.','a');toast('🚦 +'+passBonus+'$ !','a');
+      const powerMode=normalizeSpecialPowersMode(G.specialPowersMode);
+      const passItemChance=powerMode==='chaos'?0.22:(powerMode==='normal'?0.12:0);
+      if(passItemChance>0&&Math.random()<passItemChance)grantRandomMatchItem(p,'passage départ');
+    }
+    renderPlayers();
+    animPawnArrive(p.pos);
+    updBtns();
+    broadcast();
+    if(progressed>=totalSteps){
+      finishMove();
+      return;
+    }
+    G.moveAnimTimer=setTimeout(stepForward,stepDelay);
+  };
+
+  renderPlayers();updBtns();broadcast();
+  stepForward();
 }
 
 // ═══════════════════════════════════════
@@ -6557,9 +6720,6 @@ function confirmBuy(){
   glog(p.name+' achète '+cell.n+' pour '+cell.p+'$.','a');
   toast('🏠 Acheté: '+cell.n,'a');
   hideBuyBar();refreshOwners();renderPlayers();broadcast();
-  if(G.autoEnd&&G.started&&G.rolled&&!G.pendingBuy){
-    setTimeout(()=>doNextTurn(),450);
-  }
   if(p.id===G.myId&&canTrackProfileStatsInCurrentMatch()){
     P.stats.propertiesBought++;
     saveProfileData();
@@ -6568,6 +6728,10 @@ function confirmBuy(){
   }
   if(isProfileControlledPlayer(p)&&canAwardPersistentProfileProgressInCurrentMatch())addSeasonProgress(10,'achat propriété');
   updateSecretObjectiveProgress();
+  if(checkPartyObjectives())return;
+  if(G.autoEnd&&G.started&&G.rolled&&!G.pendingBuy){
+    setTimeout(()=>doNextTurn(),450);
+  }
 }
 
 function declineBuy(){
@@ -6582,6 +6746,52 @@ function hideBuyBar(){
   G.pendingBuy=null;
   document.getElementById('buy-bar').classList.remove('open');
   updBtns();
+}
+
+function getFinancialRescueState(player){
+  const rescue=G&&G.financialRescue&&typeof G.financialRescue==='object'?G.financialRescue:null;
+  if(!rescue)return null;
+  const playerId=typeof player==='object'?(player&&player.id):player;
+  if(playerId&&rescue.playerId!==playerId)return null;
+  return rescue;
+}
+
+function clearFinancialRescue(player,options){
+  const rescue=getFinancialRescueState(player);
+  if(!rescue)return false;
+  G.financialRescue=null;
+  const opts=options&&typeof options==='object'?options:{};
+  if(!opts.silent){
+    renderPlayers();updBtns();broadcast();
+  }
+  return true;
+}
+
+function getMortgageableCells(player){
+  if(!player)return [];
+  return (G.board||[]).filter(cell=>
+    cell&&cell.owner===player.id&&['property','railroad','utility'].includes(cell.t)&&!cell.mortgaged
+  );
+}
+
+function shouldOfferFinancialRescue(player){
+  return !!(player&&!player.bust&&Number(player.money||0)<0&&getMortgageableCells(player).length>0);
+}
+
+function startFinancialRescue(player,reason=''){ 
+  if(!player||player.bust)return false;
+  G.financialRescue={
+    playerId:player.id,
+    reason:String(reason||''),
+    needed:Math.max(0,Math.ceil(-Number(player.money||0))),
+    startedAt:Date.now(),
+  };
+  renderPlayers();updBtns();broadcast();
+  if(G.mode!=='online'||isProfileControlledPlayer(player)){
+    setTimeout(()=>openMortgageModal(),40);
+    toast('🏦 Hypothèque tes cases pour éviter la faillite.','w');
+  }
+  return true;
 }
 
 // ═══════════════════════════════════════
@@ -6678,12 +6888,31 @@ function sellHouse(idx){
   refreshHouses();renderPlayers();broadcast();
 }
 
+function declareBankruptcyFromRescue(){
+  const p=G.players[G.cur];
+  if(!p||p.bust)return;
+  if(!confirm('Déclarer faillite maintenant ?'))return;
+  finalizeBankruptcy(p);
+}
+
 function openMortgageModal(){
   const p=G.players[G.cur];if(!p)return;
   const props=G.board.filter(c=>c.owner===p.id&&['property','railroad','utility'].includes(c.t));
   const body=document.getElementById('mortgage-body');
-  if(!props.length){body.innerHTML='<div style="color:var(--muted);font-size:.75rem">Aucune propriété.</div>';openModal('modal-mortgage');return;}
+  const rescue=getFinancialRescueState(p);
+  const rescueNeed=Math.max(0,Math.ceil(-Number(p.money||0)));
+  if(!props.length){
+    body.innerHTML='<div style="color:var(--muted);font-size:.75rem">Aucune propriété.</div>';
+    if(rescue&&p.money<0){
+      body.innerHTML+='<div class="card" style="padding:8px 10px;margin-top:8px;font-size:.72rem;color:#fca5a5">☠️ Plus aucun bien à hypothéquer. Il manque encore <b>'+rescueNeed+'$</b>.</div>';
+    }
+    openModal('modal-mortgage');
+    return;
+  }
   body.innerHTML='';
+  if(rescue&&p.money<0){
+    body.innerHTML='<div class="card" style="padding:8px 10px;margin-bottom:10px;font-size:.72rem;color:#fde68a">🏦 Solde négatif : il te manque <b>'+rescueNeed+'$</b>. Hypothèque des biens pour éviter la faillite.</div>';
+  }
   props.forEach(cell=>{
     const val=Math.floor(cell.p*.5);
     const cost=Math.floor(cell.p*.55);
@@ -6697,23 +6926,53 @@ function openMortgageModal(){
     btn.onclick=()=>{
       if(cell.mortgaged)unmortgageProp(G.board.indexOf(cell));
       else mortgageProp(G.board.indexOf(cell));
-      openMortgageModal();
+      if(!p.bust)openMortgageModal();
     };
     row.appendChild(btn);body.appendChild(row);
   });
+  if(rescue&&p.money<0){
+    const foot=document.createElement('div');
+    foot.className='btn-row';
+    foot.style.marginTop='10px';
+    foot.innerHTML='<button class="btn btn-danger btn-sm" type="button" onclick="declareBankruptcyFromRescue()">☠️ Déclarer faillite</button>';
+    body.appendChild(foot);
+  }
   openModal('modal-mortgage');
 }
 
-function mortgageProp(idx){
-  const p=G.players[G.cur];const cell=G.board[idx];
-  if(!cell||cell.mortgaged)return;
-  saveUndo();
+function mortgagePropForPlayer(player,idx,options){
+  const p=player&&typeof player==='object'?player:G.players[G.cur];
+  const cell=G.board[idx];
+  const opts=options&&typeof options==='object'?options:{};
+  if(!p||!cell||cell.mortgaged||cell.owner!==p.id||!['property','railroad','utility'].includes(cell.t))return false;
+  if(!opts.skipUndo)saveUndo();
   const val=Math.floor(cell.p*.5);
   p.money+=val;recordTxn(p,val,'Hypothèque: '+cell.n);
   cell.mortgaged=true;
   glog(p.name+' hypothèque '+cell.n+' (+'+val+'$).','w');
-  toast('📥 Hypothèque +'+val+'$','w');
-  refreshOwners();renderPlayers();broadcast();
+  if(!opts.skipToast)toast('📥 Hypothèque +'+val+'$','w');
+
+  const rescue=getFinancialRescueState(p);
+  if(!opts.skipRescueCheck&&rescue){
+    if(p.money>=0){
+      clearFinancialRescue(p,{silent:true});
+      glog(p.name+' évite la faillite grâce aux hypothèques.','a');
+      toast('🏦 Faillite évitée, trésorerie rétablie !','a');
+      closeModal('modal-mortgage');
+    }else if(!getMortgageableCells(p).length){
+      finalizeBankruptcy(p);
+      return true;
+    }
+  }
+
+  if(!opts.skipRefresh){
+    refreshOwners();renderPlayers();updBtns();broadcast();
+  }
+  return true;
+}
+
+function mortgageProp(idx){
+  return mortgagePropForPlayer(G.players[G.cur],idx);
 }
 
 function unmortgageProp(idx){
@@ -6749,40 +7008,109 @@ function getTradableCellListByOwner(ownerId){
   );
 }
 
+function syncTradeLimiterState(){
+  const playerSignature=(G.players||[]).map(p=>p&&p.id?String(p.id):'').filter(Boolean).join('|');
+  const sessionKey=[G.mode||'local',G.room||'',playerSignature].join('::');
+  if(NET_TRADE.sessionKey!==sessionKey){
+    NET_TRADE.sessionKey=sessionKey;
+    NET_TRADE.turnKey='';
+    NET_TRADE.sentThisTurn=0;
+    NET_TRADE.refusedByTarget={};
+    NET_TRADE.blockedTargets={};
+  }
+  const activePlayer=G.players?.[G.cur]||null;
+  const turnKey=[activePlayer?.id||'none',G.turnCount||0].join('::');
+  if(NET_TRADE.turnKey!==turnKey){
+    NET_TRADE.turnKey=turnKey;
+    NET_TRADE.sentThisTurn=0;
+  }
+}
+
+function getTradeOffersLeftThisTurn(){
+  syncTradeLimiterState();
+  const limit=Math.max(1,parseInt(NET_TRADE.limitPerTurn,10)||5);
+  const used=Math.max(0,parseInt(NET_TRADE.sentThisTurn,10)||0);
+  return Math.max(0,limit-used);
+}
+
+function getTradeRefusalsForTarget(targetId){
+  syncTradeLimiterState();
+  if(!targetId)return 0;
+  return Math.max(0,parseInt(NET_TRADE.refusedByTarget[targetId],10)||0);
+}
+
+function isTradeBlockedForTarget(targetId){
+  syncTradeLimiterState();
+  if(!targetId)return false;
+  return !!NET_TRADE.blockedTargets[targetId]||getTradeRefusalsForTarget(targetId)>=3;
+}
+
+function getTradeBlockedMessage(playerName){
+  return '🚫 Échanges bloqués avec '+String(playerName||'ce joueur')+' après 3 refus.';
+}
+
+function markTradeOfferRefused(targetId,targetName){
+  syncTradeLimiterState();
+  if(!targetId)return 0;
+  const next=Math.max(0,getTradeRefusalsForTarget(targetId)+1);
+  NET_TRADE.refusedByTarget[targetId]=next;
+  if(next>=3)NET_TRADE.blockedTargets[targetId]=true;
+  if(document.getElementById('modal-trade')?.classList.contains('open'))openTradeModal();
+  if(next>=3)glog('🚫 Échanges bloqués avec '+String(targetName||'ce joueur')+' après 3 refus.','w');
+  return next;
+}
+
 function openTradeModal(){
   if(!G.started){toast('Lance une partie d\'abord.','w');return;}
+  if(G.isAnimatingMove){toast('⏳ Déplacement en cours...','i');return;}
   const me=G.players[G.cur];
   if(isPlayerUnavailable(me))return;
   if(!isProfileControlledPlayer(me)){toast('Ce n\'est pas ton tour.','w');return;}
 
   const body=document.getElementById('trade-body');
   if(!body)return;
+  syncTradeLimiterState();
   const others=G.players.filter(p=>p.id!==me.id&&!p.bust&&!p.disconnected);
   const outgoingList=Object.values(NET_TRADE.outgoing||{});
   const pendingOffer=outgoingList[0]||null;
   const pendingLeft=pendingOffer?Math.max(1,Math.ceil(((parseInt(pendingOffer.expiresAt,10)||Date.now())-Date.now())/1000)):0;
   const myCells=getTradableCellListByOwner(me.id);
   const othersCells=G.board.filter(c=>c.owner&&c.owner!==me.id&&['property','railroad','utility'].includes(c.t));
+  const tradeLimit=Math.max(1,parseInt(NET_TRADE.limitPerTurn,10)||5);
+  const offersSent=Math.max(0,parseInt(NET_TRADE.sentThisTurn,10)||0);
+  const offersLeft=Math.max(0,tradeLimit-offersSent);
+  const blockedPlayers=others.filter(player=>isTradeBlockedForTarget(player.id));
+  const hasAvailableTargets=othersCells.some(cell=>!isTradeBlockedForTarget(cell.owner));
 
   const buyRows=othersCells.map(cell=>{
     const idx=G.board.indexOf(cell);
     const owner=G.players.find(p=>p.id===cell.owner);
     const locked=(cell.mortgaged||((cell.houses||0)>0));
+    const blockedTradeTarget=!!(owner&&isTradeBlockedForTarget(owner.id));
+    const requestLocked=!!(locked||pendingOffer||(G.mode==='online'&&(offersLeft<=0||blockedTradeTarget)));
     const suggested=Math.max(1,Math.floor((cell.p||0)*1.1));
     return `<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:.74rem">
-      <span style="flex:1;min-width:0">${cell.ico} ${cell.n} <span style="color:${owner?.color||'#9ca3af'}">(${owner?.name||'?'})</span>${cell.mortgaged?' <span style="color:#f97316">HYPO</span>':''}${(cell.houses||0)>0?' <span style="color:#fde047">🏠x'+(cell.houses||0)+'</span>':''}</span>
-      <input id="trade-buy-price-${idx}" type="number" min="1" value="${suggested}" style="width:84px" ${locked?'disabled':''}/>
-      <button class="btn btn-primary btn-xs" onclick="buyCellFromPlayer(${idx})" ${locked?'disabled':''}>${G.mode==='online'?'Demander':'Acheter'}</button>
+      <span style="flex:1;min-width:0">${cell.ico} ${cell.n} <span style="color:${owner?.color||'#9ca3af'}">(${owner?.name||'?'})</span>${cell.mortgaged?' <span style="color:#f97316">HYPO</span>':''}${(cell.houses||0)>0?' <span style="color:#fde047">🏠x'+(cell.houses||0)+'</span>':''}${blockedTradeTarget?' <span style="color:#f87171">🚫 3 refus</span>':''}</span>
+      <input id="trade-buy-price-${idx}" type="number" min="1" value="${suggested}" style="width:84px" ${requestLocked?'disabled':''}/>
+      <button class="btn btn-primary btn-xs" onclick="buyCellFromPlayer(${idx})" ${requestLocked?'disabled':''}>${G.mode==='online'?'Demander':'Acheter'}</button>
     </div>`;
   }).join('');
 
   const myOptions=myCells.map(cell=>`<option value="${G.board.indexOf(cell)}">${cell.ico} ${cell.n}${cell.mortgaged?' [HYPO]':''}${(cell.houses||0)>0?' [🏠x'+(cell.houses||0)+']':''}</option>`).join('');
   const otherOptions=othersCells.map(cell=>{
     const owner=G.players.find(p=>p.id===cell.owner);
-    return `<option value="${G.board.indexOf(cell)}">${cell.ico} ${cell.n} (${owner?.name||'?'})${cell.mortgaged?' [HYPO]':''}${(cell.houses||0)>0?' [🏠x'+(cell.houses||0)+']':''}</option>`;
+    const blockedNote=(owner&&isTradeBlockedForTarget(owner.id))?' [🚫 bloqué]':'';
+    return `<option value="${G.board.indexOf(cell)}">${cell.ico} ${cell.n} (${owner?.name||'?'})${cell.mortgaged?' [HYPO]':''}${(cell.houses||0)>0?' [🏠x'+(cell.houses||0)+']':''}${blockedNote}</option>`;
   }).join('');
 
+  const swapDisabled=(!myCells.length||!othersCells.length||!!pendingOffer||(G.mode==='online'&&(!hasAvailableTargets||offersLeft<=0)));
+
   body.innerHTML=`
+    ${G.mode==='online'?`<div class="card" style="padding:10px 12px;border-color:#60a5fa66;margin-bottom:8px">
+      <div style="font-size:.76rem;font-weight:800;margin-bottom:4px;color:#93c5fd">📨 Demandes d'échange ce tour : ${offersSent}/${tradeLimit}</div>
+      <div style="font-size:.68rem;color:var(--muted)">Il te reste <b>${offersLeft}</b> proposition(s) ce tour. Après <b>3 refus</b> d'un même joueur, les échanges avec lui sont bloqués.</div>
+      ${blockedPlayers.length?`<div style="font-size:.67rem;color:#fca5a5;margin-top:6px">Bloqués: ${blockedPlayers.map(player=>escapeHtml(player.name||'Joueur')).join(', ')}</div>`:''}
+    </div>`:''}
     ${pendingOffer?`<div class="card" style="padding:10px 12px;border-color:#f59e0b66">
       <div style="font-size:.76rem;font-weight:800;margin-bottom:6px;color:#fbbf24">⏳ Demande en attente (${pendingLeft}s)</div>
       <div style="font-size:.7rem;color:var(--muted);margin-bottom:8px">${describeTradeOffer(pendingOffer)}</div>
@@ -6814,7 +7142,7 @@ function openTradeModal(){
             <input id="trade-cash-other" type="number" min="0" value="0"/>
           </div>
         </div>
-        <button class="btn btn-blue btn-sm" onclick="exchangeCellsBetweenPlayers()" ${(!myCells.length||!othersCells.length)?'disabled':''}>${G.mode==='online'?'Envoyer la demande':'Valider l\'echange'}</button>
+        <button class="btn btn-blue btn-sm" onclick="exchangeCellsBetweenPlayers()" ${swapDisabled?'disabled':''}>${G.mode==='online'?'Envoyer la demande':'Valider l\'echange'}</button>
       </div>
     </div>`;
 
@@ -6868,15 +7196,25 @@ function applySwapCellsTransfer(me,other,myCell,otherCell,cashMe,cashOther){
 
 function sendTradeOffer(offer){
   if(!offer||!offer.id)return false;
+  syncTradeLimiterState();
   const pendingCount=Object.keys(NET_TRADE.outgoing).length;
   if(pendingCount>0){
     toast('Une offre est déjà en attente de réponse.','w');
     return false;
   }
+  const targetName=G.players.find(p=>p.id===offer.targetId)?.name||'ce joueur';
+  if(isTradeBlockedForTarget(offer.targetId)){
+    toast(getTradeBlockedMessage(targetName),'w');
+    return false;
+  }
+  if(getTradeOffersLeftThisTurn()<=0){
+    toast('Limite atteinte : 5 propositions d\'échange max par tour.','w');
+    return false;
+  }
   offer.expiresAt=Date.now()+NET_TRADE.timeoutMs;
   NET_TRADE.outgoing[offer.id]={...offer};
   NET_TRADE.outgoing[offer.id]._timer=setTimeout(()=>expireOutgoingTradeOffer(offer.id),NET_TRADE.timeoutMs+200);
-  return sendWsMessage({
+  const sent=sendWsMessage({
     type:'trade_offer',
     room:G.room,
     sender:G.myId,
@@ -6884,6 +7222,13 @@ function sendTradeOffer(offer){
     targetId:offer.targetId,
     offer,
   });
+  if(!sent){
+    clearOutgoingTradeOffer(offer.id);
+    return false;
+  }
+  NET_TRADE.sentThisTurn=Math.max(0,parseInt(NET_TRADE.sentThisTurn,10)||0)+1;
+  if(document.getElementById('modal-trade')?.classList.contains('open'))openTradeModal();
+  return true;
 }
 
 function clearOutgoingTradeOffer(offerId){
@@ -6977,7 +7322,10 @@ function handleIncomingTradeResponse(msg){
     return;
   }
   if(!msg.accepted){
-    toast('❌ '+(msg.senderName||'Le joueur')+' a refusé la demande.','w');
+    const targetName=msg.senderName||'Le joueur';
+    const refusalCount=markTradeOfferRefused(offer.targetId,targetName);
+    if(refusalCount>=3)toast(getTradeBlockedMessage(targetName),'w');
+    else toast('❌ '+targetName+' a refusé la demande ('+refusalCount+'/3).','w');
     return;
   }
 
@@ -7016,6 +7364,10 @@ function buyCellFromPlayer(idx){
   const price=Math.max(0,parseInt(priceInput?.value,10)||0);
   if(price<=0){toast('Prix invalide.','d');return;}
   if(me.money<price){toast('Pas assez d\'argent.','d');return;}
+  if(G.mode==='online'&&seller.id!==me.id&&isTradeBlockedForTarget(seller.id)){
+    toast(getTradeBlockedMessage(seller.name),'w');
+    return;
+  }
 
   if(G.mode==='online'&&G.wsOk&&seller.id!==me.id){
     const offer={
@@ -7064,6 +7416,10 @@ function exchangeCellsBetweenPlayers(){
   if(!other||other.bust){toast('Autre joueur indisponible.','w');return;}
   if(me.money<cashMe){toast('Tu n\'as pas assez de cash.','d');return;}
   if(other.money<cashOther){toast(other.name+' n\'a pas assez de cash.','d');return;}
+  if(G.mode==='online'&&other.id!==me.id&&isTradeBlockedForTarget(other.id)){
+    toast(getTradeBlockedMessage(other.name),'w');
+    return;
+  }
 
   if(G.mode==='online'&&G.wsOk&&other.id!==me.id){
     const offer={
@@ -7091,18 +7447,71 @@ function exchangeCellsBetweenPlayers(){
 // ═══════════════════════════════════════
 //  BUST & WIN
 // ═══════════════════════════════════════
-function checkBust(p){
-  if(p.money>=0||p.bust)return;
+function finalizeBankruptcy(p){
+  if(!p||p.bust)return false;
+  clearFinancialRescue(p,{silent:true});
   p.bust=true;
-  // Release all properties
   G.board.forEach(c=>{if(c.owner===p.id){c.owner=null;c.houses=0;c.mortgaged=false;}});
   glog(p.name+' est en faillite ! 💀','d');
   toast('💀 '+p.name+' est en faillite !','d');
+  const profileBust=typeof isProfileControlledPlayer==='function'&&isProfileControlledPlayer(p);
+  const canTrackStats=typeof canTrackProfileStatsInCurrentMatch==='function'&&canTrackProfileStatsInCurrentMatch();
+  const canProgress=typeof canAwardPersistentProfileProgressInCurrentMatch==='function'&&canAwardPersistentProfileProgressInCurrentMatch();
+  if(profileBust&&canTrackStats){
+    P.stats.bankruptcies=Math.max(0,(parseInt(P.stats?.bankruptcies,10)||0)+1);
+    if(canProgress&&typeof checkSecretTitles==='function')checkSecretTitles();
+    if(typeof saveProfileData==='function')saveProfileData();
+    renderLobbyProfileTab?.();
+  }
+  closeModal('modal-mortgage');
   refreshOwners();refreshHouses();
   renderAlliancePanel();
-  if(checkTeamVictory())return;
-  const alive=G.players.filter(p=>!p.bust);
+  if(checkTeamVictory())return true;
+  const alive=G.players.filter(player=>!player.bust);
   if(alive.length<=1)endGame(alive[0]);
+  return true;
+}
+
+function autoMortgageForBankruptcyRescue(player){
+  const options=getMortgageableCells(player)
+    .map(cell=>({idx:G.board.indexOf(cell),value:Math.floor((Number(cell.p)||0)*0.5)}))
+    .filter(entry=>entry.idx>=0)
+    .sort((a,b)=>(b.value-a.value)||(b.idx-a.idx));
+  let used=0;
+  options.forEach(entry=>{
+    if((player.money||0)>=0)return;
+    if(mortgagePropForPlayer(player,entry.idx,{skipUndo:used>0,skipRefresh:true,skipToast:true,skipRescueCheck:true}))used++;
+  });
+  if(used>0){
+    glog(player.name+' hypothèque '+used+' bien(s) pour éviter la faillite.','w');
+    refreshOwners();renderPlayers();updBtns();broadcast();
+  }
+  return (player.money||0)>=0;
+}
+
+function checkBust(p){
+  if(!p||p.bust)return false;
+  if(p.money>=0){
+    if(getFinancialRescueState(p))clearFinancialRescue(p,{silent:true});
+    return false;
+  }
+  if(p.bot&&shouldOfferFinancialRescue(p)){
+    if(autoMortgageForBankruptcyRescue(p)){
+      toast('🏦 '+p.name+' évite la faillite grâce à une hypothèque.','i');
+      return false;
+    }
+  }
+  const canManualRescue=(G.mode!=='online'||isProfileControlledPlayer(p));
+  if(canManualRescue&&shouldOfferFinancialRescue(p)){
+    const rescue=getFinancialRescueState(p);
+    if(!rescue)startFinancialRescue(p,'negative_balance');
+    else{
+      rescue.needed=Math.max(0,Math.ceil(-Number(p.money||0)));
+      if(!document.getElementById('modal-mortgage')?.classList.contains('open'))setTimeout(()=>openMortgageModal(),20);
+    }
+    return false;
+  }
+  return finalizeBankruptcy(p);
 }
 
 function endGame(winner){
@@ -7213,6 +7622,15 @@ function getLeaderByNetWorth(){
   return [...alive].sort((a,b)=>getPlayerNetWorth(b,eco)-getPlayerNetWorth(a,eco))[0]||null;
 }
 
+function getOwnableBoardCells(){
+  return (G.board||[]).filter(cell=>cell&&['property','railroad','utility'].includes(cell.t)&&Number(cell.p||0)>0);
+}
+
+function areAllOwnableCellsOwned(){
+  const cells=getOwnableBoardCells();
+  return !!cells.length&&cells.every(cell=>cell.owner!=null);
+}
+
 function checkPartyObjectives(){
   if(G.goalMoney>0){
     const winner=G.players.find(p=>!p.bust&&!p.disconnected&&p.money>=G.goalMoney);
@@ -7232,6 +7650,13 @@ function checkPartyObjectives(){
       return true;
     }
   }
+  if(G.noSpaceEnabled&&areAllOwnableCellsOwned()){
+    const winner=getLeaderByNetWorth();
+    glog('🧱 Mode No Space : toutes les cases achetables sont possédées.','a');
+    toast('🧱 No Space : tout le plateau est acheté','a');
+    endGame(winner);
+    return true;
+  }
   if(G.maxTurns>0&&G.turnCount>G.maxTurns){
     const winner=getLeaderByNetWorth();
     glog('⏱️ Limite de tours atteinte ('+G.maxTurns+').','w');
@@ -7246,8 +7671,15 @@ function checkPartyObjectives(){
 //  NEXT TURN
 // ═══════════════════════════════════════
 function doNextTurn(){
-  if(!G.started||!G.rolled||G.pendingBuy)return;
+  if(!G.started||!G.rolled||G.pendingBuy||G.isAnimatingMove)return;
   const curP=G.players[G.cur];
+  if(curP&&!curP.bust&&(Number(curP.money||0)<0||getFinancialRescueState(curP))){
+    if(G.mode!=='online'||isProfileControlledPlayer(curP)){
+      openMortgageModal();
+      toast('🏦 Hypothèque ou déclare la faillite avant de finir le tour.','w');
+    }
+    return;
+  }
   if(curP){
     const matchStats=ensurePlayerMatchStats(curP);
     matchStats.turnsPlayed=(matchStats.turnsPlayed||0)+1;
@@ -8255,6 +8687,8 @@ function refreshPartyRuleUi(){
   const mt=document.getElementById('pw-max-turns');
   const gm=document.getElementById('pw-goal-money');
   const dom=document.getElementById('pw-domination-groups');
+  const noSpace=document.getElementById('pw-no-space-chk');
+  const cfgNoSpace=document.getElementById('cfg-no-space-chk');
   const gt=document.getElementById('pw-global-timer');
   const inf=document.getElementById('pw-inflation-chk');
   const infRate=document.getElementById('pw-inflation-rate');
@@ -8285,6 +8719,8 @@ function refreshPartyRuleUi(){
   if(mt)mt.value=G.maxTurns;
   if(gm)gm.value=G.goalMoney;
   if(dom)dom.value=G.dominationTarget;
+  if(noSpace)noSpace.checked=!!G.noSpaceEnabled;
+  if(cfgNoSpace)cfgNoSpace.checked=!!G.noSpaceEnabled;
   if(gt)gt.value=G.globalTimerSec;
   if(inf)inf.checked=!!G.inflationEnabled;
   if(infRate)infRate.value=G.inflationRate;
@@ -8309,6 +8745,8 @@ function refreshPartyRuleUi(){
 
   if(teamPreset)teamPreset.disabled=!editable;
   if(cfgTeamPreset)cfgTeamPreset.disabled=isPartyOptionsLocked();
+  if(noSpace)noSpace.disabled=!editable;
+  if(cfgNoSpace)cfgNoSpace.disabled=isPartyOptionsLocked();
   if(turnTimer)turnTimer.disabled=!editable;
   if(turnTimerDur)turnTimerDur.disabled=!editable||!G.timerEnabled;
   if(infRate)infRate.disabled=!editable||!G.inflationEnabled;
@@ -8374,6 +8812,12 @@ function setDominationTarget(v){
   const n=Math.max(0,Math.min(8,parseInt(v,10)||0));
   G.dominationTarget=n;
   refreshPartyRuleUi();
+}
+
+function setNoSpaceEnabled(v){
+  G.noSpaceEnabled=!!v;
+  refreshPartyRuleUi();
+  if(G.started)checkPartyObjectives();
 }
 
 function setGlobalTimerSec(v){
@@ -8478,10 +8922,11 @@ function renderInventoryUi(){
   const b=document.getElementById('boost-btn');
   const p=G.players[G.cur];
   const controlled=!!(p&&isProfileControlledPlayer(p));
+  const animating=!!G.isAnimatingMove;
   if(b){
     const qty=i.diceBoost||0;
     b.textContent='⚡ Booster dé ('+qty+')';
-    b.disabled=qty<=0||!G.started||G.rolled||!controlled;
+    b.disabled=qty<=0||!G.started||G.rolled||!controlled||animating;
   }
   refreshPowerupsUi();
 }
@@ -8503,13 +8948,14 @@ function renderMatchItemsUi(){
   const j=document.getElementById('match-jail');if(j)j.textContent=controlled?String(mi.antiJail||0):'—';
   const m=document.getElementById('match-discount');if(m)m.textContent=controlled?String(mi.mortgageDiscount||0):'—';
   const b=document.getElementById('boost-btn');
+  const animating=!!G.isAnimatingMove;
   if(b){
     const qMatch=mi.diceBoost||0;
     const qPers=(P.inventory?.diceBoost||0);
     b.textContent=controlled
       ?'⚡ Booster dé ('+qMatch+' temp / '+qPers+' pers)'
       :'⚡ Booster dé';
-    b.disabled=(qMatch+qPers)<=0||!G.started||G.rolled||!controlled;
+    b.disabled=(qMatch+qPers)<=0||!G.started||G.rolled||!controlled||animating;
   }
 }
 
@@ -8810,7 +9256,7 @@ window.addEventListener('storage',e=>{
 function applyPartyPreset(kind){
   if(kind==='classic'){
     setStartingMoney(1500);setPassGoBonus(200);setJailFine(50);setMaxTurns(0);setGoalMoney(0);
-    setDominationTarget(0);setGlobalTimerSec(0);setInflationEnabled(false);setInflationRate(2);
+    setDominationTarget(0);setNoSpaceEnabled(false);setGlobalTimerSec(0);setInflationEnabled(false);setInflationRate(2);
     setTaxVarianceEnabled(false);setBonusTurnEnabled(false);setBonusTurnChance(12);setParkingPotEnabled(false);
     setTeamModePreset('off');
     setStartDraftMode('off');setWorldEventMode('normal');setSurvivalMode('off');setBossBotMode('off');
@@ -8819,7 +9265,7 @@ function applyPartyPreset(kind){
     setAutoEnd(false);setTimerEnabled(false);
   }else if(kind==='quick'){
     setStartingMoney(1200);setPassGoBonus(150);setJailFine(75);setMaxTurns(40);setGoalMoney(5000);
-    setDominationTarget(0);setGlobalTimerSec(1200);setInflationEnabled(true);setInflationRate(2.5);
+    setDominationTarget(0);setNoSpaceEnabled(false);setGlobalTimerSec(1200);setInflationEnabled(true);setInflationRate(2.5);
     setTaxVarianceEnabled(true);setBonusTurnEnabled(true);setBonusTurnChance(18);setParkingPotEnabled(true);
     setTeamModePreset('off');
     setStartDraftMode('light');setWorldEventMode('normal');setSurvivalMode('soft');setBossBotMode('off');
@@ -8828,7 +9274,7 @@ function applyPartyPreset(kind){
     setAutoEnd(true);setTimerEnabled(true);setTimerDuration(30);
   }else if(kind==='chaos'){
     setStartingMoney(2500);setPassGoBonus(350);setJailFine(0);setMaxTurns(25);setGoalMoney(12000);
-    setDominationTarget(2);setGlobalTimerSec(900);setInflationEnabled(true);setInflationRate(4);
+    setDominationTarget(2);setNoSpaceEnabled(false);setGlobalTimerSec(900);setInflationEnabled(true);setInflationRate(4);
     setTaxVarianceEnabled(true);setBonusTurnEnabled(true);setBonusTurnChance(30);setParkingPotEnabled(true);
     setTeamModePreset('off');
     setStartDraftMode('strategic');setWorldEventMode('wild');setSurvivalMode('hard');setBossBotMode('standard');
@@ -8850,6 +9296,7 @@ function saveCustomPreset(slot){
     maxTurns:G.maxTurns,
     goalMoney:G.goalMoney,
     dominationTarget:G.dominationTarget,
+    noSpaceEnabled:G.noSpaceEnabled,
     globalTimerSec:G.globalTimerSec,
     inflationEnabled:G.inflationEnabled,
     inflationRate:G.inflationRate,
@@ -8884,6 +9331,7 @@ function loadCustomPreset(slot){
   setMaxTurns(p.maxTurns);
   setGoalMoney(p.goalMoney);
   setDominationTarget(p.dominationTarget);
+  setNoSpaceEnabled(p.noSpaceEnabled??false);
   setGlobalTimerSec(p.globalTimerSec);
   setInflationEnabled(p.inflationEnabled);
   setInflationRate(p.inflationRate);
@@ -8944,7 +9392,7 @@ function snapshotGame(){
       room:G.room,mode:G.mode,myId:G.myId,myReady:G.myReady,
       startingMoney:G.startingMoney,passGoBonus:G.passGoBonus,jailFine:G.jailFine,
       maxTurns:G.maxTurns,goalMoney:G.goalMoney,turnCount:G.turnCount,
-      dominationTarget:G.dominationTarget,globalTimerSec:G.globalTimerSec,
+      dominationTarget:G.dominationTarget,noSpaceEnabled:G.noSpaceEnabled,globalTimerSec:G.globalTimerSec,
       inflationEnabled:G.inflationEnabled,inflationRate:G.inflationRate,
       taxVarianceEnabled:G.taxVarianceEnabled,bonusTurnEnabled:G.bonusTurnEnabled,
       bonusTurnChance:G.bonusTurnChance,parkingPotEnabled:G.parkingPotEnabled,parkingPot:G.parkingPot,
@@ -9004,6 +9452,7 @@ function applyImportedSnapshot(snap){
   setMaxTurns(g.maxTurns??G.maxTurns);
   setGoalMoney(g.goalMoney??G.goalMoney);
   setDominationTarget(g.dominationTarget??G.dominationTarget);
+  setNoSpaceEnabled(g.noSpaceEnabled??G.noSpaceEnabled);
   setGlobalTimerSec(g.globalTimerSec??G.globalTimerSec);
   setInflationEnabled(g.inflationEnabled??G.inflationEnabled);
   setInflationRate(g.inflationRate??G.inflationRate);

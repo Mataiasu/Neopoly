@@ -208,6 +208,7 @@ const TITLE_DEFS={
   win_200: {label:'🩸 Mythique',         cls:'vt-m1',     req:200, cond:'Gagner 200 parties'},
   win_350: {label:'⚡ Titan du Plateau',  cls:'vt-m2',     req:350, cond:'Gagner 350 parties'},
   win_500: {label:'🌌 Empereur du Board', cls:'vt-m3',     req:500, cond:'Gagner 500 parties'},
+  s_failli:    {label:'💸 Le Failli',          cls:'vt-s1', cond:'Faire faillite une fois'},
   s_maudit:    {label:'☠️ Le Maudit',          cls:'vt-s1', cond:'Avoir 5 faillites au total'},
   s_nabab:     {label:'💸 Nabab',              cls:'vt-s2', cond:'Atteindre 500000$ de gains cumulés'},
   s_centenaire:{label:'🎖️ Centenaire',         cls:'vt-s3', cond:'Jouer 100 parties'},
@@ -1127,6 +1128,7 @@ function checkSecretTitles(showToast=true){
       showTitleDot();
     }
   };
+  if((parseInt(P.stats?.bankruptcies,10)||0)>=1)          fuse('s_failli');
   if((parseInt(P.stats?.bankruptcies,10)||0)>=5)          fuse('s_maudit');
   if((parseInt(P.stats?.moneyEarned,10)||0)>=500000)       fuse('s_nabab');
   if((parseInt(P.stats?.gamesPlayed,10)||0)>=100)          fuse('s_centenaire');
