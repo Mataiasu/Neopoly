@@ -438,7 +438,8 @@ let globalLeaderboardFetchTimer=null;
 let globalLeaderboardLiveTicker=null;
 let remoteProfileSyncTimer=null;
 const GLOBAL_LEADERBOARD_FETCH_COOLDOWN_MS=45000;
-const GLOBAL_LEADERBOARD_LIVE_REFRESH_MS=5000;
+const GLOBAL_LEADERBOARD_LIVE_REFRESH_MS=15000;
+const GLOBAL_LEADERBOARD_AVATAR_DATA_URL_MAX_LEN=4096;
 const SITE_PRESENCE_STORAGE_KEY='NP_SITE_PRESENCE_ID';
 const SITE_PRESENCE_TAB_KEY='NP_SITE_PRESENCE_TAB_ID';
 const SITE_PRESENCE_PING_MS=25000;
@@ -547,12 +548,19 @@ function ensureSitePresenceHeartbeat(){
   }
 }
 
+function sanitizeLeaderboardAvatarImage(value){
+  const raw=String(value||'').trim();
+  if(!raw)return '';
+  if(/^data:image\//i.test(raw))return raw.length<=GLOBAL_LEADERBOARD_AVATAR_DATA_URL_MAX_LEN?raw:'';
+  return /^(blob:|https?:)/i.test(raw)?raw:'';
+}
+
 function normalizeGlobalLeaderboardEntry(raw,source='local'){
   if(!raw||typeof raw!=='object')return null;
   const uid=String(raw.uid||'').trim();
   const name=String(raw.name||'Joueur').trim()||'Joueur';
   const avatarRaw=String(raw.avatar||'').trim();
-  const avatarImg=String(raw.avatarImg||((/^(data:|blob:|https?:)/i.test(avatarRaw))?avatarRaw:'')||'').trim()||null;
+  const avatarImg=sanitizeLeaderboardAvatarImage(raw.avatarImg||((/^(data:|blob:|https?:)/i.test(avatarRaw))?avatarRaw:''))||null;
   const emoji=String(raw.emoji||((!avatarImg&&avatarRaw&&!/^(data:|blob:|https?:)/i.test(avatarRaw))?avatarRaw:'👤')||'👤');
   const color=safeCssColor(raw.color,'#22c55e');
   const elo=Math.max(0,parseInt(raw.elo,10)||0);
@@ -1042,13 +1050,13 @@ function ensureGlobalLeaderboardLiveTicker(){
   globalLeaderboardLiveTicker=setInterval(()=>{
     const inLobby=!!document.getElementById('app-wrap')?.classList.contains('in-lobby');
     if(document.visibilityState!=='visible'||!inLobby)return;
-    scheduleGlobalLeaderboardRefresh(true);
+    scheduleGlobalLeaderboardRefresh(false);
   },GLOBAL_LEADERBOARD_LIVE_REFRESH_MS);
   if(typeof document!=='undefined'&&!document.body?.dataset?.leaderboardLiveBound){
     if(document.body?.dataset)document.body.dataset.leaderboardLiveBound='1';
     document.addEventListener('visibilitychange',()=>{
       const inLobby=!!document.getElementById('app-wrap')?.classList.contains('in-lobby');
-      if(document.visibilityState==='visible'&&inLobby)scheduleGlobalLeaderboardRefresh(true);
+      if(document.visibilityState==='visible'&&inLobby)scheduleGlobalLeaderboardRefresh(false);
     });
   }
 }

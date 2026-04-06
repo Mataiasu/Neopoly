@@ -214,7 +214,7 @@ function renderPlayers(){
 
 function isCurrentPlayerBot(){
   const p=G.players[G.cur];
-  const hostOnline=G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-');
+  const hostOnline=typeof isOnlineHost==='function'?isOnlineHost():(G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-'));
   return !!(G.started&&p&&p.bot&&!p.bust&&(G.mode==='local'||hostOnline));
 }
 
@@ -467,6 +467,130 @@ function renderLocalPlayerList(){
   btn.textContent=allReady?'\ud83d\ude80 D\u00e9marrer':'\u23f3 En attente des joueurs...';
 }
 
+function getRankedBotLevelForElo(elo){
+  const value=Math.max(0,parseInt(elo,10)||0);
+  if(value>=2000)return 'hard';
+  if(value>=900)return 'medium';
+  return 'easy';
+}
+
+function pickRankedBotPersona(level){
+  const pools={
+    easy:['cautious','balanced','builder'],
+    medium:['balanced','builder','sprinter'],
+    hard:['tycoon','shark','builder'],
+  };
+  const pool=pools[String(level||'easy')]||['balanced'];
+  return pool[Math.floor(Math.random()*pool.length)]||pickRandomBotPersona();
+}
+
+function buildRankedOnlinePlayer(raw,index){
+  const source=raw&&typeof raw==='object'?raw:{};
+  const playerId=String(source.id||source.playerId||('ranked-player-'+index));
+  const requestedColor=source.color||COLORS[index%COLORS.length]||'#3b82f6';
+  return {
+    id:playerId,
+    name:String(source.name||('Joueur '+(index+1))).slice(0,64),
+    emoji:String(source.emoji||'👤').slice(0,16),
+    color:pickUniquePlayerColor(requestedColor,playerId),
+    img:(typeof source.img==='string'&&source.img)||(typeof source.avatarImg==='string'&&source.avatarImg)?(source.img||source.avatarImg):null,
+    matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},
+    money:Number.isFinite(Number(source.money))?Number(source.money):G.startingMoney,
+    pos:Math.max(0,parseInt(source.pos,10)||0),
+    jailed:!!source.jailed,
+    bust:!!source.bust,
+    jailCards:Math.max(0,parseInt(source.jailCards,10)||0),
+    ready:source.ready===undefined?true:!!source.ready,
+    disconnected:!!source.disconnected,
+    bot:false,
+    elo:Math.max(0,parseInt(source.elo,10)||0),
+    rankLabel:String(source.rankLabel||''),
+  };
+}
+
+function syncRankedQueueRoomInfo(){
+  const roomInfo=document.getElementById('room-info');
+  if(!roomInfo)return;
+  const ctx=G.rankedContext&&typeof G.rankedContext==='object'?G.rankedContext:null;
+  if(!(G.mode==='online'&&String(G.matchType||'normal')==='ranked'&&ctx))return;
+  const rankLabel=String(ctx.rankLabel||'Placement');
+  const count=Math.max(1,parseInt(ctx.playerCount,10)||((Array.isArray(G.players)&&G.players.length)||1));
+  const target=Math.max(2,parseInt(ctx.targetPlayers,10)||4);
+  if(String(ctx.queueStatus||'')==='searching'){
+    roomInfo.textContent='🏟️ Matchmaking ranked • '+rankLabel+' • '+count+'/'+target;
+    return;
+  }
+  if(!G.started){
+    roomInfo.textContent='🏟️ Ranked • '+rankLabel+' • Match trouvé';
+  }
+}
+
+function startRankedGame(){
+  if(typeof canUseAccountProgression==='function'&&!canUseAccountProgression()){
+    if(typeof showInviteAccountLock==='function')showInviteAccountLock('La partie ranked');
+    if(typeof openGoogleLoginModal==='function')openGoogleLoginModal();
+    return;
+  }
+  disconnectWs();
+  const wsUrl=(typeof getDefaultWsUrl==='function'?getDefaultWsUrl():'').trim();
+  if(!wsUrl){toast('URL WebSocket indisponible pour la ranked.','d');return;}
+  const meId='j-'+Date.now();
+  const rankInfo=typeof getSafeRankedDivisionInfo==='function'
+    ?getSafeRankedDivisionInfo(P.elo||0)
+    :{shortLabel:(typeof getEloRankInfo==='function'?(getEloRankInfo(P.elo||0).label||'Placement'):'Placement'),cls:'er-unranked'};
+  const rankLabel=String(rankInfo.shortLabel||rankInfo.label||'Placement');
+  const rankKey=String(((rankInfo.cls||'er-unranked')+'-'+(rankInfo.div||rankLabel||'placement'))||'placement')
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-|-$/g,'')||'placement';
+  const me=buildRankedOnlinePlayer({
+    id:meId,
+    name:getProfileDefaultName('Joueur ranked'),
+    emoji:getProfileDefaultEmoji('🏟️'),
+    color:getProfileDefaultColor('#22c55e'),
+    img:getProfileDefaultAvatar(),
+    ready:true,
+    elo:P.elo||0,
+    rankLabel,
+  },0);
+  G.mode='online';
+  G.room='ranked-queue';
+  G.matchType='ranked';
+  G.rankedContext={queue:'human-division',queueStatus:'searching',rankLabel,rankKey,playerCount:1,targetPlayers:4,humanOnly:true,hostPlayerId:null,searchStartedAt:Date.now()};
+  G.roomHostId=null;
+  G.myId=meId;
+  G.myReady=false;
+  G.started=false;
+  G.players=[me];
+  G.onlineLobbySignature='';
+  if(typeof syncPartyOptionsBlockVisibility==='function')syncPartyOptionsBlockVisibility();
+  const chatCard=document.getElementById('chat-card');
+  if(chatCard)chatCard.style.display='block';
+  showScreen('game');
+  toggleMobileSidebar(true);
+  buildBoard();renderPlayers();updBtns();renderOnlineLobby();
+  syncRankedQueueRoomInfo();
+  connectWs(wsUrl,G.room,()=>{
+    sendWsMessage({
+      type:'ranked_queue_join',
+      room:G.room,
+      sender:G.myId,
+      playerId:G.myId,
+      name:me.name,
+      emoji:me.emoji,
+      color:me.color,
+      img:me.img||'',
+      elo:Math.max(0,parseInt(P.elo,10)||0),
+      rankLabel,
+      rankKey,
+      ready:true,
+    });
+    toast('🏟️ Recherche ranked lancée • '+rankLabel,'a');
+    wsLog('File ranked ouverte • '+rankLabel);
+  });
+}
+
 function startQuickGame(){
   disconnectWs();
   const meId='p-'+Date.now();
@@ -504,6 +628,9 @@ function startQuickGame(){
   };
   G.mode='local';
   G.room='';
+  G.matchType='normal';
+  G.rankedContext=null;
+  G.roomHostId=null;
   G.myId=meId;
   G.players=[me,bot];
   enforceUniquePlayerColors();
@@ -592,21 +719,28 @@ function renderOnlineLobby(){
       </div>`).join(''):'<div style="font-size:.72rem;color:var(--muted)">En attente de joueurs…</div>';
     G.onlineLobbySignature=lobbySignature;
   }
+  const rankedQueueing=String(G.matchType||'normal')==='ranked'&&String(G.rankedContext?.queueStatus||'')==='searching';
   const allReady=lobbyPlayers.length>=2&&lobbyPlayers.every(p=>p.ready);
-  const isHost=G.myId&&G.myId.startsWith('h-');
-  if(hostBtn){hostBtn.style.display=isHost?'inline-flex':'none';hostBtn.disabled=!allReady;}
+  const isHost=(typeof isOnlineHost==='function')?isOnlineHost():!!(G.myId&&G.myId.startsWith('h-'));
+  if(hostBtn){hostBtn.style.display=(isHost&&!rankedQueueing)?'inline-flex':'none';hostBtn.disabled=rankedQueueing||!allReady;}
   if(hostPartyBtn){
-    hostPartyBtn.style.display=isHost?'inline-flex':'none';
-    hostPartyBtn.disabled=!!G.started;
+    hostPartyBtn.style.display=(isHost&&!rankedQueueing)?'inline-flex':'none';
+    hostPartyBtn.disabled=rankedQueueing||!!G.started;
   }
   if(readyBtn){
+    readyBtn.style.display=rankedQueueing?'none':'inline-flex';
     readyBtn.disabled=!G.wsOk;
     readyBtn.className='btn btn-sm '+(G.myReady?'btn-primary':'btn-secondary');
     readyBtn.textContent=!G.wsOk?'🔄 Reconnexion requise':(G.myReady?'✅ Prêt !':'⏳ Je suis Prêt');
   }
+  if(rankedQueueing)syncRankedQueueRoomInfo();
 }
 
 function toggleOnlineReady(){
+  if(G.mode==='online'&&String(G.matchType||'normal')==='ranked'&&String(G.rankedContext?.queueStatus||'')==='searching'){
+    toast('🏟️ Matchmaking ranked en cours…','i');
+    return;
+  }
   if(G.mode==='online'&&!G.wsOk){
     toast('Reconnecte-toi d’abord pour revenir dans la salle.','w');
     return;
@@ -665,8 +799,14 @@ function doStart(){
   closeModal('modal-local');
   showScreen('game');
   toggleMobileSidebar(true);
+  const roomInfo=document.getElementById('room-info');
+  if(roomInfo){
+    if(typeof isCurrentMatchRanked==='function'&&isCurrentMatchRanked())roomInfo.textContent='🏟️ Ranked • '+String(G.rankedContext?.rankLabel||'Placement');
+    else if(G.mode==='local')roomInfo.textContent='🎮 Partie normale';
+  }
   buildBoard();renderPlayers();updBtns();
   glog(G.pendingRematch?'--- Revanche instantanée ! ---':'--- Partie démarrée ! ---','a');
+  glog((typeof isCurrentMatchRanked==='function'&&isCurrentMatchRanked())?'🏟️ Match ranked : seuls les matchs ranked modifient l’ELO.':'🎮 Match standard : aucun ELO en jeu.','i');
   glog('--- Tour de '+G.players[G.cur].name+' ---','i');
   ensureMatchObjectiveExists(true);
   renderMatchObjectiveUi();
@@ -760,6 +900,9 @@ function backToLobby(){
   G.myReady=false;
   G.room='';
   G.mode='local';
+  G.matchType='normal';
+  G.rankedContext=null;
+  G.roomHostId=null;
   if(typeof syncPartyOptionsBlockVisibility==='function')syncPartyOptionsBlockVisibility();
   G.rolled=false;
   G.cur=0;
@@ -985,7 +1128,8 @@ function connectWs(url,room,onOpen){
       clearOnlineAutoReconnect(true);
       const me=Array.isArray(G.players)?G.players.find(p=>p&&p.id===G.myId):null;
       if(me)me.disconnected=false;
-      rememberOnlineReconnectInfo({
+      if(String(room||'')==='ranked-queue')clearStoredOnlineReconnectInfo();
+      else rememberOnlineReconnectInfo({
         room,
         wsUrl:candidate,
         myId:G.myId,
@@ -1039,6 +1183,92 @@ function connectWs(url,room,onOpen){
           showScreen('lobby');
           return;
         }
+        if(msg.type==='ranked_queue_error'){
+          const code=String(msg.code||'RANKED_QUEUE_FAILED');
+          const activeRoom=msg.activeRoom?(' ('+msg.activeRoom+')'):'';
+          const label=code==='RANKED_GOOGLE_REQUIRED'
+            ?'La ranked online est réservée aux comptes Google.'
+            :(code==='ACCOUNT_ALREADY_IN_ROOM'
+              ?('Ce compte est déjà connecté à une autre partie'+activeRoom+'.')
+              :'Impossible de rejoindre la file ranked pour le moment.');
+          toast('⛔ '+label,'d');
+          wsLog('Ranked bloquée: '+label);
+          clearOnlineAutoReconnect(true);
+          disconnectWs();
+          G.mode='local';
+          G.room='';
+          G.roomHostId=null;
+          G.matchType='normal';
+          G.rankedContext=null;
+          renderOnlineLobby();renderPlayers();updBtns();
+          showScreen('lobby');
+          return;
+        }
+        if(msg.type==='ranked_queue_status'){
+          const queuedPlayers=Array.isArray(msg.players)?msg.players:[];
+          G.mode='online';
+          G.started=false;
+          G.room=String(msg.room||G.room||'ranked-queue');
+          G.matchType='ranked';
+          G.rankedContext=Object.assign({},G.rankedContext||{}, {
+            queue:'human-division',
+            queueStatus:'searching',
+            rankLabel:String(msg.rankLabel||G.rankedContext?.rankLabel||'Placement'),
+            rankKey:String(msg.queueKey||G.rankedContext?.rankKey||''),
+            playerCount:Math.max(queuedPlayers.length,parseInt(msg.waitingPlayers,10)||0),
+            targetPlayers:Math.max(2,parseInt(msg.targetPlayers,10)||4),
+            humanOnly:true,
+          });
+          if(queuedPlayers.length){
+            G.players=queuedPlayers.map((player,index)=>buildRankedOnlinePlayer(player,index));
+            enforceUniquePlayerColors();
+            const me=G.players.find(player=>player&&player.id===G.myId);
+            if(me){me.disconnected=false;me.ready=true;}
+          }
+          syncRankedQueueRoomInfo();
+          renderOnlineLobby();renderPlayers();updBtns();
+          return;
+        }
+        if(msg.type==='ranked_match_found'){
+          const matchedPlayers=Array.isArray(msg.players)?msg.players.map((player,index)=>buildRankedOnlinePlayer(player,index)):[];
+          G.mode='online';
+          G.started=false;
+          G.room=String(msg.room||G.room||'');
+          G.matchType='ranked';
+          G.roomHostId=String(msg.hostPlayerId||msg.rankedContext?.hostPlayerId||G.roomHostId||'').trim()||null;
+          G.rankedContext=Object.assign({},G.rankedContext||{},msg.rankedContext&&typeof msg.rankedContext==='object'?msg.rankedContext:{}, {
+            queue:'human-division',
+            queueStatus:'matched',
+            rankLabel:String(msg.rankLabel||msg.rankedContext?.rankLabel||G.rankedContext?.rankLabel||'Placement'),
+            playerCount:matchedPlayers.length||4,
+            targetPlayers:Math.max(2,parseInt(msg.rankedContext?.targetPlayers,10)||4),
+            hostPlayerId:G.roomHostId,
+            humanOnly:true,
+          });
+          if(matchedPlayers.length){
+            G.players=matchedPlayers;
+            enforceUniquePlayerColors();
+          }
+          const chatCard=document.getElementById('chat-card');
+          if(chatCard)chatCard.style.display='block';
+          syncRankedQueueRoomInfo();
+          renderOnlineLobby();renderPlayers();updBtns();
+          toast('✅ Match ranked trouvé • '+String(G.rankedContext?.rankLabel||'Placement'),'a');
+          wsLog('Match ranked trouvé: '+G.room);
+          if((typeof isOnlineHost==='function'?isOnlineHost():String(G.myId||'')===String(G.roomHostId||''))){
+            setTimeout(()=>{
+              if(G.mode==='online'&&G.room===msg.room&&!G.started){
+                doStart();
+                broadcast();
+              }
+            },180);
+          }else{
+            setTimeout(()=>{
+              if(G.mode==='online'&&G.room===msg.room&&!G.started)sendWsMessage({type:'state_request',room:G.room,sender:G.myId});
+            },500);
+          }
+          return;
+        }
         if(msg.room!==G.room)return;
         if(msg.type==='state'&&msg.sender!==G.myId){
           const prevBoardEventId=String(G.boardEvent?.bannerId||G.boardEvent?.id||'');
@@ -1052,6 +1282,9 @@ function connectWs(url,room,onOpen){
           if(Object.prototype.hasOwnProperty.call(msg.state,'boardEvent'))G.boardEvent=msg.state.boardEvent||null;
           G.lastBoardEventTurn=Math.max(0,parseInt(msg.state.lastBoardEventTurn,10)||G.lastBoardEventTurn||0);
           G.turnCount=Math.max(1,parseInt(msg.state.turnCount,10)||G.turnCount||1);
+          G.matchType=String(msg.state.matchType||G.matchType||'normal')==='ranked'?'ranked':'normal';
+          G.rankedContext=msg.state.rankedContext&&typeof msg.state.rankedContext==='object'?msg.state.rankedContext:null;
+          G.roomHostId=String(msg.state.roomHostId||G.rankedContext?.hostPlayerId||G.roomHostId||'').trim()||null;
           if(typeof ensureRouletteState==='function')ensureRouletteState();
           if(Array.isArray(G.players))G.players.forEach(p=>{
             if(!p||typeof p!=='object')return;
@@ -1095,7 +1328,7 @@ function connectWs(url,room,onOpen){
             wsLog('📴 Déconnexion: '+(leftPlayer?.name||leftId));
           }
           renderOnlineLobby();renderPlayers();updBtns();
-          const isHost=G.myId&&String(G.myId).startsWith('h-');
+          const isHost=typeof isOnlineHost==='function'?isOnlineHost():!!(G.myId&&String(G.myId).startsWith('h-'));
           if(isHost&&leftPlayer){
             if(G.started&&G.players[G.cur]?.id===leftId){
               G.pendingBuy=null;
@@ -1110,7 +1343,7 @@ function connectWs(url,room,onOpen){
           }
         }
         if(msg.type==='state_request'&&msg.sender!==G.myId){
-          const isHost=G.myId&&String(G.myId).startsWith('h-');
+          const isHost=typeof isOnlineHost==='function'?isOnlineHost():!!(G.myId&&String(G.myId).startsWith('h-'));
           if(isHost) broadcast();
         }
         if(msg.type==='trade_offer'&&msg.sender!==G.myId&&msg.targetId===G.myId){
@@ -1172,7 +1405,7 @@ function broadcast(){
   if(!G.ws||!G.wsOk)return;
   const msg=JSON.stringify({
     type:'state',room:G.room,sender:G.myId,
-    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns,roulette:G.roulette,boardEvent:G.boardEvent,lastBoardEventTurn:G.lastBoardEventTurn,turnCount:G.turnCount}
+    state:{players:G.players,board:G.board,cur:G.cur,started:G.started,rolled:G.rolled,jailTurns:G.jailTurns,roulette:G.roulette,boardEvent:G.boardEvent,lastBoardEventTurn:G.lastBoardEventTurn,turnCount:G.turnCount,matchType:G.matchType||'normal',rankedContext:G.rankedContext||null,roomHostId:G.roomHostId||null}
   });
   try{G.ws.send(msg);}catch(e){wsLog('Erreur envoi: '+e);}
 }
@@ -1212,7 +1445,10 @@ function createOnlineRoom(){
   const totalPlayers=1+(G.pendingPartyBots?.length||0);
   if(totalPlayers>ONLINE_ROOM_MAX_PLAYERS){toast('Trop de joueurs configurés pour une salle online ('+totalPlayers+'/'+ONLINE_ROOM_MAX_PLAYERS+').','d');return;}
   G.room=roomId;G.mode='online';
+  G.matchType='normal';
+  G.rankedContext=null;
   G.myId='h-'+Date.now();
+  G.roomHostId=G.myId;
   const host={id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false,disconnected:false};
   const bots=(G.pendingPartyBots||[]).map((b,ix)=>{
     const botIdentity=pickRandomBotIdentity(b.name);
@@ -1299,6 +1535,9 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
   }
 
   G.room=roomId;G.mode='online';
+  G.matchType='normal';
+  G.rankedContext=null;
+  G.roomHostId=null;
   G.myId='j-'+Date.now();
   G.players=[{id:G.myId,name,emoji,color,img,matchItems:{diceBoost:0,antiJail:0,mortgageDiscount:0},money:G.startingMoney,pos:0,jailed:false,bust:false,jailCards:0,ready:false,disconnected:false}];
   rememberOnlineReconnectInfo({room:roomId,wsUrl,myId:G.myId,roomPassword,name,emoji,color,img:img||''});

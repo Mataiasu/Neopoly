@@ -49,6 +49,7 @@ function sanitizeStr(v, maxLen) {
 
 const MAX_PROFILE_IMAGE_DATA_URL_LEN = Math.max(120000, Number(process.env.MAX_PROFILE_IMAGE_DATA_URL_LEN || 350000));
 const MAX_PROFILE_REMOTE_URL_LEN = 8192;
+const MAX_LEADERBOARD_IMAGE_DATA_URL_LEN = 4096;
 
 function normalizeEmail(v) {
   return String(v || '').trim().toLowerCase().slice(0, 160);
@@ -64,6 +65,18 @@ function sanitizeProfileAvatarField(value) {
     return raw.slice(0, MAX_PROFILE_REMOTE_URL_LEN);
   }
   return sanitizeStr(raw, 128);
+}
+
+function sanitizeLeaderboardAvatarField(value) {
+  const raw = sanitizeProfileAvatarField(value);
+  if (!raw) return '';
+  if (/^data:image\//i.test(raw)) {
+    return raw.length <= MAX_LEADERBOARD_IMAGE_DATA_URL_LEN ? raw : '';
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw.slice(0, MAX_PROFILE_REMOTE_URL_LEN);
+  }
+  return '';
 }
 
 function sanitizeProfilePayload(raw) {
@@ -322,7 +335,10 @@ const rooms = {};
 const roomAddons = {};
 const roomMeta = {};
 const activeOnlineIdentities = new Map();
+const rankedQueues = new Map();
 const MAX_ROOM_PLAYERS = 6;
+const RANKED_QUEUE_TARGET_PLAYERS = 4;
+const RANKED_QUEUE_ROOM_ID = 'ranked-queue';
 const SOCIAL_ROOM_ID = 'social-lobby';
 const SOCIAL_CHAT_AUTO_CLEAR_MS = 5 * 60 * 1000;
 const SITE_PRESENCE_TTL_MS = 75 * 1000;
@@ -435,6 +451,8 @@ function ensureRoomMeta(room) {
       roomPassword: '',
       updatedAt: 0,
       hidden: false,
+      matchType: 'normal',
+      rankLabel: '',
     };
   }
   return roomMeta[room];
@@ -457,6 +475,11 @@ function updateRoomMetaFromState(room, state) {
 
   if (state && typeof state.started !== 'undefined') {
     meta.started = !!state.started;
+  }
+
+  meta.matchType = String(state && state.matchType || meta.matchType || 'normal') === 'ranked' ? 'ranked' : 'normal';
+  if (state && state.rankedContext && typeof state.rankedContext === 'object') {
+    meta.rankLabel = sanitizeStr(state.rankedContext.rankLabel, 64) || meta.rankLabel || '';
   }
 
   meta.updatedAt = Date.now();
@@ -503,6 +526,8 @@ function getRoomSummary(room) {
     isPrivate: !!meta.isPrivate || hasPassword,
     access: (!!meta.isPrivate || hasPassword) ? 'private' : 'public',
     hasPassword,
+    matchType: meta.matchType || 'normal',
+    rankLabel: meta.rankLabel || '',
     updatedAt: meta.updatedAt || Date.now(),
   };
 }
@@ -705,6 +730,195 @@ function releaseOnlineIdentityForSocket(ws) {
     delete ws.__onlineIdentityKey;
     delete ws.__onlineRoom;
   } catch (_) {}
+}
+
+function clampRankedElo(value) {
+  return Math.max(0, Math.min(999999, parseInt(value, 10) || 0));
+}
+
+function sanitizeRankedQueueKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'placement';
+}
+
+function getFallbackRankedQueueInfo(elo) {
+  const value = clampRankedElo(elo);
+  if (value < 100) return { key: 'placement', label: 'Placement' };
+  if (value >= 3200) return { key: 'legend', label: 'Légendaire' };
+  if (value >= 2400) return { key: 'diamond', label: 'Diamant' };
+  if (value >= 1600) return { key: 'platine', label: 'Platine' };
+  if (value >= 800) return { key: 'gold', label: 'Or' };
+  if (value >= 400) return { key: 'silver', label: 'Argent' };
+  return { key: 'bronze', label: 'Bronze' };
+}
+
+function getRankedQueuePublicPlayers(entries) {
+  return (Array.isArray(entries) ? entries : []).map((entry, index) => ({
+    id: entry.playerId || ('ranked-player-' + index),
+    playerId: entry.playerId || ('ranked-player-' + index),
+    name: entry.name || ('Joueur ' + (index + 1)),
+    emoji: entry.emoji || '👤',
+    color: entry.color || '#3b82f6',
+    img: entry.img || '',
+    elo: clampRankedElo(entry.elo),
+    rankLabel: entry.rankLabel || 'Placement',
+    ready: true,
+    disconnected: false,
+    joinedAt: Number(entry.joinedAt || 0),
+  }));
+}
+
+function broadcastRankedQueueStatus(queueKey) {
+  const key = sanitizeRankedQueueKey(queueKey);
+  const entries = rankedQueues.get(key) || [];
+  if (!entries.length) {
+    rankedQueues.delete(key);
+    return;
+  }
+  const players = getRankedQueuePublicPlayers(entries);
+  entries.forEach((entry, index) => {
+    sendJson(entry.ws, {
+      type: 'ranked_queue_status',
+      room: RANKED_QUEUE_ROOM_ID,
+      queueKey: key,
+      rankLabel: entry.rankLabel || players[0] && players[0].rankLabel || 'Placement',
+      waitingPlayers: players.length,
+      targetPlayers: RANKED_QUEUE_TARGET_PLAYERS,
+      yourPosition: index + 1,
+      players,
+    });
+  });
+}
+
+function removeRankedQueueEntry(ws, options) {
+  const opts = options && typeof options === 'object' ? options : {};
+  const rawKey = String(ws && ws.__rankedQueueKey || '').trim();
+  if (!rawKey) return null;
+  const key = sanitizeRankedQueueKey(rawKey);
+  const entries = rankedQueues.get(key) || [];
+  const index = entries.findIndex((entry) => entry && entry.ws === ws);
+  let removed = null;
+  if (index >= 0) {
+    removed = entries.splice(index, 1)[0];
+    if (!entries.length) rankedQueues.delete(key);
+  }
+  try {
+    delete ws.__rankedQueueKey;
+    delete ws.__rankedQueuePlayerId;
+  } catch (_) {}
+  if (!opts.silent && (removed || entries.length)) {
+    broadcastRankedQueueStatus(key);
+  }
+  return removed;
+}
+
+function tryStartRankedMatch(queueKey) {
+  const key = sanitizeRankedQueueKey(queueKey);
+  const entries = rankedQueues.get(key) || [];
+  while (entries.length >= RANKED_QUEUE_TARGET_PLAYERS) {
+    const selected = entries.splice(0, RANKED_QUEUE_TARGET_PLAYERS);
+    if (!entries.length) rankedQueues.delete(key);
+
+    const room = 'ranked-' + key + '-' + crypto.randomBytes(3).toString('hex');
+    if (!rooms[room]) rooms[room] = new Set();
+    const meta = ensureRoomMeta(room);
+    const hostEntry = selected[0] || {};
+    const rankLabel = hostEntry.rankLabel || (selected[1] && selected[1].rankLabel) || 'Placement';
+    meta.hidden = true;
+    meta.isPrivate = true;
+    meta.playerCount = selected.length;
+    meta.started = false;
+    meta.hostSender = hostEntry.playerId || null;
+    meta.hostName = hostEntry.name || 'Hote ranked';
+    meta.hostEmoji = hostEntry.emoji || '🏟️';
+    meta.matchType = 'ranked';
+    meta.rankLabel = rankLabel;
+    meta.updatedAt = Date.now();
+
+    const players = selected.map((entry, index) => ({
+      id: entry.playerId || ('ranked-player-' + index),
+      name: entry.name || ('Joueur ' + (index + 1)),
+      emoji: entry.emoji || '👤',
+      color: entry.color || ['#22c55e', '#3b82f6', '#f97316', '#a855f7'][index % 4],
+      img: entry.img || '',
+      matchItems: { diceBoost: 0, antiJail: 0, mortgageDiscount: 0 },
+      money: 1500,
+      pos: 0,
+      jailed: false,
+      bust: false,
+      jailCards: 0,
+      ready: true,
+      disconnected: false,
+      elo: clampRankedElo(entry.elo),
+      rankLabel: entry.rankLabel || rankLabel,
+    }));
+
+    selected.forEach((entry) => {
+      rooms[room].add(entry.ws);
+      claimOnlineIdentity(entry.identityKey, room, entry.ws, { allowReconnect: true });
+      try {
+        delete entry.ws.__rankedQueueKey;
+        delete entry.ws.__rankedQueuePlayerId;
+      } catch (_) {}
+      sendJson(entry.ws, {
+        type: 'ranked_match_found',
+        room,
+        queueKey: key,
+        rankLabel,
+        hostPlayerId: players[0] && players[0].id || '',
+        players,
+        rankedContext: {
+          queue: 'human-division',
+          queueStatus: 'matched',
+          rankLabel,
+          queueKey: key,
+          playerCount: players.length,
+          targetPlayers: RANKED_QUEUE_TARGET_PLAYERS,
+          hostPlayerId: players[0] && players[0].id || '',
+          humanOnly: true,
+          matchedAt: Date.now(),
+        },
+      });
+    });
+  }
+  broadcastRankedQueueStatus(key);
+}
+
+function joinRankedQueue(ws, payload, session) {
+  const raw = payload && typeof payload === 'object' ? payload : {};
+  const fallback = getFallbackRankedQueueInfo(raw.elo);
+  const queueKey = sanitizeRankedQueueKey(raw.rankKey || fallback.key);
+  const rankLabel = sanitizeStr(raw.rankLabel, 64) || fallback.label;
+  const identityKey = getOnlineIdentityKey(raw, session);
+  const playerId = sanitizeStr(raw.playerId || raw.sender, 128) || ('j-' + Date.now());
+
+  removeRankedQueueEntry(ws, { silent: true });
+
+  const entries = rankedQueues.get(queueKey) || [];
+  entries.push({
+    ws,
+    queueKey,
+    playerId,
+    identityKey,
+    name: sanitizeStr(raw.name, 64) || 'Joueur ranked',
+    emoji: sanitizeStr(raw.emoji, 16) || '👤',
+    color: sanitizeStr(raw.color, 32) || '#3b82f6',
+    img: sanitizeProfileAvatarField(raw.img || raw.avatarImg || ''),
+    elo: clampRankedElo(raw.elo),
+    rankLabel,
+    joinedAt: Date.now(),
+  });
+  rankedQueues.set(queueKey, entries);
+  ws.__rankedQueueKey = queueKey;
+  ws.__rankedQueuePlayerId = playerId;
+
+  broadcastRankedQueueStatus(queueKey);
+  tryStartRankedMatch(queueKey);
+  return { ok: true, queueKey, rankLabel };
 }
 
 function ensureSocialRoom() {
@@ -1267,12 +1481,14 @@ async function handleApi(req, res, pathname) {
         const name = sanitizeStr(profile.name, 64);
         const key = uid || (name ? ('name:' + name.toLowerCase()) : '');
         if (!key) return;
+        const leaderboardAvatar = sanitizeLeaderboardAvatarField(profile.avatarImg || profile.avatar);
+        const emoji = sanitizeStr(profile.emoji, 16) || '👤';
         const next = {
           uid,
           name: name || 'Joueur',
-          avatar: sanitizeProfileAvatarField(profile.avatar),
-          avatarImg: sanitizeProfileAvatarField(profile.avatarImg),
-          emoji: sanitizeStr(profile.emoji, 16) || '👤',
+          avatar: leaderboardAvatar || emoji,
+          avatarImg: leaderboardAvatar,
+          emoji,
           color: sanitizeStr(profile.color, 32) || '#22c55e',
           title: sanitizeStr(profile.title, 64),
           rankLabel: sanitizeStr(profile.rankLabel, 64),
@@ -1490,7 +1706,7 @@ wss.on('connection', (ws, req) => {
         email: senderSession ? senderSession.email : '',
       });
       const isChatMessage = msg.type === 'social_join' || msg.type === 'social_chat' || msg.type === 'chat';
-      const isOnlineAction = msg.type === 'create_room' || msg.type === 'ready' || msg.type === 'state';
+      const isOnlineAction = msg.type === 'create_room' || msg.type === 'ready' || msg.type === 'state' || msg.type === 'ranked_queue_join' || msg.type === 'ranked_queue_leave';
       if (isChatMessage && (senderMod.banned || senderMod.muted)) {
         sendJson(ws, {
           type: 'mod_status',
@@ -1510,9 +1726,36 @@ wss.on('connection', (ws, req) => {
         return;
       }
 
-      const room = msg.room || myRoom;
+      const room = msg.room || (ws && ws.__onlineRoom) || myRoom;
       if (!room) return;
       myRoom = room;
+
+      if (msg.type === 'ranked_queue_leave') {
+        removeRankedQueueEntry(ws);
+        return;
+      }
+
+      if (msg.type === 'ranked_queue_join') {
+        if (!senderSession || !senderSession.sub) {
+          sendJson(ws, { type: 'ranked_queue_error', room, code: 'RANKED_GOOGLE_REQUIRED' });
+          return;
+        }
+        const fallbackRank = getFallbackRankedQueueInfo(msg.elo);
+        const queueKey = sanitizeRankedQueueKey(msg.rankKey || fallbackRank.key);
+        const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), 'ranked-queue:' + queueKey, ws, { allowReconnect: !!msg.reconnect });
+        if (!identityClaim.ok) {
+          sendJson(ws, {
+            type: 'ranked_queue_error',
+            code: 'ACCOUNT_ALREADY_IN_ROOM',
+            room,
+            activeRoom: identityClaim.room || '',
+            roomInfo: identityClaim.room ? getRoomSummary(identityClaim.room) : null,
+          });
+          return;
+        }
+        joinRankedQueue(ws, msg, senderSession);
+        return;
+      }
 
       if (msg.type === 'create_room') {
         const identityClaim = claimOnlineIdentity(getOnlineIdentityKey(msg, senderSession), room, ws, { allowReconnect: !!msg.reconnect });
@@ -1684,29 +1927,31 @@ wss.on('connection', (ws, req) => {
   });
 
   ws.on('close', () => {
+    removeRankedQueueEntry(ws);
     releaseOnlineIdentityForSocket(ws);
-    if (myRoom && rooms[myRoom]) {
-      rooms[myRoom].delete(ws);
-      if (roomMeta[myRoom] && roomMeta[myRoom].hostSender === mySender) {
-        roomMeta[myRoom].hostSender = null;
+    const closingRoom = String((ws && ws.__onlineRoom) || myRoom || '').trim();
+    if (closingRoom && rooms[closingRoom]) {
+      rooms[closingRoom].delete(ws);
+      if (roomMeta[closingRoom] && roomMeta[closingRoom].hostSender === mySender) {
+        roomMeta[closingRoom].hostSender = null;
       }
-      if (rooms[myRoom].size === 0) {
-        delete rooms[myRoom];
-        delete roomAddons[myRoom];
-        delete roomMeta[myRoom];
+      if (rooms[closingRoom].size === 0) {
+        delete rooms[closingRoom];
+        delete roomAddons[closingRoom];
+        delete roomMeta[closingRoom];
       } else {
         if (mySender) {
-          broadcastToRoom(myRoom, {
+          broadcastToRoom(closingRoom, {
             type: 'player_disconnected',
-            room: myRoom,
+            room: closingRoom,
             sender: mySender,
             playerId: mySender,
             at: Date.now(),
           });
         }
-        if (roomMeta[myRoom]) {
-          roomMeta[myRoom].updatedAt = Date.now();
-          roomMeta[myRoom].playerCount = Math.max(1, rooms[myRoom].size);
+        if (roomMeta[closingRoom]) {
+          roomMeta[closingRoom].updatedAt = Date.now();
+          roomMeta[closingRoom].playerCount = Math.max(1, rooms[closingRoom].size);
         }
       }
     }

@@ -2000,10 +2000,15 @@ body.streamer-mode #invite-link {
   <div class="lobby-logo">NeoPoly</div>
   <div class="lobby-sub">Monopoly Personnalisable · Multijoueur</div>
   <div class="lobby-cards">
-    <div class="lobby-card" onclick="startQuickGame()">
+    <div class="lobby-card" onclick="startQuickGame()" data-tip="Partie normale rapide : pratique pour jouer tout de suite, sans aucun ELO en jeu.">
       <div class="lobby-card-icon">⚡</div>
       <div class="lobby-card-title">Partie rapide</div>
       <div class="lobby-card-desc">Lance instantanément une partie locale avec 1 bot</div>
+    </div>
+    <div class="lobby-card" onclick="startRankedGame()" data-tip="Lance une file ranked online contre 3 joueurs humains de ta division. Réservé aux comptes Google ; seuls les matchs ranked font gagner ou perdre de l'ELO.">
+      <div class="lobby-card-icon">🏟️</div>
+      <div class="lobby-card-title">Partie ranked</div>
+      <div class="lobby-card-desc">Matchmaking online avec 3 joueurs humains de ton rang</div>
     </div>
     <div class="lobby-card" onclick="openModal('modal-create')" data-tip="Crée un salon privé en ligne. Réservé aux comptes Google ; les invités gardent l’accès aux parties locales et rapides.">
       <div class="lobby-card-icon">🆕</div>

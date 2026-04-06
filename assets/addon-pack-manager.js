@@ -870,6 +870,7 @@
   }
 
   function isHost() {
+    if (typeof window.isOnlineHost === 'function') return !!window.isOnlineHost();
     return !!(window.G && window.G.myId && String(window.G.myId).startsWith('h-'));
   }
 

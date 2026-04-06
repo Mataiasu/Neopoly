@@ -1463,7 +1463,8 @@ const G={
   players:[],board:[],cur:0,started:false,rolled:false,
   doublesCount:0,pendingBuy:null,jailTurns:{},
   txns:[],undoStack:[],
-  ws:null,wsOk:false,room:'',mode:'local',myId:null,
+  ws:null,wsOk:false,room:'',mode:'local',myId:null,roomHostId:null,
+  matchType:'normal',rankedContext:null,
   myReady:false,
   pendingPartyBots:[],
   startingMoney:1500,
@@ -2326,8 +2327,16 @@ function canUseAccountProgression(){
   return !isInviteOnlyAccount();
 }
 
+function getCurrentMatchType(){
+  return !!(G&&G.matchType==='ranked')?'ranked':'normal';
+}
+
+function isCurrentMatchRanked(){
+  return getCurrentMatchType()==='ranked';
+}
+
 function canTrackProfileStatsInCurrentMatch(){
-  return !!(G&&G.mode==='online');
+  return !!(G&&(G.mode==='online'||isCurrentMatchRanked()));
 }
 
 function canAwardPersistentProfileProgressInCurrentMatch(){
@@ -3786,7 +3795,7 @@ function applySurvivalTurnPulse(){
 
 function startRematch(){
   if(!Array.isArray(G.players)||G.players.length<2){toast('Ajoute au moins 2 joueurs pour une revanche.','w');return;}
-  const canStart=G.mode==='local'||(G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-'));
+  const canStart=G.mode==='local'||(typeof isOnlineHost==='function'?isOnlineHost():!!(G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-')));
   if(!canStart){toast('Seul l’hôte peut lancer la revanche.','w');return;}
   const mode=normalizeRematchMode(G.rematchMode);
   if(mode==='vote'&&!confirm('Lancer une revanche avec le même lobby et rotation du premier joueur ?'))return;
@@ -7109,16 +7118,21 @@ function endGame(winner){
     const profileWon=!!(winner&&profilePlayer&&(winner.id===profilePlayer.id||(G.teamMode&&winner.teamId&&profilePlayer.teamId===winner.teamId)));
     const canTrackStats=canTrackProfileStatsInCurrentMatch();
     const canProgress=canAwardPersistentProfileProgressInCurrentMatch();
+    const rankedMatch=typeof isCurrentMatchRanked==='function'&&isCurrentMatchRanked();
     if(profilePlayer){
       addRouletteCoins(profileWon?6:2,profileWon?'victoire de partie':'partie terminée',{skipRender:true});
     }
     if(profileWon){
       if(canTrackStats)P.stats.gamesWon++;
       if(canProgress){
-        P.elo=Math.min(9999,(P.elo||1000)+30);
+        if(rankedMatch){
+          P.elo=Math.min(9999,(P.elo||1000)+30);
+          addSeasonProgress(70,'victoire ranked');
+        }else{
+          addSeasonProgress(28,'victoire');
+        }
         checkWinTitles();
         checkSecretTitles();
-        addSeasonProgress(70,'victoire');
       }
       if(canTrackStats||canProgress)saveProfileData();
       renderLobbyProfileTab();
@@ -7126,8 +7140,12 @@ function endGame(winner){
     else if(winner&&profilePlayer){
       if(canTrackStats)P.stats.gamesLost=(P.stats.gamesLost||0)+1;
       if(canProgress){
-        P.elo=Math.max(0,(P.elo||1000)-20);
-        addSeasonProgress(22,'fin de partie');
+        if(rankedMatch){
+          P.elo=Math.max(0,(P.elo||1000)-20);
+          addSeasonProgress(22,'fin de ranked');
+        }else{
+          addSeasonProgress(10,'fin de partie');
+        }
       }
       if(canTrackStats||canProgress)saveProfileData();
     }
@@ -7558,7 +7576,9 @@ function setGameZoom(){
 }
 
 function isOnlineHost(){
-  return !!(G.mode==='online'&&G.myId&&String(G.myId).startsWith('h-'));
+  const myId=String(G&&G.myId||'').trim();
+  const explicitHost=String(G&&((G.roomHostId)||((G.rankedContext&&G.rankedContext.hostPlayerId)||''))||'').trim();
+  return !!(G.mode==='online'&&myId&&(String(myId).startsWith('h-')||(explicitHost&&explicitHost===myId)));
 }
 
 function canEditPartyOptions(){
