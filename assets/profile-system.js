@@ -1396,8 +1396,10 @@ function renderLobbyProfileTab(){
       epRow.innerHTML=defs.map(def=>`<span style="font-size:1.4rem;cursor:pointer;opacity:${def.emoji===P.emoji?1:.4};transition:.15s" title="${escapeAttr(def.label||def.emoji)}" onclick="selectProfileEmoji('${def.emoji}')">${def.emoji}</span>`).join('');
     }
   }
-  const pni=document.getElementById('p-name-inp');if(pni)pni.value=P.name;
-  const pci=document.getElementById('p-color-inp');if(pci)pci.value=P.color;
+  const profileEditors=(typeof getProfileEditorElements==='function')?getProfileEditorElements():{nameInputs:[],colorInputs:[],zones:[]};
+  (profileEditors.nameInputs||[]).forEach(inp=>{if(inp)inp.value=P.name;});
+  (profileEditors.colorInputs||[]).forEach(inp=>{if(inp)inp.value=P.color;});
+  if(typeof syncProfileImageZones==='function')syncProfileImageZones(P.avatarImg||'');
   const sg=document.getElementById('profile-stats-grid');
   if(sg){
     const s=P.stats;
@@ -1428,15 +1430,16 @@ function selectProfileEmoji(emoji){
 }
 
 function saveProfileEdit(){
-  const n=document.getElementById('p-name-inp')?.value.trim();
-  const c=document.getElementById('p-color-inp')?.value;
-  const zone=document.getElementById('p-img-zone');
+  const profileEditors=(typeof getProfileEditorElements==='function')?getProfileEditorElements():{nameInputs:[],colorInputs:[],zones:[]};
+  const n=[...(profileEditors.nameInputs||[])].map(inp=>String(inp?.value||'').trim()).reverse().find(Boolean)||'';
+  const c=[...(profileEditors.colorInputs||[])].map(inp=>String(inp?.value||'').trim()).reverse().find(Boolean)||'';
+  const nextAvatar=(typeof getProfileImageDraft==='function')?getProfileImageDraft():'';
   if(n)P.name=n;
   if(c)P.color=c;
-  if(zone&&zone.getAttribute('data-img'))P.avatarImg=zone.getAttribute('data-img');
+  if(nextAvatar)P.avatarImg=nextAvatar;
   saveProfileData();
   renderLobbyProfileTab();
-  toast('✅ Profil sauvegardé !','a');
+  toast((P.googleConnected&&P.googleSessionToken)?'✅ Profil sauvegardé et synchronisé en ligne !':'✅ Profil sauvegardé !','a');
 }
 
 function debugAddVictories(amount){

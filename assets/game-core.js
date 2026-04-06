@@ -2389,6 +2389,7 @@ function loadProfile(opts){
   if(!isEmojiUnlocked(P.emoji))P.emoji=getUnlockedEmojis()[0];
   applySecretUnlocks();
   renderPartyEmojiPickers();
+  if(P.googleConnected&&P.googleSessionToken&&!options.skipRemoteHydrate&&typeof queueRemoteProfileHydration==='function')queueRemoteProfileHydration('load');
   renderLobbyProfileTab();renderFriendsList();renderSocialChat();
 }
 function saveProfileData(){
@@ -2401,6 +2402,68 @@ function saveProfileData(){
   }
   if(typeof queueRemoteProfileSync==='function')queueRemoteProfileSync('save');
   if(typeof scheduleGlobalLeaderboardRefresh==='function')scheduleGlobalLeaderboardRefresh(false);
+}
+
+let remoteProfileHydrationTimer=null;
+let remoteProfileHydrationInFlight=false;
+
+function isDefaultHostedAvatar(value){
+  const raw=String(value||'').trim().toLowerCase();
+  if(!raw)return true;
+  return raw.includes('dicebear.com')||raw.includes('googleusercontent.com')||raw.includes('gstatic.com');
+}
+
+async function hydrateRemoteProfileSnapshot(){
+  const base=(typeof getGoogleApiBase==='function'?String(getGoogleApiBase()||''):'').replace(/\/$/, '');
+  if(!base||!P.googleConnected||!P.googleSessionToken||!P.uid||remoteProfileHydrationInFlight)return false;
+  remoteProfileHydrationInFlight=true;
+  try{
+    const r=await fetch(base+'/api/profile/get',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({uid:P.uid,sessionToken:P.googleSessionToken||''}),
+      cache:'no-store',
+    });
+    const data=await r.json().catch(()=>null);
+    const remote=data&&data.ok&&data.profile&&typeof data.profile==='object'?data.profile:null;
+    if(!r.ok||!remote)return false;
+    let changed=false;
+    const remoteAvatar=String(remote.avatarImg||remote.avatar||'').trim();
+    const localAvatar=String(P.avatarImg||'').trim();
+    if(remoteAvatar&&(!localAvatar||isDefaultHostedAvatar(localAvatar))&&remoteAvatar!==localAvatar){
+      P.avatarImg=remoteAvatar;
+      changed=true;
+    }
+    const remoteName=String(remote.name||'').trim();
+    if(remoteName&&(!P.name||P.name==='Joueur')){
+      P.name=remoteName;
+      changed=true;
+    }
+    const remoteColor=String(remote.color||'').trim();
+    if(/^#[0-9a-fA-F]{6}$/.test(remoteColor)&&(!P.color||P.color==='#22c55e')){
+      P.color=remoteColor;
+      changed=true;
+    }
+    if(changed){
+      localStorage.setItem(PROFILE_KEY,JSON.stringify(Object.assign({},P,{googleSessionToken:P.googleSessionToken?String(P.googleSessionToken):null})));
+      renderLobbyProfileTab?.();
+      renderFriendsList?.();
+      renderSocialChat?.();
+    }
+    return changed;
+  }catch(_){
+    return false;
+  }finally{
+    remoteProfileHydrationInFlight=false;
+  }
+}
+
+function queueRemoteProfileHydration(reason='load'){
+  if(remoteProfileHydrationTimer)clearTimeout(remoteProfileHydrationTimer);
+  remoteProfileHydrationTimer=setTimeout(async()=>{
+    remoteProfileHydrationTimer=null;
+    await hydrateRemoteProfileSnapshot();
+  },reason==='login'?120:320);
 }
 
 const DAILY_CHALLENGE_POOL=[
@@ -4852,6 +4915,8 @@ function applyGoogleIdentity(email,name,avatarUrl,googleSub,isVerified,sessionTo
   const finalName=name||accountDefaultName||'Joueur';
   const avatarSeed=encodeURIComponent(email.toLowerCase());
   const fallbackAvatar=`https://api.dicebear.com/9.x/initials/svg?seed=${avatarSeed}`;
+  const existingAvatar=String(P.avatarImg||'').trim();
+  const nextHostedAvatar=avatarUrl||fallbackAvatar;
 
   P.googleConnected=true;
   P.googleEmail=email;
@@ -4862,9 +4927,10 @@ function applyGoogleIdentity(email,name,avatarUrl,googleSub,isVerified,sessionTo
   P.isAdmin=isKnownAdminEmail(email);
   P.moderation=P.moderation&&typeof P.moderation==='object'?P.moderation:getDefaultModerationState();
   P.name=finalName;
-  P.avatarImg=avatarUrl||fallbackAvatar;
+  P.avatarImg=(existingAvatar&&!isDefaultHostedAvatar(existingAvatar))?existingAvatar:nextHostedAvatar;
   syncUidWithGoogleIdentity(false);
   saveProfileData();renderLobbyProfileTab();renderSocialChat();
+  if(typeof queueRemoteProfileHydration==='function')queueRemoteProfileHydration('login');
   syncSocialAdminUi();
   refreshModerationStatus(false);
   unlockConnectionZone('google');
@@ -5036,21 +5102,121 @@ async function runNetworkDiagnostics(){
 }
 
 // Profile image drop zone (lobby)
-function initProfileImgZone(){
-  const zone=document.getElementById('p-img-zone');
-  if(!zone)return;
-  if(zone.dataset.bound==='1')return;
-  zone.dataset.bound='1';
-  const handleFile=file=>{
-    if(!file||!file.type.startsWith('image/'))return;
-    const r=new FileReader();
-    r.onload=ev=>{zone.setAttribute('data-img',ev.target.result);zone.style.backgroundImage=`url('${ev.target.result}')`;zone.style.backgroundSize='cover';zone.style.backgroundPosition='center';zone.textContent='';};
-    r.readAsDataURL(file);
+function getProfileEditorElements(){
+  const zones=[];
+  document.querySelectorAll('#p-img-zone,.emoji-drop-zone[data-for-profile="1"]').forEach(el=>{
+    if(el&&!zones.includes(el))zones.push(el);
+  });
+  return {
+    nameInputs:Array.from(document.querySelectorAll('#p-name-inp')),
+    colorInputs:Array.from(document.querySelectorAll('#p-color-inp')),
+    zones,
   };
-  zone.addEventListener('click',()=>{const p=document.createElement('input');p.type='file';p.accept='image/*';p.onchange=e=>handleFile(e.target.files[0]);p.click();});
-  zone.addEventListener('dragover',e=>{e.preventDefault();zone.style.borderColor='var(--accent)';});
-  zone.addEventListener('dragleave',()=>{zone.style.borderColor='var(--border)';});
-  zone.addEventListener('drop',e=>{e.preventDefault();handleFile(e.dataTransfer.files[0]);zone.style.borderColor='var(--border)';});
+}
+
+function setProfileImageZonePreview(zone,dataUrl){
+  if(!zone)return;
+  const next=String(dataUrl||'').trim();
+  zone.style.borderColor='var(--border)';
+  if(next){
+    zone.setAttribute('data-img',next);
+    zone.style.backgroundImage=`url('${next}')`;
+    zone.style.backgroundSize='cover';
+    zone.style.backgroundPosition='center';
+    zone.textContent='';
+    return;
+  }
+  zone.removeAttribute('data-img');
+  zone.style.backgroundImage='';
+  zone.textContent='🖼️ Glisse ou clique';
+}
+
+function syncProfileImageZones(dataUrl){
+  getProfileEditorElements().zones.forEach(zone=>setProfileImageZonePreview(zone,dataUrl));
+}
+
+function getProfileImageDraft(){
+  const zones=getProfileEditorElements().zones;
+  for(let i=zones.length-1;i>=0;i--){
+    const raw=String(zones[i]?.getAttribute('data-img')||'').trim();
+    if(raw)return raw;
+  }
+  return String(P?.avatarImg||'').trim();
+}
+
+function readImageFileAsDataUrl(file){
+  return new Promise(resolve=>{
+    if(!file||!file.type.startsWith('image/')){resolve('');return;}
+    const reader=new FileReader();
+    reader.onload=ev=>resolve(String(ev?.target?.result||''));
+    reader.onerror=()=>resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
+function compressProfileImageDataUrl(dataUrl){
+  return new Promise(resolve=>{
+    const raw=String(dataUrl||'').trim();
+    if(!raw||!/^data:image\//i.test(raw)){resolve(raw);return;}
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const maxSide=320;
+        const largest=Math.max(1,img.width||1,img.height||1);
+        const scale=Math.min(1,maxSide/largest);
+        const canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round((img.width||1)*scale));
+        canvas.height=Math.max(1,Math.round((img.height||1)*scale));
+        const ctx=canvas.getContext('2d');
+        if(!ctx){resolve(raw);return;}
+        ctx.imageSmoothingEnabled=true;
+        ctx.imageSmoothingQuality='high';
+        ctx.clearRect(0,0,canvas.width,canvas.height);
+        ctx.drawImage(img,0,0,canvas.width,canvas.height);
+        let best='';
+        ['image/webp','image/jpeg'].forEach(type=>{
+          [0.88,0.82,0.76,0.7].forEach(quality=>{
+            try{
+              const candidate=canvas.toDataURL(type,quality);
+              if(candidate&&(!best||candidate.length<best.length))best=candidate;
+            }catch(_){ }
+          });
+        });
+        resolve(best||raw);
+      }catch(_){
+        resolve(raw);
+      }
+    };
+    img.onerror=()=>resolve(raw);
+    img.src=raw;
+  });
+}
+
+async function handleImportedProfileImage(file){
+  if(!file||!file.type.startsWith('image/'))return;
+  const raw=await readImageFileAsDataUrl(file);
+  const optimized=await compressProfileImageDataUrl(raw);
+  syncProfileImageZones(optimized||raw);
+}
+
+function initProfileImgZone(){
+  const zones=getProfileEditorElements().zones;
+  if(!zones.length)return;
+  zones.forEach(zone=>{
+    if(zone.dataset.bound==='1')return;
+    zone.dataset.bound='1';
+    zone.addEventListener('click',()=>{
+      const p=document.createElement('input');
+      p.type='file';
+      p.accept='image/*';
+      p.onchange=e=>handleImportedProfileImage(e.target.files[0]);
+      p.click();
+    });
+    zone.addEventListener('dragover',e=>{e.preventDefault();zone.style.borderColor='var(--accent)';});
+    zone.addEventListener('dragleave',()=>{zone.style.borderColor='var(--border)';});
+    zone.addEventListener('drop',e=>{e.preventDefault();handleImportedProfileImage(e.dataTransfer.files[0]);zone.style.borderColor='var(--border)';});
+  });
+  syncProfileImageZones(P?.avatarImg||'');
 }
 
 // ═══════════════════════════════════════

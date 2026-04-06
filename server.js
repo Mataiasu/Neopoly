@@ -37,8 +37,23 @@ function sanitizeStr(v, maxLen) {
   return typeof v === 'string' ? v.slice(0, maxLen) : '';
 }
 
+const MAX_PROFILE_IMAGE_DATA_URL_LEN = Math.max(120000, Number(process.env.MAX_PROFILE_IMAGE_DATA_URL_LEN || 350000));
+const MAX_PROFILE_REMOTE_URL_LEN = 8192;
+
 function normalizeEmail(v) {
   return String(v || '').trim().toLowerCase().slice(0, 160);
+}
+
+function sanitizeProfileAvatarField(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^data:image\//i.test(raw)) {
+    return raw.length <= MAX_PROFILE_IMAGE_DATA_URL_LEN ? raw : '';
+  }
+  if (/^https?:\/\//i.test(raw)) {
+    return raw.slice(0, MAX_PROFILE_REMOTE_URL_LEN);
+  }
+  return sanitizeStr(raw, 128);
 }
 
 function sanitizeProfilePayload(raw) {
@@ -47,8 +62,8 @@ function sanitizeProfilePayload(raw) {
     uid:        sanitizeStr(raw.uid, 128),
     googleSub:  sanitizeStr(raw.googleSub, 128),
     name:       sanitizeStr(raw.name, 64),
-    avatar:     sanitizeStr(raw.avatar, 4096),
-    avatarImg:  sanitizeStr(raw.avatarImg, 4096),
+    avatar:     sanitizeProfileAvatarField(raw.avatar),
+    avatarImg:  sanitizeProfileAvatarField(raw.avatarImg),
     emoji:      sanitizeStr(raw.emoji, 16),
     color:      sanitizeStr(raw.color, 32),
     title:      sanitizeStr(raw.title, 64),
@@ -1246,8 +1261,8 @@ async function handleApi(req, res, pathname) {
         const next = {
           uid,
           name: name || 'Joueur',
-          avatar: sanitizeStr(profile.avatar, 4096),
-          avatarImg: sanitizeStr(profile.avatarImg, 4096),
+          avatar: sanitizeProfileAvatarField(profile.avatar),
+          avatarImg: sanitizeProfileAvatarField(profile.avatarImg),
           emoji: sanitizeStr(profile.emoji, 16) || '👤',
           color: sanitizeStr(profile.color, 32) || '#22c55e',
           title: sanitizeStr(profile.title, 64),
