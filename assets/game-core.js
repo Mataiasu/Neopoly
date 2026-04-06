@@ -2525,12 +2525,12 @@ const CASINO_TO_RARE_TOKEN_OFFERS=[
 ];
 
 const RARE_TOKEN_SHOP_ITEMS=[
-  {id:'rare_shop_aurora',icon:'✨',name:'Éclat Aurora',cost:2,desc:'Débloque l’aura Elite et un style plus lumineux.',reward:{type:'rareReward',key:'aurora_shard',fallback:{type:'seasonXp',qty:45}}},
-  {id:'rare_shop_vault',icon:'🗝️',name:'Clé du Coffre',cost:3,desc:'Pack premium utile pour les parties longues.',reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:2}}},
-  {id:'rare_shop_phoenix',icon:'🔥',name:'Cœur Phénix',cost:4,desc:'Récompense légendaire cosmétique.',reward:{type:'rareReward',key:'phoenix_core',fallback:{type:'rareToken',qty:1}}},
-  {id:'rare_shop_starlight',icon:'🌠',name:'Jeton Astral',cost:5,desc:'Halo jackpot + bonus premium du casino.',reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:18}}},
-  {id:'rare_shop_nebula',icon:'🪐',name:'Sceau Nebula',cost:6,desc:'Récompense mythique liée aux saisons et secrets.',reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
-  {id:'rare_shop_bundle',icon:'🎁',name:'Pack tactique',cost:2,desc:'Bundle immédiat pour mieux tenir en ranked.',reward:{type:'diceBoost',qty:2},extraRewards:[{type:'antiJail',qty:1},{type:'mortgageDiscount',qty:1}]},
+  {id:'rare_shop_aurora',icon:'✨',name:'Éclat Aurora',cost:4,desc:'Débloque l’aura Elite et un style plus lumineux.',reward:{type:'rareReward',key:'aurora_shard',fallback:{type:'seasonXp',qty:45}}},
+  {id:'rare_shop_vault',icon:'🗝️',name:'Clé du Coffre',cost:6,desc:'Pack premium utile pour les parties longues.',reward:{type:'rareReward',key:'vault_key',fallback:{type:'mortgageDiscount',qty:2}}},
+  {id:'rare_shop_phoenix',icon:'🔥',name:'Cœur Phénix',cost:8,desc:'Récompense légendaire cosmétique.',reward:{type:'rareReward',key:'phoenix_core',fallback:{type:'rareToken',qty:1}}},
+  {id:'rare_shop_starlight',icon:'🌠',name:'Jeton Astral',cost:10,desc:'Halo jackpot + bonus premium du casino.',reward:{type:'rareReward',key:'starlight_chip',fallback:{type:'rouletteCoins',qty:18}}},
+  {id:'rare_shop_nebula',icon:'🪐',name:'Sceau Nebula',cost:12,desc:'Récompense mythique liée aux saisons et secrets.',reward:{type:'rareReward',key:'season_sigil',fallback:{type:'rareToken',qty:2}}},
+  {id:'rare_shop_bundle',icon:'🎁',name:'Pack tactique',cost:5,desc:'Bundle immédiat pour mieux tenir en ranked.',reward:{type:'diceBoost',qty:2},extraRewards:[{type:'antiJail',qty:1},{type:'mortgageDiscount',qty:1}]},
 ];
 
 const SEASON_ROTATION=[
@@ -3182,14 +3182,18 @@ function renderRareRewardsUi(){
     return;
   }
   const recentRewardsHtml=rewards.length
-    ? rewards.map(entry=>'<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:var(--s2);border:1px solid var(--border)">'+
-        '<span style="font-size:1rem">'+escapeUiText(entry.icon||'💎')+'</span>'+
-        '<div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:700">'+escapeUiText(entry.label||'Récompense')+'</div><div style="font-size:.62rem;color:var(--muted)">'+escapeUiText((entry.rarity||'rare')+(entry.desc?(' • '+entry.desc):''))+'</div></div>'+
-      '</div>').join('')
+    ? rewards.map(entry=>{
+        const rewardHover=escapeUiText(((entry.label||'Récompense')+' • '+(entry.desc||'Récompense rare obtenue dans la boutique ou les missions.')).trim()).replace(/"/g,'&quot;');
+        return '<div data-tip="'+rewardHover+'" style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;background:var(--s2);border:1px solid var(--border);cursor:help">'+
+          '<span style="font-size:1rem">'+escapeUiText(entry.icon||'💎')+'</span>'+
+          '<div style="flex:1;min-width:0"><div style="font-size:.72rem;font-weight:700">'+escapeUiText(entry.label||'Récompense')+'</div><div style="font-size:.62rem;color:var(--muted)">'+escapeUiText((entry.rarity||'rare')+(entry.desc?(' • '+entry.desc):''))+'</div></div>'+
+        '</div>';
+      }).join('')
     : '<div style="font-size:.68rem;color:var(--muted)">Aucune récompense rare obtenue pour le moment.</div>';
   const conversionHtml=(CASINO_TO_RARE_TOKEN_OFFERS||[]).map(offer=>{
     const canAfford=casinoTokens>=(parseInt(offer.casinoCost,10)||0);
-    return '<button class="btn '+(canAfford?'btn-yellow':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="convertCasinoToRareTokens('+parseInt(offer.casinoCost,10)+','+parseInt(offer.rareGain,10)+')">'+
+    const offerTip=escapeUiText((offer.label||'Échange')+' • Convertit '+offer.casinoCost+' jetons casino en '+offer.rareGain+' jeton'+(offer.rareGain>1?'s':'')+' rare'+(offer.rareGain>1?'s':'')+'.').replace(/"/g,'&quot;');
+    return '<button data-tip="'+offerTip+'" class="btn '+(canAfford?'btn-yellow':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="convertCasinoToRareTokens('+parseInt(offer.casinoCost,10)+','+parseInt(offer.rareGain,10)+')">'+
       escapeUiText((offer.label||'Échange')+' • '+offer.casinoCost+' 🎰 → '+offer.rareGain+' 💠')+
     '</button>';
   }).join('');
@@ -3197,14 +3201,15 @@ function renderRareRewardsUi(){
     const cost=Math.max(1,parseInt(item.cost,10)||1);
     const canAfford=tokens>=cost;
     const rewardText=getRareTokenShopRewards(item).map(getRewardText).join(' • ');
-    return '<div style="padding:8px 9px;border-radius:10px;background:linear-gradient(180deg,rgba(10,20,42,.92),rgba(9,14,28,.9));border:1px solid rgba(96,165,250,.14)">'+
+    const hoverText=escapeUiText(((item.name||'Offre premium')+' • '+(item.desc||'Récompense premium')+' • Butin : '+(rewardText||'Bonus surprise')).trim()).replace(/"/g,'&quot;');
+    return '<div data-tip="'+hoverText+'" style="padding:8px 9px;border-radius:10px;background:linear-gradient(180deg,rgba(10,20,42,.92),rgba(9,14,28,.9));border:1px solid rgba(96,165,250,.14);cursor:help">'+
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">'+
         '<div style="font-size:.72rem;font-weight:800">'+escapeUiText((item.icon||'💠')+' '+(item.name||'Offre premium'))+'</div>'+
         '<div style="font-size:.64rem;color:#facc15;font-weight:800">'+cost+' 💠</div>'+
       '</div>'+
       '<div style="font-size:.63rem;color:var(--muted);margin-top:4px">'+escapeUiText(item.desc||'Récompense premium')+'</div>'+
       '<div style="font-size:.62rem;color:#dbeafe;margin-top:5px">Butin : '+escapeUiText(rewardText||'Bonus surprise')+'</div>'+
-      '<div style="margin-top:7px"><button class="btn '+(canAfford?'btn-blue':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="buyRareTokenShopItem(\''+String(item.id||'')+'\')">Acheter</button></div>'+
+      '<div style="margin-top:7px"><button data-tip="'+hoverText+'" class="btn '+(canAfford?'btn-blue':'btn-secondary')+' btn-xs" '+(canAfford?'':'disabled')+' onclick="buyRareTokenShopItem(\''+String(item.id||'')+'\')">Acheter</button></div>'+
     '</div>';
   }).join('');
   list.innerHTML=''+
@@ -3214,7 +3219,7 @@ function renderRareRewardsUi(){
     '</div>'+
     '<div style="font-size:.64rem;color:var(--muted);margin-top:6px;font-weight:700">🔄 Conversion casino → rare</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">'+conversionHtml+'</div>'+
-    '<div style="font-size:.64rem;color:var(--muted);margin-top:9px;font-weight:700">🛍️ Offres premium</div>'+
+    '<div style="font-size:.64rem;color:var(--muted);margin-top:9px;font-weight:700">🛍️ Offres premium <span style="font-weight:600;opacity:.85">• survole pour voir les détails</span></div>'+
     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:7px;margin-top:6px">'+shopHtml+'</div>'+
     '<div style="font-size:.64rem;color:var(--muted);margin-top:9px;font-weight:700">💎 Récompenses rares obtenues</div>'+
     '<div style="display:flex;flex-direction:column;gap:6px;margin-top:6px">'+recentRewardsHtml+'</div>';
