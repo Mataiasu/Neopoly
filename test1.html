@@ -120,14 +120,18 @@ body.debug-tools-window-open #debug-tools-card{
   position:fixed;
   left:50%;
   top:50%;
+  right:auto;
+  bottom:auto;
   transform:translate(-50%,-50%);
   width:min(92vw,620px);
-  max-height:88vh;
+  max-height:min(88vh,760px);
   overflow-y:auto;
+  overscroll-behavior:contain;
   z-index:175;
   padding:12px;
   border:1px solid rgba(255,209,102,.28);
   box-shadow:0 24px 48px rgba(1,6,18,.45);
+  contain:none !important;
 }
 body.debug-tools-window-open #debug-tools-card summary{
   position:sticky;
@@ -2372,19 +2376,19 @@ body.streamer-mode #invite-link {
             <div class="news-hero" style="margin-top:8px;margin-bottom:10px">
               <div class="news-kicker">✨ Premium update • avril 2026</div>
               <div class="news-title">NeoPoly reçoit une vitrine plus esports et plus luxueuse</div>
-              <div class="news-sub">Compteur live fiable sur le site, reconnexion online, fenêtre debug premium pour les admins et meilleure lisibilité du plateau : la zone <b>News</b> affiche désormais les derniers gros ajouts dans un style plus haut de gamme.</div>
+              <div class="news-sub">Compteur live fiable sur le site, reconnexion online, filtres premium plus lisibles et meilleure lecture du plateau : la zone <b>News</b> affiche désormais les derniers gros ajouts dans un style plus haut de gamme.</div>
               <div class="news-pills">
                 <span class="news-pill">🟢 Présence temps réel</span>
                 <span class="news-pill">🔁 Reconnexion auto</span>
-                <span class="news-pill">🛡️ Debug admin</span>
+                <span class="news-pill">📊 Historique filtré</span>
                 <span class="news-pill">🏟️ Ambiance ranked</span>
               </div>
             </div>
             <div class="news-grid">
               <div class="news-tile"><span class="news-badge">Live</span><b>v5.1 • Compteur temps réel</b><div class="news-copy">Le ladder affiche maintenant les <b>joueurs en ligne</b>, les <b>visiteurs du site</b> et les <b>salons actifs</b> avec un rafraîchissement plus propre.</div></div>
               <div class="news-tile"><span class="news-badge">Online</span><b>Reconnexion multijoueur</b><div class="news-copy">Un joueur déconnecté peut revenir rapidement grâce au bouton de reconnexion et à l’auto‑reconnexion après quelques secondes.</div></div>
-              <div class="news-tile"><span class="news-badge">Admin</span><b>Debug window premium</b><div class="news-copy">Le menu debug s’ouvre désormais dans une vraie fenêtre flottante, réservée aux admins, avec glisser‑déposer et bouton <b>Recentrer</b>.</div></div>
               <div class="news-tile"><span class="news-badge">UX</span><b>Lecture du plateau</b><div class="news-copy">Correction visuelle des cases latérales comme <b>Chance</b> et <b>Avenue des Champs‑Élysées</b> pour une lecture plus nette.</div></div>
+              <div class="news-tile"><span class="news-badge">Pro</span><b>Fenêtres plus propres</b><div class="news-copy">Les panneaux premium s’ouvrent maintenant dans des fenêtres plus nettes, mieux centrées et plus agréables à lire.</div></div>
               <div class="news-tile"><span class="news-badge">Pro</span><b>Historique premium</b><div class="news-copy">Nouveaux filtres sur le journal, les transactions et le résumé de fin de tour pour une lecture plus claire.</div></div>
               <div class="news-tile"><span class="news-badge">Starter</span><b>UX & onboarding</b><div class="news-copy">Tutoriel interactif, raccourcis clavier desktop, profil public partageable et aide intégrée pour mieux démarrer.</div></div>
               <div class="news-tile"><span class="news-badge">Secret</span><b>5 nouveaux codes cachés</b><div class="news-copy">Le casino murmure <b>888</b>, le <b>vault</b> respecte les bâtisseurs, l’<b>aurore</b> aime les gros paliers ELO, la <b>nuit parisienne</b> garde un mot de passe, et le <b>capital fantôme</b> vise les fortunes.</div></div>

@@ -4891,6 +4891,8 @@ function recenterAdminDebugMenu(){
   if(!card)return;
   card.style.left='50%';
   card.style.top='50%';
+  card.style.right='auto';
+  card.style.bottom='auto';
   card.style.transform='translate(-50%,-50%)';
   card.dataset.dragMoved='';
   card.classList.remove('is-dragging');
@@ -4918,9 +4920,7 @@ function openAdminDebugMenu(){
   if(card){
     card.style.display='block';
     card.open=true;
-    if(!card.dataset.dragMoved){
-      recenterAdminDebugMenu();
-    }
+    recenterAdminDebugMenu();
     initAdminDebugWindowDrag();
   }
   if(backdrop)backdrop.classList.add('open');
