@@ -6384,12 +6384,14 @@ function sendToJail(p,reason=''){
   const mi=ensurePlayerMatchItems(p);
   if((mi.antiJail||0)>0){
     mi.antiJail--;renderMatchItemsUi();
+    if(typeof broadcast==='function'&&G.mode==='online')broadcast();
     glog(p.name+' évite la prison grâce à Anti-prison (temp.).','a');
     toast('🛡️ Anti-prison (temp) utilisé','a');
     return;
   }
   if(isProfileControlledPlayer(p)&&(P.inventory?.antiJail||0)>0){
     P.inventory.antiJail--;saveProfileData();renderInventoryUi();renderMatchItemsUi();
+    if(typeof broadcast==='function'&&G.mode==='online')broadcast();
     glog(p.name+' évite la prison grâce à Anti-prison.','a');
     toast('🛡️ Anti-prison utilisé','a');
     return;
@@ -8989,6 +8991,7 @@ function renderMatchItemsUi(){
   const j=document.getElementById('match-jail');if(j)j.textContent=controlled?String(mi.antiJail||0):'—';
   const m=document.getElementById('match-discount');if(m)m.textContent=controlled?String(mi.mortgageDiscount||0):'—';
   const b=document.getElementById('boost-btn');
+  const summary=document.getElementById('match-status-summary');
   const animating=!!G.isAnimatingMove;
   if(b){
     const qMatch=mi.diceBoost||0;
@@ -8998,6 +9001,27 @@ function renderMatchItemsUi(){
       :'⚡ Booster dé';
     b.disabled=(qMatch+qPers)<=0||!G.started||G.rolled||!controlled||animating;
   }
+  if(summary){
+    let text='Aucun bonus actif pour le joueur courant.';
+    let state='idle';
+    if(!controlled){
+      text='Visible uniquement pour le joueur courant.';
+    }else{
+      const notes=[];
+      if(G.pendingRollBoostFor===p?.id)notes.push('⚡ Booster armé pour ce lancer');
+      if((mi.diceBoost||0)>0)notes.push('⚡ '+mi.diceBoost+' booster'+((mi.diceBoost||0)>1?'s':'')+' en réserve');
+      if((mi.antiJail||0)>0)notes.push('🛡️ sortie auto de prison prête');
+      if((mi.mortgageDiscount||0)>0)notes.push('🏦 prochaine hypothèque à tarif réduit');
+      if((parseInt(p?.ghostPass,10)||0)>0)notes.push('👻 prochain loyer adverse annulé');
+      if(notes.length){
+        text=notes.join(' • ');
+        state='active';
+      }
+    }
+    summary.textContent=text;
+    summary.dataset.state=state;
+  }
+  if(typeof renderPlayers==='function')renderPlayers();
 }
 
 function addMatchItem(p,type,qty=1,reason){
@@ -9006,6 +9030,7 @@ function addMatchItem(p,type,qty=1,reason){
   mi[type]=Math.max(0,(parseInt(mi[type],10)||0)+qty);
   if(reason)glog('🎁 '+p.name+' gagne un objet de partie ('+reason+').','a');
   renderMatchItemsUi();
+  if(typeof broadcast==='function'&&G.mode==='online')broadcast();
 }
 
 function grantRandomMatchItem(p,reason){
@@ -9046,18 +9071,81 @@ function useDiceBoostItem(){
   }else{toast('Aucun booster disponible','w');return;}
   G.pendingRollBoostFor=p.id;
   renderInventoryUi();renderMatchItemsUi();
+  if(typeof broadcast==='function'&&G.mode==='online')broadcast();
   toast('⚡ Booster prêt pour ce lancer','a');
 }
 
+const POWERUP_TAX_PER_OPPONENT=15;
 const SHOP_ITEMS=[
-  {id:'diceBoost',icon:'⚡',name:'Booster de dé',price:150,desc:'Ajoute un booster de dé utilisable ce tour ou plus tard.',buy:p=>{addMatchItem(p,'diceBoost',1,'boutique');return true;}},
-  {id:'antiJail',icon:'🛡️',name:'Anti-prison',price:200,desc:'Sortie automatique lors du prochain emprisonnement.',buy:p=>{addMatchItem(p,'antiJail',1,'boutique');return true;}},
-  {id:'ghostPass',icon:'👻',name:'Fantôme',price:250,desc:'Ignore le prochain loyer subi sur une case adverse.',buy:p=>{p.ghostPass=(parseInt(p.ghostPass,10)||0)+1;toast('👻 Fantôme prêt pour le prochain loyer.','a');return true;}},
-  {id:'quickBuild',icon:'🏗️',name:'Construction rapide',price:300,desc:'Construit gratuitement une maison sur une de tes propriétés.',selection:'quickBuild'},
-  {id:'sabotage',icon:'💣',name:'Sabotage',price:350,desc:'Détruit une maison sur une propriété adverse.',selection:'sabotage'},
-  {id:'taxCollect',icon:'💰',name:'Collecte d\'impôts',price:100,desc:'Prend 20$ à chaque joueur adverse actif.',buy:p=>buyShopTaxCollect(p)}
+  {id:'diceBoost',icon:'⚡',name:'Booster de dé',price:165,desc:'Ajoute un booster de dé tactique. Max 1 achat par tour.',maxPerTurn:1,maxHeld:3,buy:p=>{addMatchItem(p,'diceBoost',1,'boutique');return true;}},
+  {id:'antiJail',icon:'🛡️',name:'Anti-prison',price:210,desc:'Sortie automatique au prochain emprisonnement. Stock max : 3.',maxHeld:3,buy:p=>{addMatchItem(p,'antiJail',1,'boutique');return true;}},
+  {id:'ghostPass',icon:'👻',name:'Fantôme',price:235,desc:'Ignore le prochain loyer subi. Stock max : 2.',maxHeld:2,buy:p=>{p.ghostPass=(parseInt(p.ghostPass,10)||0)+1;toast('👻 Fantôme prêt pour le prochain loyer.','a');return true;}},
+  {id:'quickBuild',icon:'🏗️',name:'Construction rapide',price:320,desc:'Construit gratuitement une maison sur une de tes propriétés.',selection:'quickBuild',maxPerTurn:1},
+  {id:'sabotage',icon:'💣',name:'Sabotage',price:420,desc:'Détruit une maison sur une propriété adverse. Recharge : 2 tours.',selection:'sabotage',maxPerTurn:1,cooldownTurns:2},
+  {id:'taxCollect',icon:'💰',name:'Collecte d\'impôts',price:140,desc:'Prend '+POWERUP_TAX_PER_OPPONENT+'$ à chaque joueur adverse actif. 1 fois par tour.',maxPerTurn:1,cooldownTurns:1,buy:p=>buyShopTaxCollect(p)}
 ];
 let SHOP_PENDING_SELECTION=null;
+
+function ensurePlayerShopUsage(player){
+  if(!player||typeof player!=='object')return {};
+  if(!player.shopUsage||typeof player.shopUsage!=='object')player.shopUsage={};
+  return player.shopUsage;
+}
+
+function getShopHeldCount(itemId,player){
+  const p=player||G.players[G.cur];
+  if(!p)return 0;
+  const mi=ensurePlayerMatchItems(p);
+  if(itemId==='diceBoost')return (parseInt(mi.diceBoost,10)||0)+(isProfileControlledPlayer(p)?(parseInt(P.inventory?.diceBoost,10)||0):0);
+  if(itemId==='antiJail')return (parseInt(mi.antiJail,10)||0)+(isProfileControlledPlayer(p)?(parseInt(P.inventory?.antiJail,10)||0):0);
+  if(itemId==='ghostPass')return Math.max(0,parseInt(p.ghostPass,10)||0);
+  return 0;
+}
+
+function getShopItemState(item,player){
+  const p=player||G.players[G.cur];
+  const nowTurn=Math.max(1,parseInt(G.turnCount,10)||1);
+  const usage=ensurePlayerShopUsage(p);
+  const entry=usage[item.id]&&typeof usage[item.id]==='object'?usage[item.id]:(usage[item.id]={turn:0,count:0,lastTurn:0});
+  if(entry.turn!==nowTurn){
+    entry.turn=nowTurn;
+    entry.count=0;
+  }
+  const maxPerTurn=Math.max(0,parseInt(item.maxPerTurn,10)||0);
+  const cooldownTurns=Math.max(0,parseInt(item.cooldownTurns,10)||0);
+  const maxHeld=Math.max(0,parseInt(item.maxHeld,10)||0);
+  const held=getShopHeldCount(item.id,p);
+  const turnCount=Math.max(0,parseInt(entry.count,10)||0);
+  const lastTurn=Math.max(0,parseInt(entry.lastTurn,10)||0);
+  const turnsSinceUse=lastTurn?Math.max(0,nowTurn-lastTurn):999;
+  const cooldownRemaining=lastTurn?Math.max(0,cooldownTurns-turnsSinceUse):0;
+  const atTurnCap=!!(maxPerTurn&&turnCount>=maxPerTurn);
+  const atStockCap=!!(maxHeld&&held>=maxHeld);
+  let reason='';
+  if(cooldownRemaining>0)reason='Recharge : '+cooldownRemaining+' tour'+(cooldownRemaining>1?'s':'');
+  else if(atTurnCap)reason='Limite par tour atteinte';
+  else if(atStockCap)reason='Stock max atteint';
+  return {maxPerTurn,cooldownTurns,maxHeld,held,turnCount,cooldownRemaining,available:!reason,reason};
+}
+
+function registerShopItemUse(item,player){
+  const p=player||G.players[G.cur];
+  if(!item||!p)return;
+  const usage=ensurePlayerShopUsage(p);
+  const nowTurn=Math.max(1,parseInt(G.turnCount,10)||1);
+  const entry=usage[item.id]&&typeof usage[item.id]==='object'?usage[item.id]:(usage[item.id]={turn:nowTurn,count:0,lastTurn:0});
+  if(entry.turn!==nowTurn){entry.turn=nowTurn;entry.count=0;}
+  entry.count=Math.max(0,parseInt(entry.count,10)||0)+1;
+  entry.lastTurn=nowTurn;
+}
+
+function buildShopItemBadges(item,state){
+  const badges=[];
+  if(state.maxPerTurn)badges.push('⏱️ '+state.maxPerTurn+'/tour');
+  if(state.cooldownTurns)badges.push('♻️ CD '+state.cooldownTurns+'t');
+  if(state.maxHeld)badges.push('🎒 '+state.held+'/'+state.maxHeld);
+  return badges;
+}
 
 function isPowerupsAddonEnabled(){
   return !!readPackManagerFallbackState().powerups;
@@ -9122,17 +9210,25 @@ function renderShopItems(){
   const balance=document.getElementById('shop-balance');
   const list=document.getElementById('shop-items-list');
   if(!player||!balance||!list)return;
-  balance.textContent='Budget : '+player.money+'$';
+  balance.textContent='Budget : '+player.money+'$ • Tour '+Math.max(1,parseInt(G.turnCount,10)||1);
   list.innerHTML=SHOP_ITEMS.map(item=>{
     const canAfford=player.money>=item.price;
-    return '<div class="shop-item'+(canAfford?'':' cant-afford')+'">'+
+    const state=getShopItemState(item,player);
+    const canBuy=canAfford&&state.available;
+    const badges=buildShopItemBadges(item,state);
+    const statusNote=!canAfford
+      ?('Manque '+Math.max(0,item.price-player.money)+'$.')
+      :(state.reason||'Disponible maintenant.');
+    return '<div class="shop-item'+(canBuy?'':' is-locked')+(canAfford?'':' cant-afford')+'">'+
       '<span class="shop-item-icon">'+item.icon+'</span>'+
       '<div class="shop-item-info">'+
         '<div class="shop-item-name">'+escapeHtml(item.name)+'</div>'+
         '<div class="shop-item-desc">'+escapeHtml(item.desc)+'</div>'+
+        (badges.length?('<div class="shop-item-badges">'+badges.map(label=>'<span class="shop-mini-badge">'+escapeHtml(label)+'</span>').join('')+'</div>'):'')+
+        '<div class="shop-item-note">'+escapeHtml(statusNote)+'</div>'+
       '</div>'+
       '<span class="shop-item-price">'+item.price+'$</span>'+
-      '<button class="btn btn-blue btn-xs shop-item-btn" '+(canAfford?'':'disabled')+' onclick="buyShopItem(\''+item.id+'\')">Acheter</button>'+
+      '<button class="btn btn-'+(canBuy?'yellow':'secondary')+' btn-xs shop-item-btn" '+(canBuy?'':'disabled')+' onclick="buyShopItem(\''+item.id+'\')">'+(canBuy?'Acheter':'Bloqué')+'</button>'+
     '</div>';
   }).join('');
   renderShopSelectionPanel();
@@ -9143,6 +9239,8 @@ function buyShopItem(itemId){
   const player=G.players[G.cur];
   if(!item||!player)return;
   if(player.money<item.price){toast('Pas assez d\'argent.','d');return;}
+  const state=getShopItemState(item,player);
+  if(!state.available){toast(state.reason||'Cet objet est temporairement indisponible.','i');renderShopItems();return;}
   if(item.selection){
     beginShopSelection(item,player);
     return;
@@ -9150,6 +9248,7 @@ function buyShopItem(itemId){
   saveUndo();
   const result=item.buy(player);
   if(result===false)return;
+  registerShopItemUse(item,player);
   player.money-=item.price;
   recordTxn(player,-item.price,'Shop: '+item.name);
   glog('🛒 '+player.name+' achète '+item.name+'.','a');
@@ -9177,7 +9276,9 @@ function getShopSelectionCandidates(kind,player){
         cellIndex:G.board.indexOf(cell),
         icon:cell.ico,
         title:cell.n,
-        meta:(cell.houses||0)+' maison',
+        meta:(cell.houses||0)+' maison'+((cell.houses||0)>1?'s':''),
+        desc:((cell.houses||0)>=4?'Passera en hôtel':'Passera à '+((cell.houses||0)+1)+' maison'+(((cell.houses||0)+1)>1?'s':'')),
+        accent:cell.c||player.color||'#67f7d7',
       }));
   }
   if(kind==='sabotage'){
@@ -9189,7 +9290,9 @@ function getShopSelectionCandidates(kind,player){
           cellIndex:G.board.indexOf(cell),
           icon:cell.ico,
           title:cell.n,
-          meta:(owner?owner.name:'Adversaire')+' • '+(cell.houses||0)+' maison',
+          meta:(owner?owner.name:'Adversaire')+' • '+(cell.houses||0)+' maison'+((cell.houses||0)>1?'s':''),
+          desc:'Retire 1 maison à cette propriété adverse.',
+          accent:(owner&&owner.color)||cell.c||'#ff647c',
         };
       });
   }
@@ -9220,9 +9323,10 @@ function renderShopSelectionPanel(){
       '</div>'+
       '<div class="shop-target-list">'+
         SHOP_PENDING_SELECTION.candidates.map((candidate,idx)=>
-          '<button class="shop-target-btn" type="button" onclick="confirmShopSelection('+idx+')">'+
+          '<button class="shop-target-btn" type="button" style="--shop-accent:'+(candidate.accent||'#67f7d7')+'" onclick="confirmShopSelection('+idx+')">'+
+            '<span class="shop-target-accent"></span>'+
             '<span>'+escapeHtml(candidate.icon||'•')+'</span>'+
-            '<span>'+escapeHtml(candidate.title)+'</span>'+
+            '<span class="shop-target-copy"><strong>'+escapeHtml(candidate.title)+'</strong><span class="shop-target-desc">'+escapeHtml(candidate.desc||candidate.meta||'')+'</span></span>'+
             '<span class="shop-target-meta">'+escapeHtml(candidate.meta||'')+'</span>'+
           '</button>'
         ).join('')+
@@ -9238,6 +9342,8 @@ function confirmShopSelection(candidateIndex){
   const candidate=pending.candidates[candidateIndex];
   if(!item||!player||!candidate){clearShopSelection();renderShopItems();return;}
   if(player.money<item.price){toast('Pas assez d\'argent.','d');clearShopSelection();renderShopItems();return;}
+  const state=getShopItemState(item,player);
+  if(!state.available){toast(state.reason||'Cet objet est indisponible pour le moment.','i');clearShopSelection();renderShopItems();return;}
   const cell=G.board[candidate.cellIndex];
   if(!cell){toast('Cible indisponible.','w');clearShopSelection();renderShopItems();return;}
   saveUndo();
@@ -9250,6 +9356,7 @@ function confirmShopSelection(candidateIndex){
     cell.houses=Math.max(0,(cell.houses||0)-1);
     toast('💣 Sabotage réussi sur '+cell.n,'d');
   }
+  registerShopItemUse(item,player);
   player.money-=item.price;
   recordTxn(player,-item.price,'Shop: '+item.name);
   glog('🛒 '+player.name+' achète '+item.name+' sur '+cell.n+'.','a');
@@ -9263,13 +9370,14 @@ function buyShopTaxCollect(player){
   if(!others.length){toast('Aucun joueur à taxer.','w');return false;}
   let total=0;
   others.forEach(entry=>{
-    const take=Math.min(20,entry.money||0);
+    const take=Math.min(POWERUP_TAX_PER_OPPONENT,entry.money||0);
     entry.money-=take;
     player.money+=take;
     total+=take;
     recordTxn(entry,-take,'Taxe boutique: '+player.name);
     checkBust(entry);
   });
+  if(total<=0){toast('Les autres joueurs sont déjà à sec.','w');return false;}
   recordTxn(player,total,'Collecte d\'impôts');
   toast('💰 '+total+'$ collectés.','a');
   return true;
@@ -9279,6 +9387,8 @@ function consumeGhostPass(player,cell){
   if(!player||(parseInt(player.ghostPass,10)||0)<=0)return false;
   if(!cell||cell.owner==null||cell.owner===player.id)return false;
   player.ghostPass=Math.max(0,(parseInt(player.ghostPass,10)||0)-1);
+  renderMatchItemsUi();
+  if(typeof broadcast==='function'&&G.mode==='online')broadcast();
   toast('👻 Fantôme actif: aucun loyer payé.','a');
   glog(player.name+' traverse '+cell.n+' en mode fantôme.','a');
   return true;

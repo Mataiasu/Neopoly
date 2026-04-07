@@ -50,7 +50,7 @@ function sanitizeStr(v, maxLen) {
 
 const MAX_PROFILE_IMAGE_DATA_URL_LEN = Math.max(120000, Number(process.env.MAX_PROFILE_IMAGE_DATA_URL_LEN || 350000));
 const MAX_PROFILE_REMOTE_URL_LEN = 8192;
-const MAX_LEADERBOARD_IMAGE_DATA_URL_LEN = 4096;
+const MAX_LEADERBOARD_IMAGE_DATA_URL_LEN = Math.max(12000, Number(process.env.MAX_LEADERBOARD_IMAGE_DATA_URL_LEN || 120000));
 
 function normalizeEmail(v) {
   return String(v || '').trim().toLowerCase().slice(0, 160);

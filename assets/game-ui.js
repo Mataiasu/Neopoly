@@ -86,6 +86,7 @@ function renderPlayers(){
     started:!!G.started,
     fogMode:G.fogMode,
     tutorialHintsEnabled:!!G.tutorialHintsEnabled,
+    pendingRollBoostFor:G.pendingRollBoostFor||'',
     players:G.players.map(p=>({id:p.id,name:p.name,color:p.color,emoji:p.emoji,img:!!p.img,money:p.money,pos:p.pos,bust:!!p.bust,disconnected:!!p.disconnected,jailed:!!p.jailed,ghostPass:parseInt(p.ghostPass)||0,teamId:p.teamId||'',isBossBot:!!p.isBossBot,openingBonusLabel:p.openingBonusLabel||'',matchItems:p.matchItems||{},rouletteBet:(G.roulette?.bets?.[p.id]?.targetId||'')+':'+(G.roulette?.bets?.[p.id]?.amount||0)}))
   });
   if(G.playerPanelSignature!==playerSignature){
@@ -114,23 +115,26 @@ function renderPlayers(){
     const canReveal=!G.started||fogMode==='off'||isControlled||i===G.cur||p.bust||p.disconnected;
     const displayedPos=canReveal?(cell?cell.ico+' '+cell.n:'?'):(fogMode==='soft'?'🌫️ Position masquée':'🌫️ Infos masquées');
     const displayedMoney=canReveal?(p.money+' $'):(fogMode==='soft'?('≈'+Math.max(0,Math.round((p.money||0)/100)*100)+' $'):'🌫️ ???');
-    const _pBadges=[];
-    if(p.isBossBot)_pBadges.push('👑 Boss IA');
-    if(p.teamId&&typeof getTeamLabel==='function')_pBadges.push('🤝 '+getTeamLabel(p.teamId));
+    const badgeItems=[];
+    if(p.isBossBot)badgeItems.push({label:'👑 Boss IA',tone:'warn'});
+    if(p.teamId&&typeof getTeamLabel==='function')badgeItems.push({label:'🤝 '+getTeamLabel(p.teamId),tone:'shield'});
     if(p.bot&&typeof getBotPersonaConfig==='function'){
       const persona=getBotPersonaConfig(p);
-      _pBadges.push(persona.icon+' '+persona.label);
+      badgeItems.push({label:persona.icon+' '+persona.label,tone:'shield'});
     }
-    if(p.openingBonusLabel)_pBadges.push(p.openingBonusLabel);
-    if(p.disconnected)_pBadges.push('📡 Hors ligne');
-    if((mi.diceBoost||0)>0)_pBadges.push('⚡×'+mi.diceBoost);
-    if((mi.antiJail||0)>0)_pBadges.push('🛡×'+mi.antiJail);
-    if((parseInt(p.ghostPass)||0)>0)_pBadges.push('👻×'+(parseInt(p.ghostPass)||0));
+    if(p.openingBonusLabel)badgeItems.push({label:p.openingBonusLabel,tone:'live'});
+    if(p.disconnected)badgeItems.push({label:'📡 Hors ligne',tone:'offline'});
+    if(G.pendingRollBoostFor===p.id)badgeItems.push({label:'⚡ Boost armé',tone:'live'});
+    if((mi.diceBoost||0)>0)badgeItems.push({label:'⚡ '+mi.diceBoost+' booster'+((mi.diceBoost||0)>1?'s':'')+' prêt'+((mi.diceBoost||0)>1?'s':''),tone:'warn'});
+    if((mi.antiJail||0)>0)badgeItems.push({label:'🛡️ anti-prison x'+mi.antiJail,tone:'shield'});
+    if((mi.mortgageDiscount||0)>0)badgeItems.push({label:'🏦 hypo x'+mi.mortgageDiscount,tone:'shield'});
+    if((parseInt(p.ghostPass,10)||0)>0)badgeItems.push({label:'👻 fantôme x'+(parseInt(p.ghostPass,10)||0),tone:'live'});
+    if(i===G.cur&&!p.bust&&!p.disconnected&&!badgeItems.length)badgeItems.push({label:'🎯 Tour actif',tone:'live'});
     if(betInfo&&parseInt(betInfo.amount,10)>0){
       const targetName=G.players.find(x=>x.id===betInfo.targetId)?.name||betInfo.targetName||'?';
-      _pBadges.push('🎯 '+targetName+' x'+betInfo.amount);
+      badgeItems.push({label:'🎯 '+targetName+' x'+betInfo.amount,tone:'warn'});
     }
-    const badgesHtml=_pBadges.length?`<div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">${_pBadges.map(b=>`<span style="font-size:.55rem;background:rgba(255,255,255,.08);border-radius:3px;padding:0 3px;line-height:1.5">${b}</span>`).join('')}</div>`:'';
+    const badgesHtml=badgeItems.length?`<div class="player-row-effects">${badgeItems.map(b=>`<span class="player-effect-badge ${b.tone||''}">${escapeHtml(b.label)}</span>`).join('')}</div>`:'';
       row.innerHTML=`
         ${avatarHtml}
         <div style="flex:1;min-width:0">

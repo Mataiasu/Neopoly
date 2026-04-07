@@ -959,14 +959,71 @@ function prepareModerationTarget(uid,name){
   input.focus();
 }
 
-async function moderateTarget(action,targetUid,targetName){
+let SOCIAL_MOD_ACTION_PENDING=null;
+
+function getModerationActionMeta(action){
+  switch(String(action||'')){
+    case 'mute':return {title:'🔇 Mute joueur',confirm:'Appliquer le mute',note:'Le joueur ne pourra plus envoyer de messages tant qu’il reste mute.'};
+    case 'ban':return {title:'⛔ Bannir joueur',confirm:'Bannir maintenant',note:'Le joueur sera banni du chat social jusqu’à une action admin de déblocage.'};
+    case 'reset_stats':return {title:'🧹 Réinitialiser les stats',confirm:'Réinitialiser',note:'Toutes les stats et la progression de ce joueur seront remises à zéro.'};
+    case 'unmute':return {title:'🔊 Retirer le mute',confirm:'Confirmer',note:'Le joueur retrouvera immédiatement l’accès au chat.'};
+    case 'unban':return {title:'✅ Débannir joueur',confirm:'Confirmer',note:'Le joueur pourra de nouveau utiliser le chat social.'};
+    default:return {title:'👑 Action admin',confirm:'Confirmer',note:'Confirme cette action de modération.'};
+  }
+}
+
+function openModerationActionModal(action,uid,targetName){
+  const meta=getModerationActionMeta(action);
+  const needsReason=(action==='ban'||action==='mute');
+  SOCIAL_MOD_ACTION_PENDING={action:String(action||''),uid:String(uid||''),targetName:String(targetName||'').trim()};
+  const title=document.getElementById('moderation-action-title');
+  const sub=document.getElementById('moderation-action-sub');
+  const note=document.getElementById('moderation-action-note');
+  const confirmBtn=document.getElementById('moderation-action-confirm-btn');
+  const reasonWrap=document.getElementById('moderation-action-reason-wrap');
+  const reasonInput=document.getElementById('moderation-action-reason');
+  if(title)title.textContent=meta.title;
+  if(sub)sub.textContent='Cible : '+String(targetName||uid||'joueur');
+  if(note)note.textContent=meta.note;
+  if(confirmBtn)confirmBtn.textContent=meta.confirm;
+  if(reasonWrap)reasonWrap.style.display=needsReason?'block':'none';
+  if(reasonInput){
+    reasonInput.value='';
+    reasonInput.placeholder=needsReason?'Raison optionnelle…':'';
+  }
+  if(typeof openModal==='function')openModal('modal-moderation-action');
+  setTimeout(()=>{
+    if(needsReason&&reasonInput)reasonInput.focus();
+    else confirmBtn?.focus();
+  },30);
+}
+
+function closeModerationActionModal(){
+  SOCIAL_MOD_ACTION_PENDING=null;
+  if(typeof closeModal==='function')closeModal('modal-moderation-action');
+}
+
+function submitModerationActionModal(){
+  const pending=SOCIAL_MOD_ACTION_PENDING;
+  if(!pending)return;
+  const reason=String(document.getElementById('moderation-action-reason')?.value||'').trim().slice(0,160);
+  closeModerationActionModal();
+  moderateTarget(pending.action,pending.uid,pending.targetName,{confirmed:true,reason});
+}
+
+async function moderateTarget(action,targetUid,targetName,opts){
   if(!P.isAdmin){toast('Action reservee a l admin','d');return;}
+  const options=opts&&typeof opts==='object'?opts:{};
   const input=document.getElementById('social-mod-target');
   const uid=String(targetUid||input?.value||'').trim();
   if(!uid){toast('Entre un UID cible','w');return;}
+  const needsConfirm=['mute','ban','reset_stats'].includes(String(action||''));
+  if(needsConfirm&&!options.confirmed){
+    openModerationActionModal(action,uid,targetName||uid);
+    return;
+  }
   const isResetAction=action==='reset_stats';
-  if(isResetAction&&!confirm('Réinitialiser toutes les stats et la progression de '+String(targetName||uid)+' ?'))return;
-  const reason=(action==='ban'||action==='mute')?(prompt('Raison (optionnelle) ?','')||''):'';
+  const reason=(action==='ban'||action==='mute')?String(options.reason||'').trim().slice(0,160):'';
   try{
     const r=await fetch(getGoogleApiBase()+'/api/mod/action',{
       method:'POST',

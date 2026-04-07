@@ -198,9 +198,26 @@ body.debug-tools-window-open #debug-tools-card.is-dragging summary{cursor:grabbi
 .shop-selection-title{font-size:.86rem;font-weight:800;color:var(--text)}
 .shop-selection-sub{font-size:.7rem;color:var(--muted);margin-top:2px}
 .shop-target-list{display:flex;flex-direction:column;gap:8px}
-.shop-target-btn{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:rgba(8,15,30,.88);border:1px solid rgba(149,168,255,.18);border-radius:10px;color:var(--text);padding:10px 12px;cursor:pointer}
+.shop-target-btn{width:100%;display:flex;align-items:center;gap:10px;text-align:left;background:rgba(8,15,30,.88);border:1px solid rgba(149,168,255,.18);border-radius:10px;color:var(--text);padding:10px 12px;cursor:pointer;position:relative;overflow:hidden}
 .shop-target-btn:hover{border-color:var(--accent);background:#13203a}
+.shop-target-btn strong{font-size:.76rem;color:#f8fbff;display:block}
 .shop-target-meta{margin-left:auto;font-size:.7rem;color:var(--muted);white-space:nowrap}
+.shop-target-accent{width:6px;height:34px;border-radius:999px;background:var(--shop-accent,var(--accent));box-shadow:0 0 12px color-mix(in srgb,var(--shop-accent,var(--accent)) 45%, transparent)}
+.shop-target-copy{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.shop-target-desc{font-size:.66rem;color:var(--muted)}
+.shop-item.is-locked{opacity:.62}
+.shop-item-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
+.shop-mini-badge{display:inline-flex;align-items:center;padding:2px 6px;border-radius:999px;background:rgba(138,161,255,.1);border:1px solid rgba(138,161,255,.16);font-size:.56rem;color:#dbe7ff}
+.shop-item-note{font-size:.62rem;color:var(--muted);margin-top:4px;line-height:1.4}
+.player-row-effects{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.player-effect-badge{display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;font-size:.54rem;line-height:1.45;background:rgba(255,255,255,.07);border:1px solid rgba(148,163,184,.14);color:#dfe9ff}
+.player-effect-badge.live{background:rgba(103,247,215,.12);border-color:rgba(103,247,215,.28);color:#dcfff8}
+.player-effect-badge.shield{background:rgba(138,161,255,.12);border-color:rgba(138,161,255,.26);color:#e3ebff}
+.player-effect-badge.warn{background:rgba(255,209,102,.12);border-color:rgba(255,209,102,.28);color:#fff4cf}
+.player-effect-badge.offline{background:rgba(255,100,124,.12);border-color:rgba(255,100,124,.25);color:#ffe1e8}
+.powerup-status-summary{margin-top:8px;padding:8px 10px;border-radius:10px;border:1px solid rgba(148,163,184,.14);background:rgba(8,15,30,.7);font-size:.66rem;color:var(--muted);line-height:1.45}
+.powerup-status-summary[data-state="active"]{border-color:rgba(103,247,215,.26);background:linear-gradient(180deg,rgba(13,28,40,.92),rgba(10,18,34,.88));color:#e8fbff}
+.moderation-confirm-note{margin-top:10px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,209,102,.2);background:linear-gradient(180deg,rgba(37,99,235,.12),rgba(11,18,38,.92));font-size:.68rem;color:#dce7ff;line-height:1.5}
 
 /* ── CASINO / ROULETTE ── */
 .casino-roulette-layout{display:grid;grid-template-columns:1.05fr .95fr;gap:10px;align-items:start}
@@ -3288,7 +3305,8 @@ body.streamer-mode #invite-link {
           <div style="font-size:.7rem">🏦 Rachat réduit: <b id="match-discount">0</b></div>
           <div style="font-size:.7rem">Joueur courant uniquement</div>
         </div>
-        <div style="font-size:.66rem;color:var(--muted)">Gagnés pendant la partie, réinitialisés à la nouvelle partie.</div>
+        <div id="match-status-summary" class="powerup-status-summary">Aucun bonus actif pour le joueur courant.</div>
+        <div style="font-size:.66rem;color:var(--muted);margin-top:8px">Gagnés pendant la partie, réinitialisés à la nouvelle partie.</div>
       </div>
       <div class="card" style="padding:10px">
         <div class="card-title">📈 Stats avancées</div>
@@ -3377,6 +3395,23 @@ body.streamer-mode #invite-link {
     <div class="btn-row" style="margin-top:12px">
       <button class="btn btn-blue btn-sm" type="button" onclick="copyPublicProfileLink()">📋 Copier le lien</button>
       <button class="btn btn-secondary btn-sm" type="button" onclick="closeModal('modal-public-profile')">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-moderation-action">
+  <div class="modal" style="max-width:460px;width:min(95vw,460px)">
+    <button class="modal-close" type="button" onclick="closeModerationActionModal()">✕</button>
+    <div class="modal-title" id="moderation-action-title">👑 Confirmation admin</div>
+    <div class="modal-sub" id="moderation-action-sub">Confirme l'action de modération.</div>
+    <div class="moderation-confirm-note" id="moderation-action-note">Cette action sera envoyée au serveur immédiatement.</div>
+    <div id="moderation-action-reason-wrap" style="display:none;margin-top:10px">
+      <label for="moderation-action-reason" style="display:block;font-size:.68rem;color:var(--muted);margin-bottom:5px">Raison (optionnelle)</label>
+      <textarea id="moderation-action-reason" rows="3" placeholder="Raison visible côté admin…" style="width:100%;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:.74rem;padding:10px;resize:vertical" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();submitModerationActionModal()}"></textarea>
+    </div>
+    <div class="btn-row" style="margin-top:12px">
+      <button class="btn btn-secondary btn-sm" type="button" onclick="closeModerationActionModal()">Annuler</button>
+      <button class="btn btn-primary btn-sm" type="button" id="moderation-action-confirm-btn" onclick="submitModerationActionModal()">Confirmer</button>
     </div>
   </div>
 </div>

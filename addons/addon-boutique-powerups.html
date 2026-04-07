@@ -119,12 +119,12 @@ const SHOP_ITEMS = [
     fn(player) {
       const targets = G.board.filter(c => c.owner && c.owner !== player.id && c.houses > 0);
       if (!targets.length) { toast('Aucune propriété adverse avec maison.', 'w'); return false; }
-      const opts = targets.map((c,i)=>`${i}: ${c.n} (${c.houses} 🏠)`).join('\n');
-      const idx = parseInt(prompt('Quelle propriété saboter ?\n' + opts), 10);
-      if (isNaN(idx) || !targets[idx]) { toast('Sabotage annulé.', 'i'); player.money += 350; recordTxn(player, 350, 'Remboursement sabotage'); return false; }
-      targets[idx].houses--;
-      log('💣 ' + player.name + ' sabote ' + targets[idx].n, 'd');
-      toast('💣 Sabotage réussi sur ' + targets[idx].n + '!', 'd');
+      targets.sort((a,b)=>(b.houses||0)-(a.houses||0));
+      const chosen = targets[0];
+      if (!chosen) { toast('Sabotage annulé.', 'i'); player.money += 350; recordTxn(player, 350, 'Remboursement sabotage'); return false; }
+      chosen.houses--;
+      log('💣 ' + player.name + ' sabote ' + chosen.n, 'd');
+      toast('💣 Sabotage réussi sur ' + chosen.n + '!', 'd');
       renderBoard();
     }
   },
