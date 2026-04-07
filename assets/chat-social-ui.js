@@ -912,8 +912,8 @@ function syncSocialAdminUi(){
     }
   }
   if(tools)tools.style.display=P.isAdmin?'block':'none';
-  if(P.isAdmin&&typeof setDebugMenuVisibility==='function'){
-    setDebugMenuVisibility(true,'Acces administrateur autorise.');
+  if(typeof setDebugMenuVisibility==='function'){
+    setDebugMenuVisibility(!!P.isAdmin,P.isAdmin?'Acces administrateur autorise.':'Acces reserve aux admins.');
   }
   if(typeof updateAddonButtonVisibility==='function')updateAddonButtonVisibility();
   if(input){

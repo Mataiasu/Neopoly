@@ -8,14 +8,16 @@
 - [x] Remplacement des derniers dialogues `prompt()` utiles par une modale admin in-game.
 - [x] Reequilibrage de la boutique power-ups (prix, limites/tour, disponibilite, cooldowns).
 - [x] Retours visuels plus clairs sur les bonus actifs et meilleure UI de ciblage pour `quickBuild` / `sabotage`.
-- [x] Push Git effectue sur `main`.
+- [x] Correction de la boucle de rendu console entre `renderPlayers()` et `renderMatchItemsUi()`.
+- [x] Nettoyage visuel des cartes leaderboard / joueurs pour un rendu plus propre.
+- [x] Push Git effectue sur `main` (`782c8f4`).
 
 ## Priorite actuelle
 
-- [~] Redeployer sur Render et verifier le site en production (push fait, propagation en cours).
+- [~] Redeployer sur Render et verifier le site en production (push `782c8f4` fait, propagation en cours).
 - [~] Endpoint feedback de prod joignable (`message_required` confirme sans ecrire de faux test).
 - [ ] Verifier sur le site live l'affichage des avatars photo dans le classement.
-- [ ] Confirmer l'absence d'erreurs console au chargement.
+- [ ] Confirmer sur le site live l'absence d'erreurs console au chargement.
 
 ## Backlog / a faire
 

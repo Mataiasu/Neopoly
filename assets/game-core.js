@@ -3864,9 +3864,17 @@ function setDebugMenuVisibility(allowed,msg){
   const card=document.getElementById('debug-tools-card');
   const info=document.getElementById('debug-access-msg');
   const backdrop=document.getElementById('debug-tools-window-backdrop');
+  const debugBtn=document.getElementById('admin-debug-btn');
+  const blockedByModal=!!document.querySelector('#modal-roulette.open,#modal-party-wheel.open,#modal-game-wheel.open,#pack-manager-modal.open');
+  const showDebugBtn=!!allowed&&!blockedByModal;
   if(card){
     card.dataset.allowed=allowed?'1':'0';
     if(!document.body?.classList.contains('debug-tools-window-open'))card.style.display='none';
+  }
+  if(debugBtn){
+    debugBtn.style.setProperty('display',showDebugBtn?'block':'none','important');
+    debugBtn.hidden=!showDebugBtn;
+    debugBtn.setAttribute('aria-hidden',showDebugBtn?'false':'true');
   }
   if(backdrop&&!allowed)backdrop.classList.remove('open');
   if(!allowed)document.body?.classList.remove('debug-tools-window-open');
@@ -5877,7 +5885,12 @@ function updateAddonButtonVisibility(){
     leaderboardHotzone.style.setProperty('display',showLeaderboard?'block':'none','important');
     leaderboardHotzone.setAttribute('aria-hidden',showLeaderboard?'false':'true');
   }
-  if(debugBtn)debugBtn.style.display=(inLobby&&!!P?.isAdmin)?'block':'none';
+  if(debugBtn){
+    const showDebug=!!P?.isAdmin&&!blockedByModal;
+    debugBtn.style.setProperty('display',showDebug?'block':'none','important');
+    debugBtn.hidden=!showDebug;
+    debugBtn.setAttribute('aria-hidden',showDebug?'false':'true');
+  }
 }
 
 // ═══════════════════════════════════════
