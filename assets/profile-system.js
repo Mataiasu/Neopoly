@@ -1348,6 +1348,46 @@ function maybeOpenSharedProfileFromUrl(){
   openModal('modal-public-profile');
 }
 
+function renderProfileRecentMatches(){
+  const wrap=document.getElementById('profile-recent-matches-list');
+  const meta=document.getElementById('profile-recent-matches-meta');
+  if(!wrap)return;
+  const items=Array.isArray(P.recentMatches)?P.recentMatches.slice(0,6):[];
+  wrap.innerHTML='';
+  if(!items.length){
+    wrap.innerHTML='<div class="profile-recent-item"><div><div class="profile-recent-result">Aucune partie récente</div><div class="profile-recent-meta">Tes 6 dernières parties apparaîtront ici après chaque fin de match.</div></div></div>';
+    if(meta)meta.textContent='Aucune partie';
+    return;
+  }
+  items.forEach((entry)=>{
+    const row=document.createElement('div');
+    row.className='profile-recent-item';
+    const left=document.createElement('div');
+    left.style.flex='1';
+    left.style.minWidth='0';
+    const result=document.createElement('div');
+    result.className='profile-recent-result';
+    const icon=entry?.result==='win'?'🏆':(entry?.result==='loss'?'💥':'🤝');
+    result.textContent=icon+' '+String(entry?.label||'Partie terminée');
+    const metaLine=document.createElement('div');
+    metaLine.className='profile-recent-meta';
+    const rankDelta=parseInt(entry?.rankDelta,10)||0;
+    const details=[
+      entry?.mode==='ranked'?'Ranked':'Normal',
+      (parseInt(entry?.turns,10)||0)+' tours',
+      (parseInt(entry?.money,10)||0)+'$ net',
+      (parseInt(entry?.opponents,10)||0)+' adv.',
+      rankDelta?((rankDelta>0?'+':'')+rankDelta+' ELO'):'',
+      entry?.at?new Date(entry.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):''
+    ].filter(Boolean);
+    metaLine.textContent=details.join(' • ');
+    left.append(result,metaLine);
+    row.appendChild(left);
+    wrap.appendChild(row);
+  });
+  if(meta)meta.textContent=items.length+' / 6 sauvegardées';
+}
+
 function renderLobbyProfileTab(){
   applySecretUnlocks();
   ensureEmojiUnlocks(false);
@@ -1437,6 +1477,7 @@ function renderLobbyProfileTab(){
     }
   }
   renderLobbyVictoryStars();
+  renderProfileRecentMatches();
 }
 
 function selectProfileEmoji(emoji){
@@ -1528,6 +1569,7 @@ function resetProfileProgress(options){
   P.rareRewards=[];
   P.rareTokenCount=0;
   P.seasonData={seasonKey:'',label:'',xp:0,score:0,claimedTiers:[],bestLeague:'',bestRankedElo:0,bestRankedLabel:'',lastDivisionRewardText:'',lastDivisionRewardAt:0,history:[]};
+  P.recentMatches=[];
   P.redeemedSecretCodes={};
   if(opts.source==='admin')P.lastAdminStatsResetAt=Math.max(parseInt(P.lastAdminStatsResetAt,10)||0,resetAt);
   saveProfileData();

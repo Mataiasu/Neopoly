@@ -992,7 +992,8 @@ function wsLog(msg){
 
 const ONLINE_RECONNECT_KEY='NP_ONLINE_RECONNECT';
 const ONLINE_AUTO_RECONNECT_DELAY_MS=3500;
-const ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS=3;
+const ONLINE_AUTO_RECONNECT_MAX_DELAY_MS=12000;
+const ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS=5;
 let onlineAutoReconnectTimer=null;
 let onlineAutoReconnectAttempts=0;
 
@@ -1008,9 +1009,14 @@ function scheduleOnlineAutoReconnect(reason=''){
   const info=getStoredOnlineReconnectInfo();
   if(!info||!info.room||!info.wsUrl)return;
   if(G.wsOk||G.mode!=='online'||!G.room)return;
-  if(onlineAutoReconnectTimer||onlineAutoReconnectAttempts>=ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS)return;
-  const waitSec=Math.max(1,Math.round(ONLINE_AUTO_RECONNECT_DELAY_MS/1000));
-  wsLog('🔄 Reconnexion auto dans '+waitSec+'s'+(reason?(' · '+reason):'')+'.');
+  if(onlineAutoReconnectTimer||onlineAutoReconnectAttempts>=ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS){
+    if(onlineAutoReconnectAttempts>=ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS)toast('⚠️ Reconnexion automatique épuisée. Utilise le bouton 🔄 pour réessayer.','w');
+    return;
+  }
+  const waitMs=Math.min(ONLINE_AUTO_RECONNECT_DELAY_MS*Math.pow(1.55,Math.max(0,onlineAutoReconnectAttempts)),ONLINE_AUTO_RECONNECT_MAX_DELAY_MS);
+  const waitSec=Math.max(1,Math.round(waitMs/1000));
+  const nextAttempt=onlineAutoReconnectAttempts+1;
+  wsLog('🔄 Reconnexion auto dans '+waitSec+'s'+(reason?(' · '+reason):'')+' • essai '+nextAttempt+'/'+ONLINE_AUTO_RECONNECT_MAX_ATTEMPTS+'.');
   onlineAutoReconnectTimer=setTimeout(()=>{
     onlineAutoReconnectTimer=null;
     if(G.wsOk||G.mode!=='online'||!G.room)return;
@@ -1019,7 +1025,7 @@ function scheduleOnlineAutoReconnect(reason=''){
       wsLog('Auto-reconnexion échouée: '+(err?.message||err));
     });
     updateReconnectButtons();
-  },ONLINE_AUTO_RECONNECT_DELAY_MS);
+  },waitMs);
   updateReconnectButtons();
 }
 
@@ -1508,8 +1514,11 @@ async function joinOnlineRoom(roomOverride,roomPasswordOverride){
   try{
     probe=await requestWsServer(wsUrl,{type:'join_probe',room:roomId,password:roomPassword},'join_probe_result');
   }catch(err){
-    toast('Impossible de joindre le serveur de salons.','d');
-    setJoinRoomStatus('Impossible de vérifier le code de salle.','d');
+    const msg=typeof getFriendlyAppErrorMessage==='function'
+      ?getFriendlyAppErrorMessage(err?.message,'Impossible de joindre le serveur de salons. Vérifie la connexion ou réessaie.')
+      :'Impossible de joindre le serveur de salons. Vérifie la connexion ou réessaie.';
+    toast(msg,'d');
+    setJoinRoomStatus('Impossible de vérifier le code de salle pour le moment.','d');
     return;
   }
   if(!probe.ok){
@@ -1593,7 +1602,10 @@ async function reconnectOnlineRoom(options){
     probe=await requestWsServer(wsUrl,{type:'join_probe',room:roomId,password:roomPassword,reconnect:true},'join_probe_result');
   }catch(err){
     wsLog('Serveur indisponible pour la reconnexion.');
-    if(!opts.silent)toast('Impossible de joindre la salle pour le moment.','d');
+    const msg=typeof getFriendlyAppErrorMessage==='function'
+      ?getFriendlyAppErrorMessage(err?.message,'Impossible de joindre la salle pour le moment.')
+      :'Impossible de joindre la salle pour le moment.';
+    if(!opts.silent)toast(msg+' Utilise le bouton 🔄 si besoin.','d');
     if(opts.auto)scheduleOnlineAutoReconnect('nouvelle tentative');
     return false;
   }

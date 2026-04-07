@@ -101,6 +101,18 @@ function sanitizeProfilePayload(raw) {
     friends:    Array.isArray(raw.friends) ? raw.friends.slice(0, 200).map(f => sanitizeStr(f, 128)) : [],
     badges:     Array.isArray(raw.badges)  ? raw.badges.slice(0, 100).map(b => sanitizeStr(b, 64))   : [],
     unlockedTitles: Array.isArray(raw.unlockedTitles) ? raw.unlockedTitles.slice(0, 100).map(t => sanitizeStr(t, 64)) : [],
+    recentMatches: Array.isArray(raw.recentMatches)
+      ? raw.recentMatches.slice(0, 8).map((item) => ({
+          at: Math.max(0, parseInt(item && item.at, 10) || 0),
+          mode: sanitizeStr(item && item.mode, 32),
+          result: sanitizeStr(item && item.result, 32),
+          label: sanitizeStr(item && item.label, 120),
+          money: parseInt(item && item.money, 10) || 0,
+          turns: Math.max(0, parseInt(item && item.turns, 10) || 0),
+          opponents: Math.max(0, parseInt(item && item.opponents, 10) || 0),
+          rankDelta: parseInt(item && item.rankDelta, 10) || 0,
+        }))
+      : [],
   };
 }
 
@@ -179,26 +191,9 @@ function saveModerationDb(db) {
   } catch (_) {}
 }
 
-function loadFeedbackDb() {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(FEEDBACK_DB_PATH)) return { items: [] };
-    const parsed = JSON.parse(fs.readFileSync(FEEDBACK_DB_PATH, 'utf8')) || {};
-    const items = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed) ? parsed : []);
-    return { items: items.filter((item) => item && typeof item === 'object') };
-  } catch (_) {
-    return { items: [] };
-  }
-}
-
-function saveFeedbackDb(db) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    const tmp = FEEDBACK_DB_PATH + '.tmp';
-    const safeDb = { items: Array.isArray(db && db.items) ? db.items : [] };
-    fs.writeFileSync(tmp, JSON.stringify(safeDb, null, 2), 'utf8');
-    fs.renameSync(tmp, FEEDBACK_DB_PATH);
-  } catch (_) {}
+function normalizeFeedbackStatus(status) {
+  const raw = sanitizeStr(status, 32).toLowerCase();
+  return raw === 'pending' || raw === 'resolved' || raw === 'archived' ? raw : 'new';
 }
 
 function sanitizeFeedbackPayload(raw) {
@@ -217,14 +212,68 @@ function sanitizeFeedbackPayload(raw) {
   };
 }
 
+function sanitizeFeedbackEntry(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const payload = sanitizeFeedbackPayload(raw);
+  const createdAt = Math.max(0, Number(raw.createdAt || 0)) || Date.now();
+  const archivedAt = Math.max(0, Number(raw.archivedAt || 0));
+  const normalizedStatus = archivedAt ? 'archived' : normalizeFeedbackStatus(raw.status);
+  return {
+    id: sanitizeStr(raw.id, 64) || crypto.randomBytes(8).toString('hex'),
+    createdAt,
+    updatedAt: Math.max(createdAt, Number(raw.updatedAt || createdAt)),
+    status: normalizedStatus,
+    archivedAt,
+    type: payload.type,
+    subject: payload.subject,
+    message: payload.message,
+    contact: payload.contact,
+    page: payload.page,
+    playerName: payload.playerName,
+    playerUid: payload.playerUid,
+    accountMode: payload.accountMode,
+    matchMode: payload.matchMode,
+    sessionEmail: normalizeEmail(raw.sessionEmail),
+    googleSub: sanitizeStr(raw.googleSub, 128),
+    updatedBy: sanitizeStr(raw.updatedBy, 160),
+  };
+}
+
+function loadFeedbackDb() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (!fs.existsSync(FEEDBACK_DB_PATH)) return { items: [] };
+    const parsed = JSON.parse(fs.readFileSync(FEEDBACK_DB_PATH, 'utf8')) || {};
+    const items = Array.isArray(parsed.items) ? parsed.items : (Array.isArray(parsed) ? parsed : []);
+    return { items: items.map((item) => sanitizeFeedbackEntry(item)).filter(Boolean) };
+  } catch (_) {
+    return { items: [] };
+  }
+}
+
+function saveFeedbackDb(db) {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const tmp = FEEDBACK_DB_PATH + '.tmp';
+    const safeDb = {
+      items: Array.isArray(db && db.items) ? db.items.map((item) => sanitizeFeedbackEntry(item)).filter(Boolean) : [],
+    };
+    fs.writeFileSync(tmp, JSON.stringify(safeDb, null, 2), 'utf8');
+    fs.renameSync(tmp, FEEDBACK_DB_PATH);
+  } catch (_) {}
+}
+
 function appendFeedbackEntry(raw, session) {
   const payload = sanitizeFeedbackPayload(raw);
   if (!String(payload.message || '').trim()) return null;
   const now = Date.now();
   const db = loadFeedbackDb();
-  const entry = {
+  const entry = sanitizeFeedbackEntry({
     id: crypto.randomBytes(8).toString('hex'),
     createdAt: now,
+    updatedAt: now,
+    status: 'new',
+    archivedAt: 0,
     type: payload.type,
     subject: payload.subject,
     message: payload.message,
@@ -236,12 +285,52 @@ function appendFeedbackEntry(raw, session) {
     matchMode: payload.matchMode,
     sessionEmail: normalizeEmail(session && session.email),
     googleSub: sanitizeStr(session && session.sub, 128),
-  };
+    updatedBy: 'player',
+  });
   db.items = Array.isArray(db.items) ? db.items : [];
   db.items.unshift(entry);
   if (db.items.length > 1000) db.items = db.items.slice(0, 1000);
   saveFeedbackDb(db);
   return entry;
+}
+
+function applyFeedbackAdminAction(feedbackId, action, extra, actor) {
+  const safeId = sanitizeStr(feedbackId, 64);
+  if (!safeId) return { ok: false, error: 'missing_feedback_id' };
+  const db = loadFeedbackDb();
+  db.items = Array.isArray(db.items) ? db.items : [];
+  const index = db.items.findIndex((item) => item && item.id === safeId);
+  if (index < 0) return { ok: false, error: 'feedback_not_found' };
+  const now = Date.now();
+  const current = sanitizeFeedbackEntry(db.items[index]);
+  const updatedBy = sanitizeStr(actor, 160) || 'admin';
+
+  if (action === 'delete') {
+    db.items.splice(index, 1);
+    saveFeedbackDb(db);
+    return { ok: true, deleted: true, items: db.items };
+  }
+
+  let next = Object.assign({}, current);
+  if (action === 'archive') {
+    next.status = 'archived';
+    next.archivedAt = now;
+  } else if (action === 'restore') {
+    next.status = 'pending';
+    next.archivedAt = 0;
+  } else if (action === 'set_status') {
+    const status = normalizeFeedbackStatus(extra && extra.status);
+    next.status = status;
+    next.archivedAt = status === 'archived' ? now : 0;
+  } else {
+    return { ok: false, error: 'invalid_feedback_action' };
+  }
+
+  next.updatedAt = now;
+  next.updatedBy = updatedBy;
+  db.items[index] = sanitizeFeedbackEntry(next);
+  saveFeedbackDb(db);
+  return { ok: true, entry: db.items[index], items: db.items };
 }
 
 function getModerationKeys(identity) {
@@ -1516,11 +1605,17 @@ async function handleApi(req, res, pathname) {
         sendApiJson(req, res, 403, { ok: false, error: 'admin_required' });
         return true;
       }
+      const includeArchived = !!(body && body.includeArchived);
       const db = loadFeedbackDb();
       const rawItems = Array.isArray(db && db.items) ? db.items : [];
-      const items = rawItems.map((item) => ({
+      const visibleItems = rawItems.filter((item) => includeArchived || !Number(item && item.archivedAt || 0));
+      const unreadCount = rawItems.filter((item) => item && !Number(item.archivedAt || 0) && normalizeFeedbackStatus(item.status) === 'new').length;
+      const items = visibleItems.map((item) => ({
         id: sanitizeStr(item && item.id, 64),
         createdAt: Math.max(0, Number(item && item.createdAt || 0)),
+        updatedAt: Math.max(0, Number(item && item.updatedAt || 0)),
+        archivedAt: Math.max(0, Number(item && item.archivedAt || 0)),
+        status: normalizeFeedbackStatus(item && item.status),
         type: sanitizeStr(item && item.type, 32),
         subject: sanitizeStr(item && item.subject, 160),
         message: sanitizeStr(item && item.message, 4000),
@@ -1531,8 +1626,48 @@ async function handleApi(req, res, pathname) {
         accountMode: sanitizeStr(item && item.accountMode, 32),
         matchMode: sanitizeStr(item && item.matchMode, 32),
         sessionEmail: normalizeEmail(item && item.sessionEmail),
+        updatedBy: sanitizeStr(item && item.updatedBy, 160),
       }));
-      sendApiJson(req, res, 200, { ok: true, total: rawItems.length, items });
+      sendApiJson(req, res, 200, {
+        ok: true,
+        total: rawItems.length,
+        activeCount: rawItems.filter((item) => item && !Number(item.archivedAt || 0)).length,
+        unreadCount,
+        items,
+      });
+    } catch (_) {
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
+    }
+    return true;
+  }
+
+  if (pathname === '/api/feedback/action' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const session = getTrustedSession(body);
+      if (!session || !session.email) {
+        sendApiJson(req, res, 401, { ok: false, error: 'session_required' });
+        return true;
+      }
+      const adminState = getModerationState({
+        uid: body && body.uid,
+        googleSub: session.sub,
+        email: session.email,
+      });
+      if (!adminState.isAdmin) {
+        sendApiJson(req, res, 403, { ok: false, error: 'admin_required' });
+        return true;
+      }
+      const action = sanitizeStr(body && body.action, 32).toLowerCase();
+      const result = applyFeedbackAdminAction(body && body.feedbackId, action, body, session.email);
+      if (!result.ok) {
+        const statusCode = result.error === 'feedback_not_found' ? 404 : 400;
+        sendApiJson(req, res, statusCode, { ok: false, error: result.error });
+        return true;
+      }
+      const latestItems = Array.isArray(result.items) ? result.items : loadFeedbackDb().items;
+      const unreadCount = latestItems.filter((item) => item && !Number(item.archivedAt || 0) && normalizeFeedbackStatus(item.status) === 'new').length;
+      sendApiJson(req, res, 200, { ok: true, action, entry: result.entry || null, unreadCount });
     } catch (_) {
       sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
     }

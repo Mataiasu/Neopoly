@@ -2256,6 +2256,7 @@ const PROFILE_SYNC_CHANNEL='neopoly_profile_sync';
 const DEBUG_OWNER_IP_KEY='neopoly_debug_owner_ip_v1';
 const FEEDBACK_EMAIL='matprize055@gmail.com';
 const FEEDBACK_DRAFT_KEY='neopoly_feedback_draft_v1';
+const ADMIN_FEEDBACK_FILTERS_KEY='neopoly_admin_feedback_filters_v1';
 const PROFILE_SYNC_BUS=(typeof BroadcastChannel!=='undefined')?new BroadcastChannel(PROFILE_SYNC_CHANNEL):null;
 let googleTokenClient=null;
 let googleAccessToken=null;
@@ -2299,6 +2300,7 @@ let P={
   blockedUsers:[],
   chatProfilePrivate:false,
   lastAdminStatsResetAt:0,
+  recentMatches:[],
   friends:[], // [{uid,name,emoji,avatarImg,color,addedAt}]
   chatLog:[]  // [{name,color,text,ts,mine,uid,admin,emoji,avatarImg}]
 };
@@ -2412,6 +2414,17 @@ function loadProfile(opts){
   P.lastAdminStatsResetAt=Math.max(0,parseInt(P.lastAdminStatsResetAt,10)||0);
   P.mutedUsers=P.mutedUsers.map(v=>String(v||'').trim()).filter(Boolean);
   P.blockedUsers=P.blockedUsers.map(v=>String(v||'').trim()).filter(Boolean);
+  if(!Array.isArray(P.recentMatches))P.recentMatches=[];
+  P.recentMatches=P.recentMatches.map(entry=>({
+    at:Math.max(0,parseInt(entry?.at,10)||0),
+    mode:String(entry?.mode||'normal'),
+    result:String(entry?.result||'finished'),
+    label:String(entry?.label||''),
+    money:parseInt(entry?.money,10)||0,
+    turns:Math.max(0,parseInt(entry?.turns,10)||0),
+    opponents:Math.max(0,parseInt(entry?.opponents,10)||0),
+    rankDelta:parseInt(entry?.rankDelta,10)||0,
+  })).filter(entry=>entry.at||entry.label).slice(0,8);
   if(!Array.isArray(P.chatLog))P.chatLog=[];
   if(isKnownAdminEmail(P.googleEmail))P.isAdmin=true;
   if(!P.uid){P.uid='np_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7);changed=true;}
@@ -3882,12 +3895,12 @@ function setDebugMenuVisibility(allowed,msg){
     if(!document.body?.classList.contains('debug-tools-window-open'))card.style.display='none';
   }
   if(debugBtn){
-    debugBtn.style.setProperty('display',showDebugBtn?'block':'none','important');
+    debugBtn.style.setProperty('display',showDebugBtn?'flex':'none','important');
     debugBtn.hidden=!showDebugBtn;
     debugBtn.setAttribute('aria-hidden',showDebugBtn?'false':'true');
   }
   if(feedbackBtn){
-    feedbackBtn.style.display=allowed?'':'none';
+    feedbackBtn.style.display=allowed?'inline-flex':'none';
     feedbackBtn.hidden=!allowed;
   }
   if(backdrop&&!allowed)backdrop.classList.remove('open');
@@ -3898,6 +3911,7 @@ function setDebugMenuVisibility(allowed,msg){
 async function initDebugAccessControl(){
   const allowed=hasAdminDebugAccess(false);
   setDebugMenuVisibility(allowed,allowed?'Acces administrateur autorise.':'Acces reserve aux admins.');
+  scheduleAdminFeedbackBadgeRefresh?.(allowed);
 }
 
 async function rebindDebugOwnerIp(source='debug'){
@@ -4487,10 +4501,29 @@ async function refreshJoinRoomList(){
   }catch(err){
     JOIN_ROOMS=[];
     renderJoinRoomList([]);
-    setJoinRoomStatus('Impossible de récupérer la liste des parties.','d');
+    const msg=getFriendlyAppErrorMessage(err?.message,'Impossible de récupérer la liste des parties. Vérifie l’URL WS ou la connexion.');
+    setJoinRoomStatus(msg,'d');
   }finally{
     JOIN_ROOM_REFRESH_IN_FLIGHT=false;
   }
+}
+
+function shouldSkipDuplicateWsMessage(payload){
+  const data=payload&&typeof payload==='object'?payload:{};
+  const type=String(data.type||'').trim();
+  if(!type||type==='state'||type==='chat')return false;
+  const dedupeTypes=new Set(['ready','state_request','create_room','trade_offer','trade_response','trade_cancel','ranked_queue_join','ranked_queue_leave','addon_sync']);
+  if(!dedupeTypes.has(type))return false;
+  if(!G.wsMessageDedup||typeof G.wsMessageDedup!=='object')G.wsMessageDedup={};
+  const now=Date.now();
+  Object.keys(G.wsMessageDedup).forEach(key=>{
+    if(now-Number(G.wsMessageDedup[key]||0)>2500)delete G.wsMessageDedup[key];
+  });
+  const signature=[type,data.room||'',data.sender||'',data.playerId||'',data.targetId||'',data.offerId||'',data.reconnect?'1':'0',data.ready===undefined?'':String(data.ready),data.action||''].join('|');
+  const previous=Number(G.wsMessageDedup[signature]||0);
+  if(previous&&now-previous<550)return true;
+  G.wsMessageDedup[signature]=now;
+  return false;
 }
 
 function sendWsMessage(payload){
@@ -4499,6 +4532,10 @@ function sendWsMessage(payload){
     const enriched=Object.assign({},payload||{});
     if(P&&P.uid&&!enriched.uid)enriched.uid=P.uid;
     if(P&&P.googleSessionToken&&!enriched.sessionToken)enriched.sessionToken=P.googleSessionToken;
+    if(shouldSkipDuplicateWsMessage(enriched)){
+      wsLog('Doublon reseau ignore: '+String(enriched.type||'action'));
+      return true;
+    }
     G.ws.send(JSON.stringify(enriched));
     return true;
   }catch(e){
@@ -4783,6 +4820,19 @@ async function submitFeedbackDraft(){
   }
 }
 
+let adminFeedbackBadgeTimer=null;
+
+function getFriendlyAppErrorMessage(code,fallback='Une erreur est survenue.'){
+  const raw=String(code||'').trim().toLowerCase();
+  if(raw==='session_required')return 'Session expirée : reconnecte-toi avec Google.';
+  if(raw==='admin_required')return 'Accès administrateur requis.';
+  if(raw==='feedback_not_found')return 'Ce feedback n’existe plus ou a déjà été supprimé.';
+  if(raw==='invalid_feedback_action')return 'Action admin invalide sur ce feedback.';
+  if(raw==='ws_error'||raw==='closed'||raw==='timeout')return 'Connexion réseau indisponible. Réessaie dans quelques secondes.';
+  if(raw==='server_error')return 'Le serveur a rencontré une erreur temporaire.';
+  return fallback;
+}
+
 function formatAdminFeedbackDate(ts){
   const value=Number(ts||0);
   if(!value)return 'Date inconnue';
@@ -4804,10 +4854,143 @@ function getAdminFeedbackTypeLabel(type){
   return map[String(type||'').trim()]||'🗂️ Autre';
 }
 
+function getAdminFeedbackStatusLabel(status){
+  const map={
+    new:'🆕 Non lu',
+    pending:'👀 En cours',
+    resolved:'✅ Traité',
+    archived:'🗄️ Archivé'
+  };
+  return map[String(status||'').trim()]||'🆕 Non lu';
+}
+
+function renderAdminFeedbackBadge(unreadCount){
+  const count=Math.max(0,parseInt(unreadCount,10)||0);
+  ['admin-feedback-badge','admin-debug-badge'].forEach((id)=>{
+    const badge=document.getElementById(id);
+    if(!badge)return;
+    badge.textContent=count>99?'99+':String(count);
+    badge.style.display=count>0?'inline-flex':'none';
+  });
+}
+
+async function refreshAdminFeedbackBadge(force){
+  if(!P?.isAdmin||!String(P?.googleSessionToken||'').trim()){
+    renderAdminFeedbackBadge(0);
+    return 0;
+  }
+  try{
+    const res=await fetch('/api/feedback/list',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        sessionToken:P?.googleSessionToken||'',
+        uid:P?.uid||'',
+        includeArchived:false,
+        metaOnly:true
+      })
+    });
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||!data?.ok)throw new Error(data?.error||'feedback_badge_failed');
+    const count=Math.max(0,parseInt(data?.unreadCount,10)||0);
+    G.adminFeedbackUnreadCount=count;
+    renderAdminFeedbackBadge(count);
+    return count;
+  }catch(err){
+    if(force)wsLog?.('Badge feedback indisponible: '+(err?.message||err));
+    return 0;
+  }
+}
+
+function scheduleAdminFeedbackBadgeRefresh(allowed){
+  if(adminFeedbackBadgeTimer){
+    clearInterval(adminFeedbackBadgeTimer);
+    adminFeedbackBadgeTimer=null;
+  }
+  if(!allowed||!P?.isAdmin||!String(P?.googleSessionToken||'').trim()){
+    renderAdminFeedbackBadge(0);
+    return;
+  }
+  refreshAdminFeedbackBadge(true);
+  adminFeedbackBadgeTimer=setInterval(()=>refreshAdminFeedbackBadge(false),45000);
+}
+
+function getAdminFeedbackFilterElements(){
+  return {
+    search:document.getElementById('admin-feedback-search'),
+    player:document.getElementById('admin-feedback-player'),
+    type:document.getElementById('admin-feedback-type-filter'),
+    status:document.getElementById('admin-feedback-status-filter'),
+    date:document.getElementById('admin-feedback-date-filter'),
+    archived:document.getElementById('admin-feedback-archived'),
+  };
+}
+
+function loadAdminFeedbackFilterState(){
+  const els=getAdminFeedbackFilterElements();
+  try{
+    const raw=localStorage.getItem(ADMIN_FEEDBACK_FILTERS_KEY)||'';
+    const saved=raw?JSON.parse(raw):null;
+    if(saved&&typeof saved==='object'){
+      if(els.search)els.search.value=String(saved.search||'');
+      if(els.player)els.player.value=String(saved.player||'');
+      if(els.type)els.type.value=String(saved.type||'all');
+      if(els.status)els.status.value=String(saved.status||'all');
+      if(els.date)els.date.value=String(saved.date||'all');
+      if(els.archived)els.archived.value=String(saved.archived||'0');
+    }
+  }catch(_){ }
+}
+
+function persistAdminFeedbackFilterState(){
+  const els=getAdminFeedbackFilterElements();
+  const state={
+    search:String(els.search?.value||''),
+    player:String(els.player?.value||''),
+    type:String(els.type?.value||'all'),
+    status:String(els.status?.value||'all'),
+    date:String(els.date?.value||'all'),
+    archived:String(els.archived?.value||'0')
+  };
+  try{localStorage.setItem(ADMIN_FEEDBACK_FILTERS_KEY,JSON.stringify(state));}catch(_){ }
+  return state;
+}
+
+function getFilteredAdminFeedbackItems(items){
+  const state=persistAdminFeedbackFilterState();
+  const rows=Array.isArray(items)?items.slice():[];
+  const query=String(state.search||'').trim().toLowerCase();
+  const playerQuery=String(state.player||'').trim().toLowerCase();
+  const type=String(state.type||'all');
+  const status=String(state.status||'all');
+  const date=String(state.date||'all');
+  const now=Date.now();
+  const threshold=date==='24h'?now-(24*60*60*1000)
+    :date==='7d'?now-(7*24*60*60*1000)
+    :date==='30d'?now-(30*24*60*60*1000)
+    :0;
+  return rows.filter((entry)=>{
+    if(type!=='all'&&String(entry?.type||'')!==type)return false;
+    if(status!=='all'&&String(entry?.status||'new')!==status)return false;
+    if(threshold&&Number(entry?.createdAt||0)<threshold)return false;
+    const playerName=String(entry?.playerName||'').toLowerCase();
+    const blob=[entry?.subject,entry?.message,entry?.playerName,entry?.contact,entry?.sessionEmail].map(v=>String(v||'').toLowerCase()).join(' ');
+    if(playerQuery&&!playerName.includes(playerQuery))return false;
+    if(query&&!blob.includes(query))return false;
+    return true;
+  });
+}
+
+function handleAdminFeedbackFilterChange(){
+  persistAdminFeedbackFilterState();
+  renderAdminFeedbackList(G.adminFeedbackCache||[],G.adminFeedbackTotal||0,G.adminFeedbackUnreadCount||0);
+}
+
 function buildAdminFeedbackCopyText(entry){
   const lines=[
     'Sujet : '+String(entry?.subject||'Sans sujet').trim(),
     'Type : '+getAdminFeedbackTypeLabel(entry?.type),
+    'Statut : '+getAdminFeedbackStatusLabel(entry?.status),
     'Pseudo : '+String(entry?.playerName||'Joueur').trim(),
     entry?.playerUid?('UID : '+String(entry.playerUid).trim()):'',
     entry?.contact?('Contact : '+String(entry.contact).trim()):'',
@@ -4822,24 +5005,28 @@ function buildAdminFeedbackCopyText(entry){
   return lines.join('\n');
 }
 
-function renderAdminFeedbackList(items,total){
+function renderAdminFeedbackList(items,total,unreadCount){
   const list=document.getElementById('admin-feedback-list');
   const meta=document.getElementById('admin-feedback-meta');
   if(!list)return;
   list.innerHTML='';
-  const rows=Array.isArray(items)?items:[];
-  const totalCount=Math.max(rows.length,Number(total||0));
+  const rows=getFilteredAdminFeedbackItems(items);
+  const totalCount=Math.max(Array.isArray(items)?items.length:0,Number(total||0));
+  const unread=Math.max(0,parseInt(unreadCount,10)||0);
   if(!rows.length){
     const empty=document.createElement('div');
     empty.className='admin-feedback-empty';
-    empty.textContent='Aucun feedback joueur enregistré pour le moment.';
+    empty.textContent='Aucun feedback ne correspond aux filtres actuels.';
     list.appendChild(empty);
-    if(meta)meta.textContent='0 feedback joueur';
+    if(meta)meta.textContent=(totalCount||0)+' feedback joueur • 0 affiché';
     return;
   }
   rows.forEach((entry)=>{
     const card=document.createElement('article');
     card.className='admin-feedback-item';
+    if(String(entry?.status||'new')==='resolved')card.style.borderColor='rgba(34,197,94,.28)';
+    if(String(entry?.status||'new')==='pending')card.style.borderColor='rgba(245,158,11,.28)';
+    if(String(entry?.status||'new')==='archived')card.style.opacity='.82';
 
     const head=document.createElement('div');
     head.className='admin-feedback-head';
@@ -4881,6 +5068,7 @@ function renderAdminFeedbackList(items,total){
     const badges=document.createElement('div');
     badges.className='admin-feedback-badges';
     [
+      getAdminFeedbackStatusLabel(entry?.status),
       getAdminFeedbackTypeLabel(entry?.type),
       entry?.contact?('Contact : '+String(entry.contact).trim()):'',
       entry?.playerUid?('UID : '+String(entry.playerUid).trim()):''
@@ -4906,10 +5094,72 @@ function renderAdminFeedbackList(items,total){
     footer.appendChild(pageInfo);
     card.appendChild(footer);
 
+    const actions=document.createElement('div');
+    actions.className='btn-row';
+    actions.style.justifyContent='flex-start';
+    actions.style.marginTop='8px';
+
+    const actionDefs=[
+      {label:'🆕 Non lu',cls:'btn-secondary',action:'set_status',status:'new'},
+      {label:'👀 En cours',cls:'btn-yellow',action:'set_status',status:'pending'},
+      {label:'✅ Traité',cls:'btn-blue',action:'set_status',status:'resolved'},
+    ];
+    actionDefs.forEach((def)=>{
+      const btn=document.createElement('button');
+      btn.type='button';
+      btn.className='btn btn-xs '+def.cls;
+      btn.textContent=def.label;
+      btn.disabled=String(entry?.status||'new')===def.status;
+      btn.onclick=()=>runAdminFeedbackAction(entry?.id,def.action,{status:def.status});
+      actions.appendChild(btn);
+    });
+
+    const archiveBtn=document.createElement('button');
+    archiveBtn.type='button';
+    archiveBtn.className='btn btn-xs btn-secondary';
+    const archived=String(entry?.status||'new')==='archived'||Number(entry?.archivedAt||0)>0;
+    archiveBtn.textContent=archived?'♻️ Restaurer':'🗄️ Archiver';
+    archiveBtn.onclick=()=>runAdminFeedbackAction(entry?.id,archived?'restore':'archive');
+    actions.appendChild(archiveBtn);
+
+    const deleteBtn=document.createElement('button');
+    deleteBtn.type='button';
+    deleteBtn.className='btn btn-xs btn-danger';
+    deleteBtn.textContent='🗑️ Supprimer';
+    deleteBtn.onclick=()=>{
+      if(confirm('Supprimer définitivement ce feedback joueur ?'))runAdminFeedbackAction(entry?.id,'delete');
+    };
+    actions.appendChild(deleteBtn);
+
+    card.appendChild(actions);
     list.appendChild(card);
   });
   if(meta){
-    meta.textContent=(totalCount||rows.length)+' feedback'+((totalCount||rows.length)>1?'s':'')+' joueur'+((totalCount||rows.length)>1?'s':'');
+    meta.textContent=(totalCount||rows.length)+' feedback'+((totalCount||rows.length)>1?'s':'')+' joueur'+((totalCount||rows.length)>1?'s':'')+' • '+rows.length+' affiché'+(rows.length>1?'s':'')+' • '+unread+' nouveau'+(unread>1?'x':'');
+  }
+}
+
+async function runAdminFeedbackAction(feedbackId,action,extra){
+  if(!hasAdminDebugAccess(true))return false;
+  try{
+    const res=await fetch('/api/feedback/action',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(Object.assign({
+        feedbackId:String(feedbackId||''),
+        action:String(action||''),
+        sessionToken:P?.googleSessionToken||'',
+        uid:P?.uid||''
+      },extra&&typeof extra==='object'?extra:{}))
+    });
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||!data?.ok)throw new Error(data?.error||'feedback_action_failed');
+    await loadAdminFeedbackList(true);
+    toast('✅ Feedback mis à jour.','a');
+    return true;
+  }catch(err){
+    toast(getFriendlyAppErrorMessage(err?.message,'Impossible de mettre à jour le feedback.'),'w');
+    return false;
   }
 }
 
@@ -4921,6 +5171,8 @@ async function loadAdminFeedbackList(force){
   }
   const list=document.getElementById('admin-feedback-list');
   const meta=document.getElementById('admin-feedback-meta');
+  const filters=getAdminFeedbackFilterElements();
+  const includeArchived=String(filters.archived?.value||'0')==='1';
   if(list)list.innerHTML='<div class="admin-feedback-empty">Chargement des feedbacks joueurs…</div>';
   if(meta)meta.textContent='Chargement…';
   try{
@@ -4930,21 +5182,27 @@ async function loadAdminFeedbackList(force){
       body:JSON.stringify({
         sessionToken:P?.googleSessionToken||'',
         uid:P?.uid||'',
+        includeArchived,
         force:!!force
       })
     });
     const data=await res.json().catch(()=>null);
     if(!res.ok||!data?.ok)throw new Error(data?.error||'feedback_list_failed');
-    renderAdminFeedbackList(Array.isArray(data?.items)?data.items:[],data?.total||0);
+    G.adminFeedbackCache=Array.isArray(data?.items)?data.items:[];
+    G.adminFeedbackTotal=Math.max(0,parseInt(data?.activeCount??data?.total,10)||0);
+    G.adminFeedbackUnreadCount=Math.max(0,parseInt(data?.unreadCount,10)||0);
+    renderAdminFeedbackBadge(G.adminFeedbackUnreadCount);
+    renderAdminFeedbackList(G.adminFeedbackCache,G.adminFeedbackTotal,G.adminFeedbackUnreadCount);
   }catch(err){
     if(list)list.innerHTML='<div class="admin-feedback-empty">Impossible de charger les feedbacks joueurs pour le moment.</div>';
     if(meta)meta.textContent='Erreur de chargement';
-    toast('Impossible de charger les feedbacks joueurs.','w');
+    toast(getFriendlyAppErrorMessage(err?.message,'Impossible de charger les feedbacks joueurs.'),'w');
   }
 }
 
 function openAdminFeedbackModal(){
   if(!hasAdminDebugAccess(true))return;
+  loadAdminFeedbackFilterState();
   openModal('modal-admin-feedback');
   loadAdminFeedbackList();
 }
@@ -7750,6 +8008,26 @@ function checkBust(p){
   return finalizeBankruptcy(p);
 }
 
+function recordProfileRecentMatch(summary){
+  const data=summary&&typeof summary==='object'?summary:{};
+  if(!Array.isArray(P.recentMatches))P.recentMatches=[];
+  const entry={
+    at:Date.now(),
+    mode:String(data.mode||getCurrentMatchType()||'normal'),
+    result:String(data.result||'finished'),
+    label:String(data.label||''),
+    money:parseInt(data.money,10)||0,
+    turns:Math.max(0,parseInt(data.turns,10)||0),
+    opponents:Math.max(0,parseInt(data.opponents,10)||0),
+    rankDelta:parseInt(data.rankDelta,10)||0,
+  };
+  const prev=P.recentMatches[0];
+  if(prev&&prev.result===entry.result&&prev.mode===entry.mode&&prev.turns===entry.turns&&prev.money===entry.money&&Math.abs((prev.at||0)-entry.at)<4000)return false;
+  P.recentMatches.unshift(entry);
+  if(P.recentMatches.length>8)P.recentMatches.length=8;
+  return true;
+}
+
 function endGame(winner){
   G.started=false;stopTimer();stopGlobalTimer();
   G.lastWinnerId=winner?.id||null;
@@ -7778,6 +8056,19 @@ function endGame(winner){
     const rankedMatch=typeof isCurrentMatchRanked==='function'&&isCurrentMatchRanked();
     if(profilePlayer){
       addRouletteCoins(profileWon?6:2,profileWon?'victoire de partie':'partie terminée',{skipRender:true});
+      if(canTrackStats){
+        const ownedValue=(G.board||[]).reduce((sum,cell)=>sum+((cell&&cell.owner===profilePlayer.id)?Number(cell.p||0):0),0);
+        const rankedDelta=rankedMatch?(profileWon?30:(winner?-20:0)):0;
+        recordProfileRecentMatch({
+          mode:rankedMatch?'ranked':'normal',
+          result:profileWon?'win':(winner?'loss':'draw'),
+          label:(rankedMatch?'Ranked':'Partie')+' • '+(profileWon?'Victoire':(winner?'Défaite':'Égalité')),
+          money:Math.round(Number(profilePlayer.money||0)+ownedValue),
+          turns:Math.max(1,parseInt(G.turnCount,10)||1),
+          opponents:Math.max(0,(Array.isArray(G.players)?G.players.length:1)-1),
+          rankDelta:rankedDelta,
+        });
+      }
     }
     if(profileWon){
       if(canTrackStats)P.stats.gamesWon++;

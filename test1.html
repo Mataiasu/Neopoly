@@ -1930,12 +1930,27 @@ body.streamer-mode #invite-link {
 .vt-m1{color:#f43f5e;text-shadow:0 0 8px #f43f5e77;font-weight:900}
 .vt-m2{color:#38bdf8;text-shadow:0 0 8px #38bdf877;font-weight:900}
 .vt-m3{background:linear-gradient(90deg,#fbbf24,#f43f5e,#38bdf8);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;font-weight:900}
-.stats-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:7px}
 .stat-tile{background:var(--s2);border:1px solid var(--border);border-radius:var(--r2);padding:8px 10px;text-align:center}
 .stat-tile-val{font-size:1.05rem;font-weight:900;color:var(--accent)}
 .stat-tile-label{font-size:.6rem;color:var(--muted);margin-top:2px}
 .debug-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
 .debug-note{font-size:.66rem;color:var(--muted);line-height:1.35}
+.debug-section{padding:10px;border-radius:12px;border:1px solid rgba(96,165,250,.14);background:linear-gradient(180deg,rgba(10,18,36,.94),rgba(9,15,28,.92));margin-bottom:8px}
+.debug-section-title{font-size:.72rem;font-weight:800;color:#eef4ff;margin-bottom:4px}
+.debug-section-copy{font-size:.63rem;color:var(--muted);line-height:1.45;margin-bottom:8px}
+.admin-feedback-pill{display:none;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;border-radius:999px;background:linear-gradient(135deg,#ef4444,#f97316);color:#fff;font-size:.58rem;font-weight:900;box-shadow:0 0 0 2px rgba(8,12,24,.65)}
+.profile-quickstart{padding:10px;border-radius:14px;border:1px solid rgba(96,165,250,.2);background:linear-gradient(135deg,rgba(10,20,42,.96),rgba(18,24,42,.94));box-shadow:0 12px 28px rgba(2,6,23,.18)}
+.profile-quicksteps{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+.profile-quickstep{font-size:.68rem;color:#e5eefc;line-height:1.45;padding:7px 9px;border-radius:10px;background:rgba(255,255,255,.03);border:1px solid rgba(148,163,184,.12)}
+.profile-recent-list{display:flex;flex-direction:column;gap:7px}
+.profile-recent-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(148,163,184,.12)}
+.profile-recent-result{font-size:.72rem;font-weight:800;color:#eef4ff}
+.profile-recent-meta{font-size:.62rem;color:var(--muted);margin-top:4px;line-height:1.4}
+.admin-feedback-toolbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px}
+.admin-feedback-toolbar label{display:flex;flex-direction:column;gap:4px;font-size:.62rem;color:var(--muted);font-weight:700}
+.admin-feedback-toolbar input,.admin-feedback-toolbar select{width:100%}
+.admin-feedback-toggle{justify-content:flex-end}
 .admin-feedback-list{display:flex;flex-direction:column;gap:10px;max-height:min(68vh,720px);overflow-y:auto;padding-right:4px}
 .admin-feedback-item{padding:10px 12px;border-radius:14px;border:1px solid rgba(96,165,250,.18);background:linear-gradient(180deg,rgba(10,18,36,.96),rgba(9,15,28,.94));box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 10px 22px rgba(2,6,23,.16)}
 .admin-feedback-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap}
@@ -2051,7 +2066,7 @@ body.streamer-mode #invite-link {
 <!-- ══════════ SCREENS ══════════ -->
 <div id="app-wrap" class="in-lobby">
 <button id="pack-manager-btn" type="button" onclick="openPackManager()">Addons</button>
-<button id="admin-debug-btn" type="button" onclick="openAdminDebugMenu()" data-tip="Ouvre le menu debug administrateur.">⚙️ Debug</button>
+<button id="admin-debug-btn" type="button" onclick="openAdminDebugMenu()" data-tip="Ouvre le menu debug administrateur." style="display:flex;align-items:center;gap:6px">⚙️ Debug <span id="admin-debug-badge" class="admin-feedback-pill"></span></button>
 <div id="screens-wrap">
 <div id="lobby" class="screen active" style="flex-direction:column;align-items:center;justify-content:center;gap:24px;padding:24px">
   <div class="ambient-layer" id="lobby-ambient" aria-hidden="true">
@@ -2210,6 +2225,24 @@ body.streamer-mode #invite-link {
         <div class="lobby-tab-pane active" id="profil-pane">
           <!-- Google connect -->
           <div id="google-connect-area"></div>
+          <div class="profile-quickstart">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div>
+                <div class="card-title" style="margin:0">🚀 Démarrage rapide</div>
+                <div style="font-size:.66rem;color:var(--muted);margin-top:4px">Un mini guide pour démarrer vite dans NeoPoly.</div>
+              </div>
+              <button class="btn btn-blue btn-sm" type="button" onclick="openFirstPartyTutorial(true)">🧭 Tutoriel</button>
+            </div>
+            <div class="profile-quicksteps">
+              <div class="profile-quickstep">1. Connecte Google pour débloquer le ranked, les amis et la progression avancée.</div>
+              <div class="profile-quickstep">2. Lance une <b>partie rapide</b> pour tester le plateau ou crée un salon privé pour jouer entre amis.</div>
+              <div class="profile-quickstep">3. Utilise <b>Feedback</b> et <b>Aide</b> si tu bloques ou si tu veux proposer une amélioration.</div>
+            </div>
+            <div class="btn-row" style="justify-content:flex-start">
+              <button class="btn btn-secondary btn-sm" type="button" onclick="openHelpPane()">❓ Aide</button>
+              <button class="btn btn-secondary btn-sm" type="button" onclick="openFeedbackModal()">📝 Feedback</button>
+            </div>
+          </div>
           <div class="card" style="padding:10px;background:linear-gradient(135deg,rgba(37,99,235,.14),rgba(168,85,247,.12));border:1px solid rgba(96,165,250,.2)">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
               <div>
@@ -2223,6 +2256,13 @@ body.streamer-mode #invite-link {
           <div class="card" style="padding:10px">
             <div class="card-title">📊 Statistiques</div>
             <div class="stats-grid" id="profile-stats-grid"></div>
+          </div>
+          <div class="card" style="padding:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+              <div class="card-title" style="margin:0">🕘 Dernières parties</div>
+              <div id="profile-recent-matches-meta" style="font-size:.66rem;color:var(--muted);font-weight:700">Aucune partie</div>
+            </div>
+            <div id="profile-recent-matches-list" class="profile-recent-list"></div>
           </div>
           <div class="card" style="padding:10px">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
@@ -2264,50 +2304,65 @@ body.streamer-mode #invite-link {
               </span>
             </summary>
             <div id="debug-access-msg" style="font-size:.66rem;color:var(--muted);margin:6px 0 8px"></div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Victoires</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(1)">+1 victoire</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(5)">+5 victoires</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(10)">+10 victoires</button>
+
+            <div class="debug-section">
+              <div class="debug-section-title">🏆 Progression ranked</div>
+              <div class="debug-section-copy">Ajuste rapidement les victoires, les défaites et l'ELO du compte admin.</div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Victoires</div>
+              <div class="debug-grid" style="margin-bottom:8px">
+                <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(1)">+1 victoire</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(5)">+5 victoires</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugAddVictories(10)">+10 victoires</button>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Défaites</div>
+              <div class="debug-grid" style="margin-bottom:8px">
+                <button class="btn btn-secondary btn-xs" onclick="debugAddLosses(50)">+50 défaites</button>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">ELO</div>
+              <div class="debug-grid" style="margin-bottom:8px">
+                <button class="btn btn-secondary btn-xs" onclick="debugAddElo(100)">+100 ELO</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugAddElo(500)">+500 ELO</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugAddElo(-100)">-100 ELO</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugAddElo(-500)">-500 ELO</button>
+                <button class="btn btn-danger btn-xs" onclick="debugSetElo(0)">ELO → 0</button>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Paliers rapides</div>
+              <div class="debug-grid">
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(0)">— Non rankée</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(200)">🥉 Bronze</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(600)">🥈 Argent</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(1200)">🥇 Or</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(2800)">💠 Diamant</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(3600)">👑 Légendaire</button>
+                <button class="btn btn-secondary btn-xs" onclick="debugSetElo(4200)">✨ Maître Absolu</button>
+              </div>
             </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Défaites</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-secondary btn-xs" onclick="debugAddLosses(50)">+50 défaites</button>
+
+            <div class="debug-section">
+              <div class="debug-section-title">👤 Titres & maintenance</div>
+              <div class="debug-section-copy">Débloque un titre de test ou nettoie rapidement les stats du compte courant.</div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Titres</div>
+              <div class="debug-grid" style="margin-bottom:8px">
+                <button class="btn btn-secondary btn-xs" onclick="debugUnlockWinnerLooser()">Unlock Winner Looser</button>
+                <button class="btn btn-danger btn-xs" onclick="debugRemoveWinnerLooser()">Retirer Winner Looser</button>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Reset</div>
+              <div class="debug-grid">
+                <button class="btn btn-danger btn-xs" style="grid-column:span 2" onclick="debugResetStats()">Reset stats (ELO 0, tout à zéro)</button>
+              </div>
             </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">ELO</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-secondary btn-xs" onclick="debugAddElo(100)">+100 ELO</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugAddElo(500)">+500 ELO</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugAddElo(-100)">-100 ELO</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugAddElo(-500)">-500 ELO</button>
-              <button class="btn btn-danger btn-xs" onclick="debugSetElo(0)">ELO → 0</button>
-            </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Paliers ELO rapides</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(0)">— Non rankée</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(200)">🥉 Bronze</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(600)">🥈 Argent</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(1200)">🥇 Or</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(2800)">💠 Diamant</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(3600)">👑 Légendaire</button>
-              <button class="btn btn-secondary btn-xs" onclick="debugSetElo(4200)">✨ Maître Absolu</button>
-            </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Titres</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-secondary btn-xs" onclick="debugUnlockWinnerLooser()">Unlock Winner Looser</button>
-              <button class="btn btn-danger btn-xs" onclick="debugRemoveWinnerLooser()">Retirer Winner Looser</button>
-            </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Reset</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-danger btn-xs" style="grid-column:span 2" onclick="debugResetStats()">Reset stats (ELO 0, tout à zéro)</button>
-            </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Admin IP</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button class="btn btn-yellow btn-xs" style="grid-column:span 2" onclick="debugRebindOwnerIp()">🛡️ Reassigner IP proprietaire</button>
-            </div>
-            <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Feedback joueurs</div>
-            <div class="debug-grid" style="margin-bottom:8px">
-              <button id="admin-feedback-btn" class="btn btn-yellow btn-xs" style="grid-column:span 2" onclick="openAdminFeedbackModal()">📬 Feedback joueur</button>
+
+            <div class="debug-section">
+              <div class="debug-section-title">🛠️ Outils admin</div>
+              <div class="debug-section-copy">Actions techniques rapides pour l'admin et lecture des retours joueurs.</div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Admin IP</div>
+              <div class="debug-grid" style="margin-bottom:8px">
+                <button class="btn btn-yellow btn-xs" style="grid-column:span 2" onclick="debugRebindOwnerIp()">🛡️ Reassigner IP proprietaire</button>
+              </div>
+              <div style="font-size:.65rem;color:var(--muted);margin-bottom:6px;font-weight:600">Feedback joueurs</div>
+              <div class="debug-grid">
+                <button id="admin-feedback-btn" class="btn btn-yellow btn-xs" style="grid-column:span 2;display:flex;align-items:center;justify-content:center;gap:6px" onclick="openAdminFeedbackModal()">📬 Feedback joueur <span id="admin-feedback-badge" class="admin-feedback-pill"></span></button>
+              </div>
             </div>
             <div class="debug-note">ELO: +30 victoire / -20 défaite. Paliers (4 div.) : Bronze → Argent → Or → Platine → Diamant → Légendaire → Maître Absolu. Étoiles lobby : 1 / 5 victoires, max 100.</div>
           </details>
@@ -2885,6 +2940,47 @@ body.streamer-mode #invite-link {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px">
       <div id="admin-feedback-meta" style="font-size:.68rem;color:var(--muted);font-weight:700">Chargement…</div>
       <button class="btn btn-secondary btn-sm" type="button" onclick="loadAdminFeedbackList(true)">↻ Rafraîchir</button>
+    </div>
+    <div class="admin-feedback-toolbar">
+      <label>Recherche
+        <input id="admin-feedback-search" type="text" placeholder="Sujet ou message" oninput="handleAdminFeedbackFilterChange()" />
+      </label>
+      <label>Pseudo
+        <input id="admin-feedback-player" type="text" placeholder="Nom du joueur" oninput="handleAdminFeedbackFilterChange()" />
+      </label>
+      <label>Type
+        <select id="admin-feedback-type-filter" onchange="handleAdminFeedbackFilterChange()">
+          <option value="all">Tous</option>
+          <option value="bug">🐞 Bug</option>
+          <option value="improvement">💡 Amélioration</option>
+          <option value="ux">🎨 UX / Interface</option>
+          <option value="balance">⚖️ Équilibrage</option>
+          <option value="other">🗂️ Autre</option>
+        </select>
+      </label>
+      <label>Statut
+        <select id="admin-feedback-status-filter" onchange="handleAdminFeedbackFilterChange()">
+          <option value="all">Tous</option>
+          <option value="new">🆕 Non lu</option>
+          <option value="pending">👀 En cours</option>
+          <option value="resolved">✅ Traité</option>
+          <option value="archived">🗄️ Archivé</option>
+        </select>
+      </label>
+      <label>Date
+        <select id="admin-feedback-date-filter" onchange="handleAdminFeedbackFilterChange()">
+          <option value="all">Toutes</option>
+          <option value="24h">Dernières 24h</option>
+          <option value="7d">7 derniers jours</option>
+          <option value="30d">30 derniers jours</option>
+        </select>
+      </label>
+      <label class="admin-feedback-toggle">Archives
+        <select id="admin-feedback-archived" onchange="loadAdminFeedbackList(true)">
+          <option value="0">Masquer</option>
+          <option value="1">Inclure</option>
+        </select>
+      </label>
     </div>
     <div id="admin-feedback-list" class="admin-feedback-list">
       <div class="admin-feedback-empty">Aucun feedback chargé pour le moment.</div>
