@@ -3874,6 +3874,7 @@ function setDebugMenuVisibility(allowed,msg){
   const info=document.getElementById('debug-access-msg');
   const backdrop=document.getElementById('debug-tools-window-backdrop');
   const debugBtn=document.getElementById('admin-debug-btn');
+  const feedbackBtn=document.getElementById('admin-feedback-btn');
   const blockedByModal=!!document.querySelector('#modal-roulette.open,#modal-party-wheel.open,#modal-game-wheel.open,#pack-manager-modal.open');
   const showDebugBtn=!!allowed&&!blockedByModal;
   if(card){
@@ -3884,6 +3885,10 @@ function setDebugMenuVisibility(allowed,msg){
     debugBtn.style.setProperty('display',showDebugBtn?'block':'none','important');
     debugBtn.hidden=!showDebugBtn;
     debugBtn.setAttribute('aria-hidden',showDebugBtn?'false':'true');
+  }
+  if(feedbackBtn){
+    feedbackBtn.style.display=allowed?'':'none';
+    feedbackBtn.hidden=!allowed;
   }
   if(backdrop&&!allowed)backdrop.classList.remove('open');
   if(!allowed)document.body?.classList.remove('debug-tools-window-open');
@@ -4776,6 +4781,172 @@ async function submitFeedbackDraft(){
       toast('Impossible d’envoyer. Feedback copié dans le presse-papiers.','w');
     }
   }
+}
+
+function formatAdminFeedbackDate(ts){
+  const value=Number(ts||0);
+  if(!value)return 'Date inconnue';
+  try{
+    return new Date(value).toLocaleString('fr-FR',{dateStyle:'medium',timeStyle:'short'});
+  }catch(_){
+    return new Date(value).toLocaleString();
+  }
+}
+
+function getAdminFeedbackTypeLabel(type){
+  const map={
+    bug:'🐞 Bug',
+    improvement:'💡 Amélioration',
+    ux:'🎨 UX / Interface',
+    balance:'⚖️ Équilibrage',
+    other:'🗂️ Autre'
+  };
+  return map[String(type||'').trim()]||'🗂️ Autre';
+}
+
+function buildAdminFeedbackCopyText(entry){
+  const lines=[
+    'Sujet : '+String(entry?.subject||'Sans sujet').trim(),
+    'Type : '+getAdminFeedbackTypeLabel(entry?.type),
+    'Pseudo : '+String(entry?.playerName||'Joueur').trim(),
+    entry?.playerUid?('UID : '+String(entry.playerUid).trim()):'',
+    entry?.contact?('Contact : '+String(entry.contact).trim()):'',
+    entry?.sessionEmail?('Session : '+String(entry.sessionEmail).trim()):'',
+    'Compte : '+String(entry?.accountMode||'Inconnu').trim(),
+    'Mode : '+String(entry?.matchMode||'Inconnu').trim(),
+    'Date : '+formatAdminFeedbackDate(entry?.createdAt),
+    entry?.page?('Page : '+String(entry.page).trim()):'',
+    '',
+    String(entry?.message||'').trim()
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+function renderAdminFeedbackList(items,total){
+  const list=document.getElementById('admin-feedback-list');
+  const meta=document.getElementById('admin-feedback-meta');
+  if(!list)return;
+  list.innerHTML='';
+  const rows=Array.isArray(items)?items:[];
+  const totalCount=Math.max(rows.length,Number(total||0));
+  if(!rows.length){
+    const empty=document.createElement('div');
+    empty.className='admin-feedback-empty';
+    empty.textContent='Aucun feedback joueur enregistré pour le moment.';
+    list.appendChild(empty);
+    if(meta)meta.textContent='0 feedback joueur';
+    return;
+  }
+  rows.forEach((entry)=>{
+    const card=document.createElement('article');
+    card.className='admin-feedback-item';
+
+    const head=document.createElement('div');
+    head.className='admin-feedback-head';
+
+    const left=document.createElement('div');
+    left.style.flex='1';
+    left.style.minWidth='0';
+
+    const title=document.createElement('div');
+    title.className='admin-feedback-title';
+    title.textContent=String(entry?.subject||'Sans sujet').trim()||'Sans sujet';
+    left.appendChild(title);
+
+    const metaLine=document.createElement('div');
+    metaLine.className='admin-feedback-meta-line';
+    const parts=[
+      String(entry?.playerName||'Joueur').trim()||'Joueur',
+      String(entry?.accountMode||'Invité').trim()||'Invité',
+      String(entry?.matchMode||'Normal').trim()||'Normal',
+      formatAdminFeedbackDate(entry?.createdAt)
+    ].filter(Boolean);
+    metaLine.textContent=parts.join(' • ');
+    left.appendChild(metaLine);
+
+    const copyBtn=document.createElement('button');
+    copyBtn.type='button';
+    copyBtn.className='btn btn-xs btn-secondary';
+    copyBtn.textContent='📋 Copier';
+    copyBtn.onclick=()=>{
+      copyTextToClipboard(buildAdminFeedbackCopyText(entry))
+        .then(()=>toast('📋 Feedback copié.','a'))
+        .catch(()=>toast('Impossible de copier ce feedback.','w'));
+    };
+
+    head.appendChild(left);
+    head.appendChild(copyBtn);
+    card.appendChild(head);
+
+    const badges=document.createElement('div');
+    badges.className='admin-feedback-badges';
+    [
+      getAdminFeedbackTypeLabel(entry?.type),
+      entry?.contact?('Contact : '+String(entry.contact).trim()):'',
+      entry?.playerUid?('UID : '+String(entry.playerUid).trim()):''
+    ].filter(Boolean).forEach((label)=>{
+      const chip=document.createElement('span');
+      chip.className='admin-feedback-badge';
+      chip.textContent=label;
+      badges.appendChild(chip);
+    });
+    if(badges.childNodes.length)card.appendChild(badges);
+
+    const body=document.createElement('div');
+    body.className='admin-feedback-body';
+    body.textContent=String(entry?.message||'').trim()||'(vide)';
+    card.appendChild(body);
+
+    const footer=document.createElement('div');
+    footer.className='admin-feedback-footer';
+    const pageInfo=document.createElement('div');
+    pageInfo.className='admin-feedback-meta-line';
+    pageInfo.style.marginTop='0';
+    pageInfo.textContent=entry?.page?('Page : '+String(entry.page).trim()):'Page non renseignée';
+    footer.appendChild(pageInfo);
+    card.appendChild(footer);
+
+    list.appendChild(card);
+  });
+  if(meta){
+    meta.textContent=(totalCount||rows.length)+' feedback'+((totalCount||rows.length)>1?'s':'')+' joueur'+((totalCount||rows.length)>1?'s':'');
+  }
+}
+
+async function loadAdminFeedbackList(force){
+  if(!hasAdminDebugAccess(true))return;
+  if(!String(P?.googleSessionToken||'').trim()){
+    toast('Session admin Google requise.','w');
+    return;
+  }
+  const list=document.getElementById('admin-feedback-list');
+  const meta=document.getElementById('admin-feedback-meta');
+  if(list)list.innerHTML='<div class="admin-feedback-empty">Chargement des feedbacks joueurs…</div>';
+  if(meta)meta.textContent='Chargement…';
+  try{
+    const res=await fetch('/api/feedback/list',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        sessionToken:P?.googleSessionToken||'',
+        uid:P?.uid||'',
+        force:!!force
+      })
+    });
+    const data=await res.json().catch(()=>null);
+    if(!res.ok||!data?.ok)throw new Error(data?.error||'feedback_list_failed');
+    renderAdminFeedbackList(Array.isArray(data?.items)?data.items:[],data?.total||0);
+  }catch(err){
+    if(list)list.innerHTML='<div class="admin-feedback-empty">Impossible de charger les feedbacks joueurs pour le moment.</div>';
+    if(meta)meta.textContent='Erreur de chargement';
+    toast('Impossible de charger les feedbacks joueurs.','w');
+  }
+}
+
+function openAdminFeedbackModal(){
+  if(!hasAdminDebugAccess(true))return;
+  openModal('modal-admin-feedback');
+  loadAdminFeedbackList();
 }
 
 function renderTutorialStep(){

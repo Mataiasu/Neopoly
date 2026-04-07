@@ -1499,6 +1499,46 @@ async function handleApi(req, res, pathname) {
     return true;
   }
 
+  if (pathname === '/api/feedback/list' && req.method === 'POST') {
+    try {
+      const body = await readJsonBody(req);
+      const session = getTrustedSession(body);
+      if (!session || !session.email) {
+        sendApiJson(req, res, 401, { ok: false, error: 'session_required' });
+        return true;
+      }
+      const adminState = getModerationState({
+        uid: body && body.uid,
+        googleSub: session.sub,
+        email: session.email,
+      });
+      if (!adminState.isAdmin) {
+        sendApiJson(req, res, 403, { ok: false, error: 'admin_required' });
+        return true;
+      }
+      const db = loadFeedbackDb();
+      const rawItems = Array.isArray(db && db.items) ? db.items : [];
+      const items = rawItems.map((item) => ({
+        id: sanitizeStr(item && item.id, 64),
+        createdAt: Math.max(0, Number(item && item.createdAt || 0)),
+        type: sanitizeStr(item && item.type, 32),
+        subject: sanitizeStr(item && item.subject, 160),
+        message: sanitizeStr(item && item.message, 4000),
+        contact: sanitizeStr(item && item.contact, 160),
+        page: sanitizeStr(item && item.page, 500),
+        playerName: sanitizeStr(item && item.playerName, 64),
+        playerUid: sanitizeStr(item && item.playerUid, 128),
+        accountMode: sanitizeStr(item && item.accountMode, 32),
+        matchMode: sanitizeStr(item && item.matchMode, 32),
+        sessionEmail: normalizeEmail(item && item.sessionEmail),
+      }));
+      sendApiJson(req, res, 200, { ok: true, total: rawItems.length, items });
+    } catch (_) {
+      sendApiJson(req, res, 500, { ok: false, error: 'server_error' });
+    }
+    return true;
+  }
+
   if (pathname === '/api/profile/get' && req.method === 'POST') {
     try {
       const body = await readJsonBody(req);
