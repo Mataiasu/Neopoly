@@ -8983,7 +8983,8 @@ function ensurePlayerMatchItems(p){
   return p.matchItems;
 }
 
-function renderMatchItemsUi(){
+function renderMatchItemsUi(options){
+  const opts=options&&typeof options==='object'?options:{};
   const p=G.players[G.cur];
   const controlled=!!(p&&isProfileControlledPlayer(p));
   const mi=ensurePlayerMatchItems(p);
@@ -9021,7 +9022,7 @@ function renderMatchItemsUi(){
     summary.textContent=text;
     summary.dataset.state=state;
   }
-  if(typeof renderPlayers==='function')renderPlayers();
+  if(!opts.skipPlayerSync&&typeof renderPlayers==='function')renderPlayers();
 }
 
 function addMatchItem(p,type,qty=1,reason){

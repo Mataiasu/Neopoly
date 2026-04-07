@@ -25,7 +25,7 @@
 
 ## A ameliorer
 
-- [ ] Continuer a sortir la logique addons du gros `test1.html` pour limiter les regressions.
+- [~] Continuer a sortir la logique addons du gros `test1.html` pour limiter les regressions (`shop` / DOM power-ups externalises vers `assets/addon-powerups.js`).
 - [x] Ajouter des retours visuels plus clairs sur les power-ups actifs du joueur courant.
 - [x] Ajouter une UI de ciblage plus riche pour les actions offensives et de construction.
 

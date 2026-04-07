@@ -206,7 +206,7 @@ function renderPlayers(){
     }
   }
   renderInventoryUi();
-  renderMatchItemsUi();
+  renderMatchItemsUi({skipPlayerSync:true});
   if(typeof renderMatchObjectiveUi==='function')renderMatchObjectiveUi();
   if(typeof renderTurnHistory==='function')renderTurnHistory();
   if(typeof renderTurnSummaryUi==='function')renderTurnSummaryUi();
