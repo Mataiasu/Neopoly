@@ -3860,8 +3860,17 @@ function hasAdminDebugAccess(notify){
   return allowed;
 }
 
-function setDebugMenuVisibility(allowed,msg){
+function ensureAdminDebugMenuLayer(){
   const card=document.getElementById('debug-tools-card');
+  if(!card)return null;
+  if(document.body&&card.parentElement!==document.body){
+    document.body.appendChild(card);
+  }
+  return card;
+}
+
+function setDebugMenuVisibility(allowed,msg){
+  const card=ensureAdminDebugMenuLayer();
   const info=document.getElementById('debug-access-msg');
   const backdrop=document.getElementById('debug-tools-window-backdrop');
   const debugBtn=document.getElementById('admin-debug-btn');
@@ -4838,7 +4847,7 @@ function initDesktopKeyboardShortcuts(){
 }
 
 function initAdminDebugWindowDrag(){
-  const card=document.getElementById('debug-tools-card');
+  const card=ensureAdminDebugMenuLayer();
   const handle=card?.querySelector('summary');
   if(!card||!handle||card.dataset.dragInit==='1')return;
   card.dataset.dragInit='1';
@@ -4887,7 +4896,7 @@ function initAdminDebugWindowDrag(){
 }
 
 function recenterAdminDebugMenu(){
-  const card=document.getElementById('debug-tools-card');
+  const card=ensureAdminDebugMenuLayer();
   if(!card)return;
   card.style.left='50%';
   card.style.top='50%';
@@ -4899,7 +4908,7 @@ function recenterAdminDebugMenu(){
 }
 
 function closeAdminDebugMenu(){
-  const card=document.getElementById('debug-tools-card');
+  const card=ensureAdminDebugMenuLayer();
   const backdrop=document.getElementById('debug-tools-window-backdrop');
   if(card){
     card.style.display='none';
@@ -4915,7 +4924,7 @@ function openAdminDebugMenu(){
   if(!hasAdminDebugAccess(true))return;
   showScreen('lobby');
   switchLobbyTab('profil-pane');
-  const card=document.getElementById('debug-tools-card');
+  const card=ensureAdminDebugMenuLayer();
   const backdrop=document.getElementById('debug-tools-window-backdrop');
   if(card){
     card.style.display='block';
