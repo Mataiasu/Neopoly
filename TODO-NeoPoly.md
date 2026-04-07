@@ -17,11 +17,11 @@
 **Objectif :** stabiliser le jeu, améliorer l'UX et rendre l'admin plus efficace.
 
 ### Production / vérifications live
-- [~] Redéployer sur Render et vérifier la prod après les derniers pushs
-- [~] Vérifier sur le site live le bouton admin `⚙️ Debug`
-- [~] Vérifier sur le site live le panneau `📬 Feedback joueur`
-- [ ] Confirmer l'absence d'erreurs console au chargement
-- [ ] Vérifier l'affichage des avatars photo dans le leaderboard live
+- [x] Redéployer sur Render et vérifier la prod après les derniers pushs
+- [x] Vérifier sur le site live le bouton admin `⚙️ Debug`
+- [x] Vérifier sur le site live le panneau `📬 Feedback joueur`
+- [x] Confirmer l'absence d'erreurs console au chargement
+- [x] Vérifier l'affichage des avatars photo dans le leaderboard live
 
 ### Feedback & administration
 - [x] Ajouter une recherche dans `Feedback joueur`
