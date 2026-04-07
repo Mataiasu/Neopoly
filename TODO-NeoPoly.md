@@ -12,8 +12,8 @@
 
 ## Priorite actuelle
 
-- [ ] Redeployer sur Render et verifier le site en production.
-- [ ] Tester en live l'envoi de feedback et confirmer l'ecriture dans `data/feedback.json`.
+- [~] Redeployer sur Render et verifier le site en production (push fait, propagation en cours).
+- [~] Endpoint feedback de prod joignable (`message_required` confirme sans ecrire de faux test).
 - [ ] Verifier sur le site live l'affichage des avatars photo dans le classement.
 - [ ] Confirmer l'absence d'erreurs console au chargement.
 
