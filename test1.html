@@ -1785,6 +1785,10 @@ html.mobile-lowfx .lobby-card{box-shadow:none !important}
 @media (max-width:599px){
   #game-controls-card{position:sticky;top:0;z-index:4;backdrop-filter:blur(8px)}
   .turn-hint{font-size:.78rem;padding:10px 12px}
+  .profile-recent-item{padding:11px 12px}
+  .profile-recent-result{font-size:.78rem}
+  .profile-recent-meta{font-size:.66rem}
+  #modal-match-history .modal{max-height:85vh;padding:18px}
 }
 
 /* ── STREAMER MODE ── */
@@ -2263,6 +2267,7 @@ body.streamer-mode #invite-link {
               <div id="profile-recent-matches-meta" style="font-size:.66rem;color:var(--muted);font-weight:700">Aucune partie</div>
             </div>
             <div id="profile-recent-matches-list" class="profile-recent-list"></div>
+            <button id="view-full-history-btn" class="btn btn-secondary btn-sm" type="button" onclick="openFullMatchHistoryModal()" style="display:none;margin-top:6px;width:100%">📋 Voir tout l'historique</button>
           </div>
           <div class="card" style="padding:10px">
             <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
@@ -3294,6 +3299,15 @@ body.streamer-mode #invite-link {
     </div>
   </div>
 </div>
+<div class="modal-bg" id="modal-match-history">
+  <div class="modal" style="max-width:min(800px,96vw)">
+    <button class="modal-close" onclick="closeModal('modal-match-history')">✕</button>
+    <div class="modal-title">📋 Historique des parties</div>
+    <div class="modal-sub">Tes dernières parties classées et normales</div>
+    <div id="full-history-list" style="display:flex;flex-direction:column;gap:8px;max-height:68vh;overflow-y:auto;padding-right:4px;margin-top:10px"></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="modal-party-wheel">
   <div class="modal" style="max-width:760px;width:min(96vw,760px)">
     <button class="modal-close" onclick="closeModal('modal-party-wheel')">✕</button>

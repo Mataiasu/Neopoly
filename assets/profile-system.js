@@ -1351,12 +1351,14 @@ function maybeOpenSharedProfileFromUrl(){
 function renderProfileRecentMatches(){
   const wrap=document.getElementById('profile-recent-matches-list');
   const meta=document.getElementById('profile-recent-matches-meta');
+  const viewAllBtn=document.getElementById('view-full-history-btn');
   if(!wrap)return;
-  const items=Array.isArray(P.recentMatches)?P.recentMatches.slice(0,6):[];
+  const items=Array.isArray(P.recentMatches)?P.recentMatches.slice(0,10):[];
   wrap.innerHTML='';
   if(!items.length){
-    wrap.innerHTML='<div class="profile-recent-item"><div><div class="profile-recent-result">Aucune partie récente</div><div class="profile-recent-meta">Tes 6 dernières parties apparaîtront ici après chaque fin de match.</div></div></div>';
+    wrap.innerHTML='<div class="profile-recent-item"><div><div class="profile-recent-result">Aucune partie récente</div><div class="profile-recent-meta">Tes parties apparaîtront ici après chaque fin de match.</div></div></div>';
     if(meta)meta.textContent='Aucune partie';
+    if(viewAllBtn)viewAllBtn.style.display='none';
     return;
   }
   items.forEach((entry)=>{
@@ -1368,15 +1370,15 @@ function renderProfileRecentMatches(){
     const result=document.createElement('div');
     result.className='profile-recent-result';
     const icon=entry?.result==='win'?'🏆':(entry?.result==='loss'?'💥':'🤝');
-    result.textContent=icon+' '+String(entry?.label||'Partie terminée');
+    const modeLabel=entry?.mode==='ranked'?' (Ranked)':'';
+    result.textContent=icon+' '+String(entry?.label||'Partie terminée')+modeLabel;
     const metaLine=document.createElement('div');
     metaLine.className='profile-recent-meta';
     const rankDelta=parseInt(entry?.rankDelta,10)||0;
     const details=[
-      entry?.mode==='ranked'?'Ranked':'Normal',
       (parseInt(entry?.turns,10)||0)+' tours',
+      (parseInt(entry?.opponents,10)||0)+' adversaires',
       (parseInt(entry?.money,10)||0)+'$ net',
-      (parseInt(entry?.opponents,10)||0)+' adv.',
       rankDelta?((rankDelta>0?'+':'')+rankDelta+' ELO'):'',
       entry?.at?new Date(entry.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):''
     ].filter(Boolean);
@@ -1385,7 +1387,11 @@ function renderProfileRecentMatches(){
     row.appendChild(left);
     wrap.appendChild(row);
   });
-  if(meta)meta.textContent=items.length+' / 6 sauvegardées';
+  if(meta)meta.textContent=items.length+' / 20 sauvegardées';
+  if(viewAllBtn){
+    viewAllBtn.style.display=items.length>0?'block':'none';
+    viewAllBtn.textContent='📋 Voir tout l\'historique ('+P.recentMatches.length+' parties)';
+  }
 }
 
 function renderLobbyProfileTab(){
@@ -1704,7 +1710,48 @@ function redeemSecretCode(){
       {type:'rareToken',qty:2},
       {type:'antiJail',qty:1}
     ],'💼 Le capital fantôme te reconnaît !');
-  } else if(code.length>0){
-    toast('Code invalide.','w');
-  }
-}
+   } else if(code.length>0){
+     toast('Code invalide.','w');
+   }
+ }
+
+ // ── MATCH HISTORY ──
+ function openFullMatchHistoryModal(){
+   renderFullMatchHistory();
+   openModal('modal-match-history');
+ }
+
+ function renderFullMatchHistory(){
+   const container=document.getElementById('full-history-list');
+   if(!container)return;
+   const items=Array.isArray(P.recentMatches)?P.recentMatches:[];
+   if(!items.length){
+     container.innerHTML='<div style="text-align:center;color:var(--muted);padding:12px">Aucune partie enregistrée.</div>';
+     return;
+   }
+   container.innerHTML='';
+   const frag=document.createDocumentFragment();
+   items.forEach(entry=>{
+     const row=document.createElement('div');
+     row.className='profile-recent-item';
+     const resultIcon=entry?.result==='win'?'🏆':(entry?.result==='loss'?'💥':'🤝');
+     const modeLabel=entry?.mode==='ranked'?'<span style="color:#fbbf24;font-weight:700">Ranked</span>':'<span style="color:var(--muted);font-weight:600">Normal</span>';
+     const rankDelta=parseInt(entry?.rankDelta,10)||0;
+     const rankDeltaLabel=rankDelta?((rankDelta>0?'<span style="color:#22c55e">+'+rankDelta+' ELO</span>':'<span style="color:#ff647c">'+rankDelta+' ELO</span>')):'<span style="color:var(--muted)">±0 ELO</span>';
+     row.innerHTML=`
+       <div style="display:flex;align-items:center;gap:8px;flex:1;min-width:0">
+         <div style="font-size:1.1rem">${resultIcon}</div>
+         <div style="flex:1;min-width:0">
+           <div style="font-weight:700;color:#eef4ff;font-size:.78rem">${escapeHtml(entry?.label||'Partie terminée')}</div>
+           <div style="font-size:.64rem;color:var(--muted);margin-top:2px">
+             ${modeLabel} • ${(parseInt(entry?.turns,10)||0)} tours • ${(parseInt(entry?.opponents,10)||0)} adv. • ${(parseInt(entry?.money,10)||0)}$ net • ${rankDeltaLabel}
+           </div>
+           <div style="font-size:.58rem;color:var(--muted);margin-top:2px">${entry?.at?new Date(entry.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}):''}</div>
+        </div>
+       </div>
+     `;
+     frag.appendChild(row);
+   });
+   container.appendChild(frag);
+ }
+

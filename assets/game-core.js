@@ -8024,7 +8024,7 @@ function recordProfileRecentMatch(summary){
   const prev=P.recentMatches[0];
   if(prev&&prev.result===entry.result&&prev.mode===entry.mode&&prev.turns===entry.turns&&prev.money===entry.money&&Math.abs((prev.at||0)-entry.at)<4000)return false;
   P.recentMatches.unshift(entry);
-  if(P.recentMatches.length>8)P.recentMatches.length=8;
+  if(P.recentMatches.length>20)P.recentMatches.length=20;
   return true;
 }
 
@@ -8062,7 +8062,7 @@ function endGame(winner){
         recordProfileRecentMatch({
           mode:rankedMatch?'ranked':'normal',
           result:profileWon?'win':(winner?'loss':'draw'),
-          label:(rankedMatch?'Ranked':'Partie')+' • '+(profileWon?'Victoire':(winner?'Défaite':'Égalité')),
+          label:profileWon?'Victoire':(winner?'Défaite':'Égalité'),
           money:Math.round(Number(profilePlayer.money||0)+ownedValue),
           turns:Math.max(1,parseInt(G.turnCount,10)||1),
           opponents:Math.max(0,(Array.isArray(G.players)?G.players.length:1)-1),
