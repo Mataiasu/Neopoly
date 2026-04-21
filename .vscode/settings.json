@@ -1,3 +1,4 @@
 {
-    "liveServer.settings.multiRootWorkspaceName": "Neopoly"
+    "liveServer.settings.multiRootWorkspaceName": "Neopoly",
+    "codeQL.createQuery.qlPackLocation": "f:\\Document\\Neopoly"
 }
