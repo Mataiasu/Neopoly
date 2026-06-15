@@ -1,0 +1,8 @@
+<script>
+    var checkboxes = document.querySelectorAll('input[name="option[0-9]+"]');
+    Array.from(checkboxes).forEach((checkbox) => {
+        checkbox.addEventListener('click', function() {
+            this.style.color = this.checked ? 'green' : 'red';
+        });
+    });
+</script>

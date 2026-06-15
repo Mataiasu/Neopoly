@@ -1,4 +1,114 @@
-<!DOCTYPE html>
+diff --git a/index.html b/index.html
+index 1234567..89abcde 100644
+--- a/index.html
++++ b/index.html
+@@ -1,7 +1,7 @@
+ <!DOCTYPE html>
+ <html lang="fr">
+ <head>
+-    <meta charset="UTF-8">
++    <meta charset="utf-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <title>NeoPoly</title>
+     <link rel="stylesheet" href="assets/styles.css">
+@@ -25,7 +25,7 @@
+         <div class="modal-sub">Gérer les options de partie, les bots et les joueurs.</div>
+         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+             <div class="card" style="padding:10px">
+-                <div class="card-title">🎮 Partie</div>
++                <div class="card-title">🎮 Options de partie</div>
+                 <div class="fgroup options-fgroup" style="margin-bottom:0;gap:8px">
+                     <div class="opt-row"><input type="checkbox" id="pw-auto-start-chk" onchange="setAutoStart(this.checked)"/><label for="pw-auto-start-chk">Démarrage auto</label></div>
+                     <div class="opt-field"><label>Durée de la partie (min)</label><input id="pw-game-duration" type="number" value="60" min="15" max="360" onchange="setGameDuration(this.value)"/></div>
+@@ -42,7 +42,7 @@
+                     <div class="opt-row"><input type="checkbox" id="pw-bot-ai-chk" onchange="setBotAiEnabled(this.checked)"/><label for="pw-bot-ai-chk">IA des bots</label></div>
+                 </div>
+             </div>
+-            <div class="card" style="padding:10px">
++            <div class="card" style="padding:10px;grid-column:1 / span 2">
+                 <div class="card-title">👥 Joueurs</div>
+                 <div class="fgroup options-fgroup" style="margin-bottom:0;gap:8px">
+                     <div class="opt-row"><input type="checkbox" id="pw-allow-spectators-chk" onchange="setAllowSpectators(this.checked)"/><label for="pw-allow-spectators-chk">Spectateurs autorisés</label></div>
+@@ -53,7 +53,7 @@
+                     <div class="opt-row"><input type="checkbox" id="pw-kick-bots-on-win-chk" onchange="setKickBotsOnWin(this.checked)"/><label for="pw-kick-bots-on-win-chk">Expulser les bots à la victoire</label></div>
+                 </div>
+             </div>
+-            <div class="card" style="padding:10px">
++            <div class="card" style="padding:10px;grid-column:1 / span 2">
+                 <div class="card-title">⚙️ Avancé</div>
+                 <div class="fgroup options-fgroup" style="margin-bottom:0;gap:8px">
+                     <div class="opt-row"><input type="checkbox" id="pw-debug-mode-chk" onchange="setDebugMode(this.checked)"/><label for="pw-debug-mode-chk">Mode débogage</label></div>
+@@ -64,7 +64,7 @@
+                     <div class="opt-field"><label>URL du serveur (pour les développeurs)</label><input id="pw-server-url" type="text" value="" placeholder="https://example.com/api" onchange="setServerUrl(this.value)"/></div>
+                 </div>
+             </div>
+-            <div class="card" style="padding:10px">
++            <div class="card" style="padding:10px;grid-column:1 / span 2">
+                 <div class="card-title">📜 Journal</div>
+                 <div id="log-panel" style="margin-top:8px;padding:12px;border:1px solid var(--border);border-radius:12px;background:var(--s2)"></div>
+             </div>
+@@ -73,7 +73,7 @@
+         </div>
+     </div>
+ </div>
+
+-<div class="modal-bg" id="modal-game-wheel">
++<div class="modal-bg" id="modal-game-wheel" style="display:none;">
+     <div class="modal" style="max-width:680px;width:min(96vw,680px)">
+         <button class="modal-close" onclick="closeModal('modal-game-wheel')">✕</button>
+         <div class="modal-title">⚙️ Roue d'options de jeu</div>
+@@ -123,7 +123,7 @@
+             </div>
+         </div>
+     </div>
+-</div>
++</div>
+
+<div class="modal-bg" id="modal-tutorial">
+     <div class="modal" style="max-width:520px;width:min(95vw,520px)">
+         <button class="modal-close" onclick="closeModal('modal-tutorial')">✕</button>
+@@ -143,7 +143,7 @@
+             </div>
+         </div>
+     </div>
+-</div>
++</div>
+
+<div class="modal-bg" id="modal-public-profile">
+     <div class="modal" style="max-width:560px;width:min(96vw,560px)">
+         <button class="modal-close" onclick="closeModal('modal-public-profile')">✕</button>
+@@ -163,7 +163,7 @@
+             </div>
+         </div>
+     </div>
+-</div>
++</div>
+
+<div class="modal-bg" id="modal-moderation-action">
+     <div class="modal" style="max-width:460px;width:min(95vw,460px)">
+         <button class="modal-close" type="button" onclick="closeModerationActionModal()">✕</button>
+@@ -183,7 +183,7 @@
+             </div>
+         </div>
+     </div>
+-</div>
++</div>
+
+<div id="world-event-banner" class="world-event-banner" aria-live="polite"></div>
+<div class="toast-wrap" id="toasts"></div>
+}<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+<body>
+    <script>
+        // Votre code JavaScript ici
+    </script>
+</body>
+</html>
 <html lang="fr">
 <head>
 <meta charset="UTF-8"/>
